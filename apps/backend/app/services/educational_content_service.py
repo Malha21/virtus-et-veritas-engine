@@ -33,6 +33,9 @@ from app.services.processing_service import add_processing_log
 from app.services.project_service import get_project_by_id
 
 EXCERPT_CHARS = 20000
+MAX_LESSON_SCRIPTS_PER_RUN = 3
+MAX_MODULE_QUIZZES_PER_RUN = 2
+MAX_COMPLEMENTARY_MATERIALS_PER_RUN = 1
 
 
 def get_content_metadata_number(content: GeneratedContent, field: str) -> int:
@@ -150,6 +153,27 @@ def call_ai_json(
     return parse_json_content(response.content)
 
 
+def add_educational_log(
+    db: Session,
+    project: Project,
+    current_user: User,
+    job: ProcessingJob,
+    message: str,
+    level: str = "info",
+    context_json: dict[str, Any] | None = None,
+) -> None:
+    add_processing_log(
+        db,
+        project_id=project.id,
+        organization_id=current_user.organization_id,
+        job_id=job.id,
+        level=level,
+        message=message,
+        context_json=context_json,
+    )
+    db.flush()
+
+
 def generate_educational_content(
     db: Session,
     current_user: User,
@@ -199,181 +223,256 @@ def generate_educational_content(
         job.attempts = 1
         job.started_at = datetime.now(UTC)
         project.processing_status = "ai_generating_educational_content"
-        add_processing_log(
+        add_educational_log(
             db,
-            project_id=project.id,
-            organization_id=current_user.organization_id,
-            job_id=job.id,
-            message="Geracao de conteudos educacionais iniciada",
-        )
-        db.flush()
-
-        system_prompt, user_prompt = build_course_summary_prompt(
             project,
-            document_analysis,
-            course_structure,
-            generation_language,
-        )
-        summary_json = call_ai_json(
-            db,
-            ai_provider,
-            project,
+            current_user,
             job,
-            provider_record.id,
-            "generate_course_summary",
-            COURSE_SUMMARY_PROMPT_VERSION,
-            system_prompt,
-            user_prompt,
-            generation_language,
+            message="Geração educacional iniciada",
+            context_json={
+                "generation_language": generation_language,
+                "max_lesson_scripts": MAX_LESSON_SCRIPTS_PER_RUN,
+                "max_module_quizzes": MAX_MODULE_QUIZZES_PER_RUN,
+                "max_complementary_materials": MAX_COMPLEMENTARY_MATERIALS_PER_RUN,
+            },
         )
-        save_versioned_content(
-            db,
-            project,
-            provider_record.id,
-            "course_summary",
-            summary_json.get("course_summary", {}).get("title") or "Resumo executivo do curso",
-            summary_json,
-            generation_language,
-        )
-        counts["course_summaries"] += 1
-
-        for module in modules:
-            system_prompt, user_prompt = build_module_quiz_prompt(
+        try:
+            system_prompt, user_prompt = build_course_summary_prompt(
                 project,
                 document_analysis,
                 course_structure,
-                module,
                 generation_language,
             )
-            quiz_json = call_ai_json(
+            summary_json = call_ai_json(
                 db,
                 ai_provider,
                 project,
                 job,
                 provider_record.id,
-                "generate_module_quizzes",
-                MODULE_QUIZ_PROMPT_VERSION,
+                "generate_course_summary",
+                COURSE_SUMMARY_PROMPT_VERSION,
                 system_prompt,
                 user_prompt,
                 generation_language,
             )
-            module_quiz = quiz_json.get("module_quiz", {})
-            module_number = module_quiz.get("module_number") or module.get("module_number")
-            module_title = module_quiz.get("module_title") or module.get("title")
-            module_quiz["module_number"] = module_number
-            module_quiz["module_title"] = module_title
-            quiz_json["module_quiz"] = module_quiz
-            quiz_json["metadata"] = {
-                "module_number": module_number,
-                "module_title": module_title,
-            }
             save_versioned_content(
                 db,
                 project,
                 provider_record.id,
-                "module_quiz",
-                f"Quiz - Modulo {module_number}",
-                quiz_json,
+                "course_summary",
+                summary_json.get("course_summary", {}).get("title") or "Resumo executivo do curso",
+                summary_json,
                 generation_language,
             )
-            counts["module_quizzes"] += 1
+            counts["course_summaries"] += 1
+            add_educational_log(db, project, current_user, job, "Resumo do curso gerado")
+        except Exception as exc:
+            add_educational_log(
+                db,
+                project,
+                current_user,
+                job,
+                "Falha ao gerar resumo do curso",
+                level="error",
+                context_json={"error": str(exc)},
+            )
+            raise RuntimeError("Falha ao gerar resumo do curso com IA. Tente novamente em instantes.") from exc
 
-            for lesson in module.get("lessons", []):
-                system_prompt, user_prompt = build_lesson_script_prompt(
+        for module in modules[:MAX_MODULE_QUIZZES_PER_RUN]:
+            module_number_for_log = module.get("module_number") or "?"
+            try:
+                system_prompt, user_prompt = build_module_quiz_prompt(
                     project,
                     document_analysis,
                     course_structure,
                     module,
-                    lesson,
-                    extracted_excerpt,
                     generation_language,
                 )
-                script_json = call_ai_json(
+                quiz_json = call_ai_json(
                     db,
                     ai_provider,
                     project,
                     job,
                     provider_record.id,
-                    "generate_lesson_scripts",
-                    LESSON_SCRIPT_PROMPT_VERSION,
+                    "generate_module_quizzes",
+                    MODULE_QUIZ_PROMPT_VERSION,
                     system_prompt,
                     user_prompt,
                     generation_language,
                 )
-                script = script_json.get("lesson_script", {})
-                module_number = script.get("module_number") or module.get("module_number")
-                lesson_number = script.get("lesson_number") or lesson.get("lesson_number")
-                module_title = script.get("module_title") or module.get("title")
-                lesson_title = script.get("lesson_title") or lesson.get("title")
-                script["module_number"] = module_number
-                script["lesson_number"] = lesson_number
-                script["module_title"] = module_title
-                script["lesson_title"] = lesson_title
-                script_json["lesson_script"] = script
-                script_json["metadata"] = {
+                module_quiz = quiz_json.get("module_quiz", {})
+                module_number = module_quiz.get("module_number") or module.get("module_number")
+                module_title = module_quiz.get("module_title") or module.get("title")
+                module_quiz["module_number"] = module_number
+                module_quiz["module_title"] = module_title
+                quiz_json["module_quiz"] = module_quiz
+                quiz_json["metadata"] = {
                     "module_number": module_number,
-                    "lesson_number": lesson_number,
                     "module_title": module_title,
-                    "lesson_title": lesson_title,
                 }
                 save_versioned_content(
                     db,
                     project,
                     provider_record.id,
-                    "lesson_script",
-                    lesson_title or "Roteiro de aula",
-                    script_json,
+                    "module_quiz",
+                    f"Quiz - Modulo {module_number}",
+                    quiz_json,
                     generation_language,
                 )
-                counts["lesson_scripts"] += 1
+                counts["module_quizzes"] += 1
+                add_educational_log(db, project, current_user, job, f"Quiz gerado: Módulo {module_number}")
+            except Exception as exc:
+                add_educational_log(
+                    db,
+                    project,
+                    current_user,
+                    job,
+                    f"Falha ao gerar quiz: Módulo {module_number_for_log}",
+                    level="error",
+                    context_json={"error": str(exc)},
+                )
 
-        system_prompt, user_prompt = build_complementary_material_prompt(
-            project,
-            document_analysis,
-            course_structure,
-            generation_language,
-        )
-        material_json = call_ai_json(
-            db,
-            ai_provider,
-            project,
-            job,
-            provider_record.id,
-            "generate_complementary_materials",
-            COMPLEMENTARY_MATERIAL_PROMPT_VERSION,
-            system_prompt,
-            user_prompt,
-            generation_language,
-        )
-        material = material_json.get("complementary_material", {})
-        save_versioned_content(
-            db,
-            project,
-            provider_record.id,
-            "complementary_material",
-            material.get("material_title") or "Material complementar",
-            material_json,
-            generation_language,
-        )
-        counts["complementary_materials"] += 1
+        lesson_limit_reached = False
+        for module in modules:
+            if lesson_limit_reached:
+                break
+            for lesson in module.get("lessons", []):
+                if counts["lesson_scripts"] >= MAX_LESSON_SCRIPTS_PER_RUN:
+                    lesson_limit_reached = True
+                    break
+                module_number_for_log = module.get("module_number") or "?"
+                lesson_number_for_log = lesson.get("lesson_number") or "?"
+                try:
+                    system_prompt, user_prompt = build_lesson_script_prompt(
+                        project,
+                        document_analysis,
+                        course_structure,
+                        module,
+                        lesson,
+                        extracted_excerpt,
+                        generation_language,
+                    )
+                    script_json = call_ai_json(
+                        db,
+                        ai_provider,
+                        project,
+                        job,
+                        provider_record.id,
+                        "generate_lesson_scripts",
+                        LESSON_SCRIPT_PROMPT_VERSION,
+                        system_prompt,
+                        user_prompt,
+                        generation_language,
+                    )
+                    script = script_json.get("lesson_script", {})
+                    module_number = script.get("module_number") or module.get("module_number")
+                    lesson_number = script.get("lesson_number") or lesson.get("lesson_number")
+                    module_title = script.get("module_title") or module.get("title")
+                    lesson_title = script.get("lesson_title") or lesson.get("title")
+                    script["module_number"] = module_number
+                    script["lesson_number"] = lesson_number
+                    script["module_title"] = module_title
+                    script["lesson_title"] = lesson_title
+                    script_json["lesson_script"] = script
+                    script_json["metadata"] = {
+                        "module_number": module_number,
+                        "lesson_number": lesson_number,
+                        "module_title": module_title,
+                        "lesson_title": lesson_title,
+                    }
+                    save_versioned_content(
+                        db,
+                        project,
+                        provider_record.id,
+                        "lesson_script",
+                        lesson_title or "Roteiro de aula",
+                        script_json,
+                        generation_language,
+                    )
+                    counts["lesson_scripts"] += 1
+                    add_educational_log(
+                        db,
+                        project,
+                        current_user,
+                        job,
+                        f"Roteiro gerado: Módulo {module_number}, Aula {lesson_number}",
+                    )
+                except Exception as exc:
+                    add_educational_log(
+                        db,
+                        project,
+                        current_user,
+                        job,
+                        f"Falha ao gerar roteiro: Módulo {module_number_for_log}, Aula {lesson_number_for_log}",
+                        level="error",
+                        context_json={"error": str(exc)},
+                    )
+                    continue
+
+        if MAX_COMPLEMENTARY_MATERIALS_PER_RUN > 0:
+            try:
+                system_prompt, user_prompt = build_complementary_material_prompt(
+                    project,
+                    document_analysis,
+                    course_structure,
+                    generation_language,
+                )
+                material_json = call_ai_json(
+                    db,
+                    ai_provider,
+                    project,
+                    job,
+                    provider_record.id,
+                    "generate_complementary_materials",
+                    COMPLEMENTARY_MATERIAL_PROMPT_VERSION,
+                    system_prompt,
+                    user_prompt,
+                    generation_language,
+                )
+                material = material_json.get("complementary_material", {})
+                save_versioned_content(
+                    db,
+                    project,
+                    provider_record.id,
+                    "complementary_material",
+                    material.get("material_title") or "Material complementar",
+                    material_json,
+                    generation_language,
+                )
+                counts["complementary_materials"] += 1
+                add_educational_log(db, project, current_user, job, "Material complementar gerado")
+            except Exception as exc:
+                add_educational_log(
+                    db,
+                    project,
+                    current_user,
+                    job,
+                    "Falha ao gerar material complementar",
+                    level="error",
+                    context_json={"error": str(exc)},
+                )
+                raise RuntimeError("Falha ao gerar material complementar com IA. Tente novamente em instantes.") from exc
 
         project.processing_status = "educational_content_generated"
         job.status = "completed"
         job.finished_at = datetime.now(UTC)
         job.result_json = {"contents_created": counts}
-        add_processing_log(
+        add_educational_log(
             db,
-            project_id=project.id,
-            organization_id=current_user.organization_id,
-            job_id=job.id,
-            message="Conteudos educacionais gerados com sucesso",
+            project,
+            current_user,
+            job,
+            message="Geração educacional concluída",
             context_json=counts,
         )
         db.commit()
         return {
             "project_id": project.id,
             "processing_status": project.processing_status,
-            "message": "Conteudos educacionais gerados com sucesso",
+            "message": (
+                "Conteúdos educacionais iniciais gerados com sucesso. "
+                "Nesta versão foram gerados os primeiros roteiros, quizzes e materiais."
+            ),
             "contents_created": counts,
         }
     except Exception as exc:

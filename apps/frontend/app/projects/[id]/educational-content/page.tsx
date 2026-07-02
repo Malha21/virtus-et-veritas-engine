@@ -70,8 +70,18 @@ export default function EducationalContentPage() {
   const [activeTab, setActiveTab] = useState<Tab>("summary");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [generationMessage, setGenerationMessage] = useState("");
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const messageKey = `vve_educational_generation_message_${params.id}`;
+      const storedMessage = window.sessionStorage.getItem(messageKey);
+      if (storedMessage) {
+        setGenerationMessage(storedMessage);
+        window.sessionStorage.removeItem(messageKey);
+      }
+    }
+
     apiFetch<EducationalContentSummaryResponse>(`/projects/${params.id}/educational-content`)
       .then((payload) =>
         setData({
@@ -107,6 +117,11 @@ export default function EducationalContentPage() {
           <p className="mt-2 max-w-3xl text-slate-400">
             Revise os conteudos gerados para transformar a estrutura do curso em experiencia educacional.
           </p>
+          {generationMessage ? (
+            <p className="mt-4 rounded-md border border-gold-500/20 bg-gold-500/10 px-4 py-3 text-sm text-gold-200">
+              {generationMessage}
+            </p>
+          ) : null}
 
           <div className="mt-6 flex flex-wrap gap-2 border-b border-white/10 pb-4">
             <TabButton active={activeTab === "summary"} onClick={() => setActiveTab("summary")}>

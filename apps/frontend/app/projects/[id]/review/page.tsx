@@ -46,7 +46,10 @@ export default function ReviewPage() {
     setGeneratingEducationalContent(true);
     setError("");
     try {
-      await generateEducationalContentRequest(params.id, generationLanguage);
+      const result = await generateEducationalContentRequest(params.id, generationLanguage);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(`vve_educational_generation_message_${params.id}`, result.message);
+      }
       router.push(`/projects/${params.id}/educational-content`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
