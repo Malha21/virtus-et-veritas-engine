@@ -29,7 +29,7 @@ from app.services.ai_orchestrator_service import (
     parse_json_content,
     register_ai_request,
 )
-from app.services.processing_service import add_processing_log
+from app.services.processing_service import add_processing_log, update_processing_job
 from app.services.project_service import get_project_by_id
 
 EXCERPT_CHARS = 20000
@@ -179,6 +179,7 @@ def generate_educational_content(
     current_user: User,
     project_id: UUID,
     generation_language: str = "pt-BR",
+    job: ProcessingJob | None = None,
 ) -> dict[str, Any]:
     project = get_project_by_id(db, current_user.organization_id, project_id)
     analysis_content = get_latest_content(db, project, "document_analysis")
@@ -198,17 +199,26 @@ def generate_educational_content(
     project_file = get_latest_extracted_text_file(db, project)
     extracted_excerpt = load_extracted_text(project_file)[:EXCERPT_CHARS]
 
-    job = ProcessingJob(
-        project_id=project.id,
-        organization_id=current_user.organization_id,
-        job_type="generate_educational_content",
-        status="pending",
-        attempts=0,
-        max_attempts=1,
-        payload_json={"course_structure_id": str(structure_content.id)},
-    )
-    db.add(job)
-    db.flush()
+    if job is None:
+        job = ProcessingJob(
+            project_id=project.id,
+            organization_id=current_user.organization_id,
+            job_type="generate_educational_content",
+            status="pending",
+            attempts=0,
+            max_attempts=1,
+            progress=0,
+            current_step="Aguardando geracao de conteudos",
+            message="Job de conteudos educacionais criado",
+            payload_json={"course_structure_id": str(structure_content.id)},
+        )
+        db.add(job)
+        db.flush()
+    else:
+        job.payload_json = {
+            **(job.payload_json or {}),
+            "course_structure_id": str(structure_content.id),
+        }
 
     ai_provider = OpenAIProvider(get_settings())
     counts = {
@@ -222,6 +232,7 @@ def generate_educational_content(
         job.status = "running"
         job.attempts = 1
         job.started_at = datetime.now(UTC)
+        update_processing_job(db, job, 5, "Job iniciado", "Geracao educacional iniciada")
         project.processing_status = "ai_generating_educational_content"
         add_educational_log(
             db,
@@ -237,6 +248,7 @@ def generate_educational_content(
             },
         )
         try:
+            update_processing_job(db, job, 15, "Estrutura carregada", "Estrutura do curso carregada")
             system_prompt, user_prompt = build_course_summary_prompt(
                 project,
                 document_analysis,
@@ -281,6 +293,7 @@ def generate_educational_content(
         for module in modules[:MAX_MODULE_QUIZZES_PER_RUN]:
             module_number_for_log = module.get("module_number") or "?"
             try:
+                update_processing_job(db, job, 55, "Gerando quizzes", f"Gerando quiz do modulo {module_number_for_log}")
                 system_prompt, user_prompt = build_module_quiz_prompt(
                     project,
                     document_analysis,
@@ -343,6 +356,13 @@ def generate_educational_content(
                 module_number_for_log = module.get("module_number") or "?"
                 lesson_number_for_log = lesson.get("lesson_number") or "?"
                 try:
+                    update_processing_job(
+                        db,
+                        job,
+                        30,
+                        "Gerando roteiros",
+                        f"Gerando roteiro do modulo {module_number_for_log}, aula {lesson_number_for_log}",
+                    )
                     system_prompt, user_prompt = build_lesson_script_prompt(
                         project,
                         document_analysis,
@@ -411,6 +431,13 @@ def generate_educational_content(
 
         if MAX_COMPLEMENTARY_MATERIALS_PER_RUN > 0:
             try:
+                update_processing_job(
+                    db,
+                    job,
+                    75,
+                    "Gerando materiais complementares",
+                    "Gerando material complementar",
+                )
                 system_prompt, user_prompt = build_complementary_material_prompt(
                     project,
                     document_analysis,
@@ -453,6 +480,7 @@ def generate_educational_content(
                 )
                 raise RuntimeError("Falha ao gerar material complementar com IA. Tente novamente em instantes.") from exc
 
+        update_processing_job(db, job, 90, "Salvando conteudos", "Salvando conteudos educacionais")
         project.processing_status = "educational_content_generated"
         job.status = "completed"
         job.finished_at = datetime.now(UTC)
@@ -465,6 +493,7 @@ def generate_educational_content(
             message="Geração educacional concluída",
             context_json=counts,
         )
+        update_processing_job(db, job, 100, "Finalizado", "Conteudos educacionais gerados")
         db.commit()
         return {
             "project_id": project.id,
@@ -479,6 +508,7 @@ def generate_educational_content(
         project.processing_status = "failed"
         job.status = "failed"
         job.error_message = str(exc)
+        job.message = "Falha ao gerar conteudos educacionais"
         job.finished_at = datetime.now(UTC)
         add_processing_log(
             db,

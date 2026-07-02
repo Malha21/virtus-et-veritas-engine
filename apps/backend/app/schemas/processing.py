@@ -9,6 +9,9 @@ class ProcessingJobResponse(BaseModel):
     project_id: UUID
     job_type: str
     status: str
+    progress: int
+    current_step: str | None
+    message: str | None
     attempts: int
     max_attempts: int
     error_message: str | None
@@ -47,3 +50,9 @@ class StartProcessingResponse(BaseModel):
     processing_status: str
     message: str
     job_id: UUID
+
+
+class StartAIJobResponse(BaseModel):
+    job_id: UUID
+    status: str
+    message: str

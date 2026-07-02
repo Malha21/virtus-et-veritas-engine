@@ -10,11 +10,12 @@ import {
   ApiError,
   apiFetch,
   deleteProject,
-  generateEducationalContent as generateEducationalContentRequest,
-  generateStructure as generateStructureRequest,
+  getProjectJob,
+  startAiStructureJob,
+  startEducationalContentJob,
 } from "@/lib/api";
 import type { ProjectFile } from "@/types/file";
-import type { StartProcessingResponse } from "@/types/processing";
+import type { ProcessingJob, StartProcessingResponse } from "@/types/processing";
 import type { Project } from "@/types/project";
 
 export default function ProjectDetailPage() {
@@ -27,6 +28,7 @@ export default function ProjectDetailPage() {
   const [processing, setProcessing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingEducationalContent, setGeneratingEducationalContent] = useState(false);
+  const [activeJob, setActiveJob] = useState<ProcessingJob | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -60,8 +62,8 @@ export default function ProjectDetailPage() {
     setGenerating(true);
     setError("");
     try {
-      await generateStructureRequest(projectId);
-      router.push(`/projects/${projectId}/review`);
+      const startedJob = await startAiStructureJob(projectId);
+      pollJob(projectId, startedJob.job_id, "structure");
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError("Sua sessão expirou. Faça login novamente.");
@@ -79,8 +81,8 @@ export default function ProjectDetailPage() {
     setGeneratingEducationalContent(true);
     setError("");
     try {
-      await generateEducationalContentRequest(projectId);
-      router.push(`/projects/${projectId}/educational-content`);
+      const startedJob = await startEducationalContentJob(projectId);
+      pollJob(projectId, startedJob.job_id, "educational-content");
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError("Sua sessão expirou. Faça login novamente.");
@@ -91,6 +93,41 @@ export default function ProjectDetailPage() {
       }
     } finally {
       setGeneratingEducationalContent(false);
+    }
+  }
+
+  async function pollJob(projectId: string, jobId: string, target: "structure" | "educational-content") {
+    try {
+      const job = await getProjectJob(projectId, jobId);
+      setActiveJob(job);
+
+      if (job.status === "completed") {
+        if (target === "structure") {
+          router.push(`/projects/${projectId}/review`);
+        } else {
+          router.push(`/projects/${projectId}/educational-content`);
+        }
+        return;
+      }
+
+      if (job.status === "failed") {
+        setGenerating(false);
+        setGeneratingEducationalContent(false);
+        setError(job.error_message || "Nao foi possivel concluir o processamento.");
+        return;
+      }
+
+      window.setTimeout(() => pollJob(projectId, jobId, target), 2000);
+    } catch (err) {
+      setGenerating(false);
+      setGeneratingEducationalContent(false);
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessÃ£o expirou. FaÃ§a login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Nao foi possivel consultar o progresso do processamento.");
+      }
     }
   }
 
@@ -233,10 +270,30 @@ export default function ProjectDetailPage() {
                 </button>
               ) : null}
             </div>
+
+            {activeJob ? <JobProgressCard job={activeJob} /> : null}
           </section>
         ) : null}
       </div>
     </AppShell>
+  );
+}
+
+function JobProgressCard({ job }: { job: ProcessingJob }) {
+  return (
+    <div className="mt-6 rounded-md border border-gold-500/20 bg-gold-500/10 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-gold-200">Processamento em andamento</p>
+          <p className="mt-1 text-sm text-slate-300">{job.current_step || "Preparando processamento"}</p>
+        </div>
+        <span className="text-xs uppercase tracking-wide text-gold-300">{job.status || "pending"}</span>
+      </div>
+      <div className="mt-4 h-2 rounded-full bg-white/10">
+        <div className="h-2 rounded-full bg-gold-500 transition-all" style={{ width: `${job.progress || 0}%` }} />
+      </div>
+      <p className="mt-2 text-sm text-slate-400">{job.message || `${job.progress || 0}% concluido`}</p>
+    </div>
   );
 }
 

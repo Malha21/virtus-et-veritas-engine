@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { ApiError, apiFetch, generateEducationalContent as generateEducationalContentRequest } from "@/lib/api";
+import { ApiError, apiFetch, getProjectJob, startEducationalContentJob } from "@/lib/api";
 import type { GenerationLanguage } from "@/lib/api";
 import type {
   CourseStructureContent,
@@ -15,6 +15,7 @@ import type {
   GeneratedContent,
   GeneratedContentListResponse,
 } from "@/types/content";
+import type { ProcessingJob } from "@/types/processing";
 
 export default function ReviewPage() {
   const params = useParams<{ id: string }>();
@@ -25,6 +26,7 @@ export default function ReviewPage() {
   const [error, setError] = useState("");
   const [generatingEducationalContent, setGeneratingEducationalContent] = useState(false);
   const [generationLanguage, setGenerationLanguage] = useState<GenerationLanguage>("pt-BR");
+  const [activeJob, setActiveJob] = useState<ProcessingJob | null>(null);
 
   useEffect(() => {
     apiFetch<GeneratedContentListResponse>(`/projects/${params.id}/contents`)
@@ -46,11 +48,8 @@ export default function ReviewPage() {
     setGeneratingEducationalContent(true);
     setError("");
     try {
-      const result = await generateEducationalContentRequest(params.id, generationLanguage);
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(`vve_educational_generation_message_${params.id}`, result.message);
-      }
-      router.push(`/projects/${params.id}/educational-content`);
+      const startedJob = await startEducationalContentJob(params.id, generationLanguage);
+      pollJob(startedJob.job_id);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError("Sua sessão expirou. Faça login novamente.");
@@ -61,6 +60,41 @@ export default function ReviewPage() {
       }
     } finally {
       setGeneratingEducationalContent(false);
+    }
+  }
+
+  async function pollJob(jobId: string) {
+    try {
+      const job = await getProjectJob(params.id, jobId);
+      setActiveJob(job);
+
+      if (job.status === "completed") {
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(
+            `vve_educational_generation_message_${params.id}`,
+            job.message || "Conteudos educacionais gerados com sucesso.",
+          );
+        }
+        router.push(`/projects/${params.id}/educational-content`);
+        return;
+      }
+
+      if (job.status === "failed") {
+        setGeneratingEducationalContent(false);
+        setError(job.error_message || "Nao foi possivel gerar os conteudos educacionais.");
+        return;
+      }
+
+      window.setTimeout(() => pollJob(jobId), 2000);
+    } catch (err) {
+      setGeneratingEducationalContent(false);
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessÃ£o expirou. FaÃ§a login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Nao foi possivel consultar o progresso do processamento.");
+      }
     }
   }
 
@@ -121,6 +155,8 @@ export default function ReviewPage() {
             <p className="mt-8 text-slate-300">Carregando revisao...</p>
           ) : error ? (
             <p className="mt-8 text-red-300">{error}</p>
+          ) : activeJob ? (
+            <JobProgressCard job={activeJob} />
           ) : activeTab === "analysis" ? (
             <DocumentAnalysisView content={analysis} />
           ) : (
@@ -129,6 +165,24 @@ export default function ReviewPage() {
         </section>
       </div>
     </AppShell>
+  );
+}
+
+function JobProgressCard({ job }: { job: ProcessingJob }) {
+  return (
+    <div className="mt-8 rounded-md border border-gold-500/20 bg-gold-500/10 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-gold-100">Processamento em andamento</p>
+          <p className="mt-2 text-sm text-slate-300">{job.current_step || "Preparando conteudos educacionais"}</p>
+        </div>
+        <StatusBadge label={job.status || "pending"} tone={job.status === "failed" ? "neutral" : "warning"} />
+      </div>
+      <div className="mt-5 h-2 rounded-full bg-white/10">
+        <div className="h-2 rounded-full bg-gold-500 transition-all" style={{ width: `${job.progress || 0}%` }} />
+      </div>
+      <p className="mt-2 text-sm text-slate-400">{job.message || `${job.progress || 0}% concluido`}</p>
+    </div>
   );
 }
 

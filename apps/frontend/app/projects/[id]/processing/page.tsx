@@ -6,9 +6,9 @@ import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { ApiError, apiFetch, generateStructure as generateStructureRequest } from "@/lib/api";
+import { ApiError, apiFetch, getProjectJob, startAiStructureJob } from "@/lib/api";
 import type { GenerationLanguage } from "@/lib/api";
-import type { ProcessingLog, ProcessingStatus } from "@/types/processing";
+import type { ProcessingJob, ProcessingLog, ProcessingStatus } from "@/types/processing";
 
 const steps = ["Recebendo arquivo", "Extraindo texto", "Texto extraido", "Estrutura com IA"];
 
@@ -21,6 +21,7 @@ export default function ProcessingPage() {
   const [error, setError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [generationLanguage, setGenerationLanguage] = useState<GenerationLanguage>("pt-BR");
+  const [activeJob, setActiveJob] = useState<ProcessingJob | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -39,8 +40,8 @@ export default function ProcessingPage() {
     setGenerating(true);
     setError("");
     try {
-      await generateStructureRequest(params.id, generationLanguage);
-      router.push(`/projects/${params.id}/review`);
+      const startedJob = await startAiStructureJob(params.id, generationLanguage);
+      pollJob(startedJob.job_id);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError("Sua sessão expirou. Faça login novamente.");
@@ -51,6 +52,35 @@ export default function ProcessingPage() {
       }
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function pollJob(jobId: string) {
+    try {
+      const job = await getProjectJob(params.id, jobId);
+      setActiveJob(job);
+
+      if (job.status === "completed") {
+        router.push(`/projects/${params.id}/review`);
+        return;
+      }
+
+      if (job.status === "failed") {
+        setGenerating(false);
+        setError(job.error_message || "Nao foi possivel gerar a estrutura com IA.");
+        return;
+      }
+
+      window.setTimeout(() => pollJob(jobId), 2000);
+    } catch (err) {
+      setGenerating(false);
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessÃ£o expirou. FaÃ§a login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Nao foi possivel consultar o progresso do processamento.");
+      }
     }
   }
 
@@ -153,9 +183,29 @@ export default function ProcessingPage() {
                 </div>
               )}
             </div>
+
+            {activeJob ? <JobProgressCard job={activeJob} /> : null}
           </div>
         ) : null}
       </div>
     </AppShell>
+  );
+}
+
+function JobProgressCard({ job }: { job: ProcessingJob }) {
+  return (
+    <section className="rounded-lg border border-gold-500/20 bg-gold-500/10 p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gold-100">Processamento em andamento</h2>
+          <p className="mt-2 text-sm text-slate-300">{job.current_step || "Preparando processamento"}</p>
+        </div>
+        <StatusBadge label={job.status || "pending"} tone={job.status === "failed" ? "neutral" : "warning"} />
+      </div>
+      <div className="mt-5 h-2 rounded-full bg-white/10">
+        <div className="h-2 rounded-full bg-gold-500 transition-all" style={{ width: `${job.progress || 0}%` }} />
+      </div>
+      <p className="mt-2 text-sm text-slate-400">{job.message || `${job.progress || 0}% concluido`}</p>
+    </section>
   );
 }

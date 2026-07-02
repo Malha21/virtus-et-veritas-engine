@@ -23,7 +23,7 @@ from app.prompts import (
     build_document_analysis_prompt,
 )
 from app.providers.ai import AIProviderRequest, AIProviderResponse, OpenAIProvider
-from app.services.processing_service import add_processing_log
+from app.services.processing_service import add_processing_log, update_processing_job
 from app.services.project_service import get_project_by_id
 
 MAX_INITIAL_TEXT_CHARS = 60000
@@ -169,6 +169,7 @@ def generate_project_structure(
     current_user: User,
     project_id: UUID,
     generation_language: str = "pt-BR",
+    job: ProcessingJob | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
     project = get_project_by_id(db, current_user.organization_id, project_id)
@@ -176,17 +177,27 @@ def generate_project_structure(
     provider_record = get_openai_provider_record(db)
     extracted_text = load_extracted_text(project_file)
 
-    job = ProcessingJob(
-        project_id=project.id,
-        organization_id=current_user.organization_id,
-        job_type="generate_course_structure",
-        status="pending",
-        attempts=0,
-        max_attempts=1,
-        payload_json={"project_file_id": str(project_file.id), "text_chars": len(extracted_text)},
-    )
-    db.add(job)
-    db.flush()
+    if job is None:
+        job = ProcessingJob(
+            project_id=project.id,
+            organization_id=current_user.organization_id,
+            job_type="generate_course_structure",
+            status="pending",
+            attempts=0,
+            max_attempts=1,
+            progress=0,
+            current_step="Aguardando geracao de estrutura",
+            message="Job de estrutura criado",
+            payload_json={"project_file_id": str(project_file.id), "text_chars": len(extracted_text)},
+        )
+        db.add(job)
+        db.flush()
+    else:
+        job.payload_json = {
+            **(job.payload_json or {}),
+            "project_file_id": str(project_file.id),
+            "text_chars": len(extracted_text),
+        }
 
     ai_provider = OpenAIProvider(settings)
 
@@ -194,6 +205,7 @@ def generate_project_structure(
         job.status = "running"
         job.attempts = 1
         job.started_at = datetime.now(UTC)
+        update_processing_job(db, job, 5, "Job iniciado", "Geracao de estrutura com IA iniciada")
         project.processing_status = "ai_generating_structure"
         add_processing_log(
             db,
@@ -204,7 +216,9 @@ def generate_project_structure(
         )
         db.flush()
 
+        update_processing_job(db, job, 20, "Texto do documento preparado", "Texto extraido carregado para analise")
         system_prompt, user_prompt = build_document_analysis_prompt(project, extracted_text, generation_language)
+        update_processing_job(db, job, 45, "Analise com IA em andamento", "Analisando documento com IA")
         analysis_response = ai_provider.generate_text(
             AIProviderRequest(
                 system_prompt=system_prompt,
@@ -265,6 +279,7 @@ def generate_project_structure(
             raise RuntimeError(structure_response.error or "Falha ao gerar estrutura do curso com IA.")
 
         course_structure = parse_json_content(structure_response.content)
+        update_processing_job(db, job, 75, "Estrutura recebida", "Estrutura do curso recebida da IA")
         structure_content = save_generated_content(
             db,
             project=project,
@@ -275,6 +290,7 @@ def generate_project_structure(
             generation_language=generation_language,
         )
 
+        update_processing_job(db, job, 90, "Salvando estrutura", "Salvando estrutura gerada")
         project.processing_status = "ai_structure_generated"
         job.status = "completed"
         job.finished_at = datetime.now(UTC)
@@ -282,6 +298,7 @@ def generate_project_structure(
             "document_analysis_id": str(analysis_content.id),
             "course_structure_id": str(structure_content.id),
         }
+        update_processing_job(db, job, 100, "Finalizado", "Estrutura gerada com sucesso")
         add_processing_log(
             db,
             project_id=project.id,
@@ -304,6 +321,7 @@ def generate_project_structure(
         project.processing_status = "failed"
         job.status = "failed"
         job.error_message = str(exc)
+        job.message = "Falha ao gerar estrutura com IA"
         job.finished_at = datetime.now(UTC)
         add_processing_log(
             db,

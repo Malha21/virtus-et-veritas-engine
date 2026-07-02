@@ -19,6 +19,13 @@ export type ProcessingJob = {
   project_id: string;
   job_type?: string;
   status?: string;
+  progress: number;
+  current_step: string | null;
+  message: string | null;
+  error_message?: string | null;
+  created_at?: string;
+  started_at?: string | null;
+  finished_at?: string | null;
 };
 
 export type StartProcessingResponse = {
@@ -26,4 +33,10 @@ export type StartProcessingResponse = {
   processing_status: string;
   message: string;
   job_id: string;
+};
+
+export type StartAIJobResponse = {
+  job_id: string;
+  status: string;
+  message: string;
 };

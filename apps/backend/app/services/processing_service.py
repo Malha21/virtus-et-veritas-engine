@@ -38,6 +38,20 @@ def add_processing_log(
     return log
 
 
+def update_processing_job(
+    db: Session,
+    job: ProcessingJob,
+    progress: int,
+    current_step: str,
+    message: str | None = None,
+) -> None:
+    job.progress = max(job.progress or 0, max(0, min(progress, 100)))
+    job.current_step = current_step
+    job.message = message or current_step
+    db.add(job)
+    db.commit()
+
+
 def get_latest_source_pdf(db: Session, project: Project) -> ProjectFile:
     source_pdf = db.execute(
         select(ProjectFile)
@@ -71,6 +85,9 @@ def start_text_extraction(db: Session, current_user: User, project_id: UUID) -> 
         status="pending",
         attempts=0,
         max_attempts=3,
+        progress=0,
+        current_step="Aguardando extracao",
+        message="Processamento de PDF criado",
         payload_json={"project_file_id": str(source_pdf.id)},
     )
     db.add(job)
@@ -79,6 +96,7 @@ def start_text_extraction(db: Session, current_user: User, project_id: UUID) -> 
     try:
         job.status = "running"
         job.attempts = 1
+        update_processing_job(db, job, 10, "Extraindo texto do PDF", "Extracao de texto iniciada")
         job.started_at = datetime.now(UTC)
         project.processing_status = "extracting_text"
         add_processing_log(
@@ -109,6 +127,7 @@ def start_text_extraction(db: Session, current_user: User, project_id: UUID) -> 
         source_pdf.extracted_text_path = relative_text_path.as_posix()
         project.processing_status = "text_extracted"
         job.status = "completed"
+        update_processing_job(db, job, 100, "Texto extraido", "Texto extraido com sucesso")
         job.finished_at = datetime.now(UTC)
         job.result_json = {
             "project_file_id": str(source_pdf.id),
@@ -130,6 +149,7 @@ def start_text_extraction(db: Session, current_user: User, project_id: UUID) -> 
         project.processing_status = "failed"
         job.status = "failed"
         job.error_message = str(exc)
+        job.message = "Falha ao extrair texto do PDF"
         job.finished_at = datetime.now(UTC)
         add_processing_log(
             db,

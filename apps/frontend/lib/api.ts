@@ -1,6 +1,7 @@
 import { getToken } from "./auth";
 import type { GenerateStructureResponse } from "@/types/ai";
 import type { GenerateEducationalContentResponse } from "@/types/educational-content";
+import type { ProcessingJob, StartAIJobResponse } from "@/types/processing";
 
 export type GenerationLanguage = "pt-BR" | "en-US";
 
@@ -111,6 +112,42 @@ export async function generateEducationalContent(
     token,
     body: JSON.stringify({ generation_language: generationLanguage }),
   });
+}
+
+export async function startAiStructureJob(
+  projectId: string,
+  generationLanguage: GenerationLanguage = "pt-BR",
+): Promise<StartAIJobResponse> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<StartAIJobResponse>(`/projects/${projectId}/ai-structure/jobs`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ generation_language: generationLanguage }),
+  });
+}
+
+export async function startEducationalContentJob(
+  projectId: string,
+  generationLanguage: GenerationLanguage = "pt-BR",
+): Promise<StartAIJobResponse> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<StartAIJobResponse>(`/projects/${projectId}/educational-content/jobs`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ generation_language: generationLanguage }),
+  });
+}
+
+export async function getProjectJob(projectId: string, jobId: string): Promise<ProcessingJob> {
+  return apiFetch<ProcessingJob>(`/projects/${projectId}/jobs/${jobId}`);
 }
 
 export async function deleteProject(projectId: string): Promise<{ message: string }> {
