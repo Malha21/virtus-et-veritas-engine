@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -14,13 +14,16 @@ import type {
   GeneratedContent,
   GeneratedContentListResponse,
 } from "@/types/content";
+import type { GenerateEducationalContentResponse } from "@/types/educational-content";
 
 export default function ReviewPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const [contents, setContents] = useState<GeneratedContent[]>([]);
   const [activeTab, setActiveTab] = useState<"analysis" | "course">("analysis");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [generatingEducationalContent, setGeneratingEducationalContent] = useState(false);
 
   useEffect(() => {
     apiFetch<GeneratedContentListResponse>(`/projects/${params.id}/contents`)
@@ -38,6 +41,21 @@ export default function ReviewPage() {
     [contents],
   );
 
+  async function generateEducationalContent() {
+    setGeneratingEducationalContent(true);
+    setError("");
+    try {
+      await apiFetch<GenerateEducationalContentResponse>(`/projects/${params.id}/generate-educational-content`, {
+        method: "POST",
+      });
+      router.push(`/projects/${params.id}/educational-content`);
+    } catch {
+      setError("Nao foi possivel gerar os conteudos educacionais.");
+    } finally {
+      setGeneratingEducationalContent(false);
+    }
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl">
@@ -45,13 +63,16 @@ export default function ReviewPage() {
           <Link href={`/projects/${params.id}`} className="text-sm text-gold-400 hover:text-gold-500">
             Voltar ao projeto
           </Link>
-          <button
-            type="button"
-            disabled
-            className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-500"
-          >
-            Gerar roteiros - Disponivel na proxima fase
-          </button>
+          {courseStructure ? (
+            <button
+              type="button"
+              onClick={generateEducationalContent}
+              disabled={generatingEducationalContent}
+              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {generatingEducationalContent ? "Gerando roteiros, quizzes e materiais..." : "Gerar conteudos educacionais"}
+            </button>
+          ) : null}
         </div>
 
         <section className="mt-6 rounded-lg border border-white/10 bg-white/[0.035] p-6">

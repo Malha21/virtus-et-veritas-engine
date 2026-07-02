@@ -2,7 +2,14 @@ export type GeneratedContent = {
   id: string;
   project_id: string;
   organization_id: string;
-  content_type: "document_analysis" | "course_structure" | string;
+  content_type:
+    | "document_analysis"
+    | "course_structure"
+    | "lesson_script"
+    | "module_quiz"
+    | "complementary_material"
+    | "course_summary"
+    | string;
   title: string | null;
   version: number;
   language: string;

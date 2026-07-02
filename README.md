@@ -6,7 +6,7 @@ O primeiro uso sera interno na Virtus et Veritas Academy, com foco em transforma
 
 ## Status
 
-Fase 7: AI Orchestrator V1.
+Fase 8: geracao de roteiros, quizzes e materiais.
 
 Esta fase entrega:
 
@@ -20,17 +20,22 @@ Esta fase entrega:
 - prompts versionados;
 - geracao de analise do documento;
 - geracao de estrutura inicial de curso;
+- geracao de roteiro por aula;
+- geracao de quizzes por modulo;
+- geracao de material complementar;
+- geracao de resumo executivo do curso;
 - registros em `generated_contents`;
 - registros em `ai_requests`;
 - registros em `processing_jobs`;
 - registros em `processing_logs`;
 - tela de processamento;
 - tela de revisao da estrutura;
+- tela de revisao de conteudos educacionais;
 - storage local persistido via volume Docker;
 - PostgreSQL via Docker Compose;
 - migrations Alembic.
 
-Ainda nao ha roteiros completos aula por aula, quizzes, materiais complementares, Redis, MinIO, worker separado, exportacao, slides, voz, avatar, Nginx ou SSL.
+Ainda nao ha exportacao PDF/DOCX/PPTX, slides, voz, avatar, Redis, MinIO ou worker separado.
 
 ## Estrutura
 
@@ -119,6 +124,8 @@ docker compose exec backend python -m app.scripts.seed
 7. Confira a tela de processamento e os logs.
 8. Quando o status estiver `text_extracted`, clique em `Gerar estrutura com IA`.
 9. Revise a analise do documento e a estrutura do curso em `Revisar estrutura`.
+10. Clique em `Gerar conteudos educacionais`.
+11. Revise roteiros, quizzes, materiais e resumo em `/educational-content`.
 
 O texto extraido sera salvo no storage local em uma estrutura como:
 
@@ -218,6 +225,22 @@ curl http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/contents \
   -H "Authorization: Bearer TOKEN_AQUI"
 ```
 
+## Gerar Conteudos Educacionais
+
+Antes de gerar os conteudos educacionais, o projeto precisa ter uma estrutura de curso ja gerada com status `ai_structure_generated`.
+
+```bash
+curl -X POST http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/generate-educational-content \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
+## Listar Conteudos Educacionais
+
+```bash
+curl http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/educational-content \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
 Filtrar por tipo de conteudo:
 
 ```bash
@@ -243,7 +266,7 @@ curl http://IP_DA_VPS:8000/api/v1/projects \
   -H "Authorization: Bearer TOKEN_AQUI"
 ```
 
-## Fluxo de Atualizacao da Fase 7 na VPS
+## Fluxo de Atualizacao da Fase 8 na VPS
 
 ```bash
 git pull
@@ -252,7 +275,9 @@ docker compose up -d --build
 docker compose exec backend alembic upgrade head
 ```
 
-No `.env`, configure `OPENAI_API_KEY` com a chave real. Depois, processe um PDF ate `text_extracted`, clique em `Gerar estrutura com IA` e revise a estrutura gerada.
+Nao ha migration nova especifica para a Fase 8, pois os tipos de conteudo e de requisicao de IA usam strings livres. O `alembic upgrade head` continua sendo seguro para manter a VPS atualizada.
+
+No `.env`, garanta `OPENAI_API_KEY` com a chave real. Depois, garanta que a estrutura do curso ja foi gerada, clique em `Gerar conteudos educacionais` e revise a tela `/educational-content`.
 
 ## Parar Containers
 
@@ -268,4 +293,4 @@ docker compose down -v
 
 ## Proximas Fases
 
-A proxima fase tecnica deve expandir o nucleo de IA para roteiros completos, quizzes, materiais complementares e fluxos de producao educacional, conforme `docs/10-roadmap.md`.
+A proxima fase tecnica deve implementar exportacao e formatos de entrega, conforme `docs/10-roadmap.md`.

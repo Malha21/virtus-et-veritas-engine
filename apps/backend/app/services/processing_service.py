@@ -155,6 +155,8 @@ def get_processing_status(db: Session, current_user: User, project_id: UUID) -> 
         "text_extracted": (100, "Texto extraído com sucesso"),
         "ai_generating_structure": (85, "Gerando estrutura com IA"),
         "ai_structure_generated": (100, "Estrutura gerada com IA"),
+        "ai_generating_educational_content": (90, "Gerando conteudos educacionais"),
+        "educational_content_generated": (100, "Conteudos educacionais gerados"),
         "failed": (100, "Processamento falhou"),
     }
     progress, current_step = status_map.get(project.processing_status, (0, "Status em preparação"))

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.ai import router as ai_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.contents import router as contents_router
+from app.api.v1.educational_content import router as educational_content_router
 from app.api.v1.files import router as files_router
 from app.api.v1.health import router as health_router
 from app.api.v1.processing import router as processing_router
@@ -41,3 +42,4 @@ app.include_router(files_router, prefix=settings.api_prefix)
 app.include_router(processing_router, prefix=settings.api_prefix)
 app.include_router(contents_router, prefix=settings.api_prefix)
 app.include_router(ai_router, prefix=settings.api_prefix)
+app.include_router(educational_content_router, prefix=settings.api_prefix)

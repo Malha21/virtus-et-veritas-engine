@@ -1,0 +1,346 @@
+from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
+
+from fastapi import HTTPException, status
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.core.config import get_settings
+from app.models.generated_content import GeneratedContent
+from app.models.processing_job import ProcessingJob
+from app.models.project import Project
+from app.models.user import User
+from app.prompts import (
+    COMPLEMENTARY_MATERIAL_PROMPT_VERSION,
+    COURSE_SUMMARY_PROMPT_VERSION,
+    LESSON_SCRIPT_PROMPT_VERSION,
+    MODULE_QUIZ_PROMPT_VERSION,
+    build_complementary_material_prompt,
+    build_course_summary_prompt,
+    build_lesson_script_prompt,
+    build_module_quiz_prompt,
+)
+from app.providers.ai import AIProviderRequest, OpenAIProvider
+from app.services.ai_orchestrator_service import (
+    get_latest_extracted_text_file,
+    get_openai_provider_record,
+    load_extracted_text,
+    parse_json_content,
+    register_ai_request,
+)
+from app.services.processing_service import add_processing_log
+from app.services.project_service import get_project_by_id
+
+EXCERPT_CHARS = 20000
+
+
+def get_latest_content(
+    db: Session,
+    project: Project,
+    content_type: str,
+) -> GeneratedContent | None:
+    return db.execute(
+        select(GeneratedContent)
+        .where(
+            GeneratedContent.project_id == project.id,
+            GeneratedContent.organization_id == project.organization_id,
+            GeneratedContent.content_type == content_type,
+        )
+        .order_by(GeneratedContent.version.desc(), GeneratedContent.created_at.desc())
+    ).scalars().first()
+
+
+def get_next_content_version(db: Session, project: Project, content_type: str, title: str) -> int:
+    latest_version = db.execute(
+        select(func.max(GeneratedContent.version)).where(
+            GeneratedContent.project_id == project.id,
+            GeneratedContent.organization_id == project.organization_id,
+            GeneratedContent.content_type == content_type,
+            GeneratedContent.title == title,
+        )
+    ).scalar_one()
+    return int(latest_version or 0) + 1
+
+
+def save_versioned_content(
+    db: Session,
+    project: Project,
+    provider_id: UUID,
+    content_type: str,
+    title: str,
+    content_json: dict[str, Any],
+) -> GeneratedContent:
+    content = GeneratedContent(
+        project_id=project.id,
+        organization_id=project.organization_id,
+        content_type=content_type,
+        title=title,
+        version=get_next_content_version(db, project, content_type, title),
+        language="pt-BR",
+        content_json=content_json,
+        status="generated",
+        created_by_ai_provider_id=provider_id,
+    )
+    db.add(content)
+    db.flush()
+    return content
+
+
+def call_ai_json(
+    db: Session,
+    ai_provider: OpenAIProvider,
+    project: Project,
+    job: ProcessingJob,
+    provider_id: UUID,
+    request_type: str,
+    prompt_version: str,
+    system_prompt: str,
+    user_prompt: str,
+) -> dict[str, Any]:
+    settings = get_settings()
+    response = ai_provider.generate_text(
+        AIProviderRequest(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model=settings.openai_default_model,
+        )
+    )
+    register_ai_request(
+        db,
+        project_id=project.id,
+        job_id=job.id,
+        provider_id=provider_id,
+        request_type=request_type,
+        prompt_version=prompt_version,
+        response=response,
+        model_name=settings.openai_default_model,
+    )
+    if not response.success:
+        raise RuntimeError(response.error or f"Falha na chamada de IA: {request_type}.")
+    return parse_json_content(response.content)
+
+
+def generate_educational_content(db: Session, current_user: User, project_id: UUID) -> dict[str, Any]:
+    project = get_project_by_id(db, current_user.organization_id, project_id)
+    analysis_content = get_latest_content(db, project, "document_analysis")
+    structure_content = get_latest_content(db, project, "course_structure")
+
+    if structure_content is None or not structure_content.content_json:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Gere a estrutura do curso antes de gerar conteudos educacionais.",
+        )
+
+    document_analysis = analysis_content.content_json if analysis_content and analysis_content.content_json else {}
+    course_structure = structure_content.content_json
+    modules = course_structure.get("course", {}).get("modules", [])
+
+    provider_record = get_openai_provider_record(db)
+    project_file = get_latest_extracted_text_file(db, project)
+    extracted_excerpt = load_extracted_text(project_file)[:EXCERPT_CHARS]
+
+    job = ProcessingJob(
+        project_id=project.id,
+        organization_id=current_user.organization_id,
+        job_type="generate_educational_content",
+        status="pending",
+        attempts=0,
+        max_attempts=1,
+        payload_json={"course_structure_id": str(structure_content.id)},
+    )
+    db.add(job)
+    db.flush()
+
+    ai_provider = OpenAIProvider(get_settings())
+    counts = {
+        "lesson_scripts": 0,
+        "module_quizzes": 0,
+        "complementary_materials": 0,
+        "course_summaries": 0,
+    }
+
+    try:
+        job.status = "running"
+        job.attempts = 1
+        job.started_at = datetime.now(UTC)
+        project.processing_status = "ai_generating_educational_content"
+        add_processing_log(
+            db,
+            project_id=project.id,
+            organization_id=current_user.organization_id,
+            job_id=job.id,
+            message="Geracao de conteudos educacionais iniciada",
+        )
+        db.flush()
+
+        system_prompt, user_prompt = build_course_summary_prompt(project, document_analysis, course_structure)
+        summary_json = call_ai_json(
+            db,
+            ai_provider,
+            project,
+            job,
+            provider_record.id,
+            "generate_course_summary",
+            COURSE_SUMMARY_PROMPT_VERSION,
+            system_prompt,
+            user_prompt,
+        )
+        save_versioned_content(
+            db,
+            project,
+            provider_record.id,
+            "course_summary",
+            summary_json.get("course_summary", {}).get("title") or "Resumo executivo do curso",
+            summary_json,
+        )
+        counts["course_summaries"] += 1
+
+        for module in modules:
+            system_prompt, user_prompt = build_module_quiz_prompt(project, document_analysis, course_structure, module)
+            quiz_json = call_ai_json(
+                db,
+                ai_provider,
+                project,
+                job,
+                provider_record.id,
+                "generate_module_quizzes",
+                MODULE_QUIZ_PROMPT_VERSION,
+                system_prompt,
+                user_prompt,
+            )
+            module_quiz = quiz_json.get("module_quiz", {})
+            save_versioned_content(
+                db,
+                project,
+                provider_record.id,
+                "module_quiz",
+                f"Quiz - Modulo {module_quiz.get('module_number') or module.get('module_number')}",
+                quiz_json,
+            )
+            counts["module_quizzes"] += 1
+
+            for lesson in module.get("lessons", []):
+                system_prompt, user_prompt = build_lesson_script_prompt(
+                    project,
+                    document_analysis,
+                    course_structure,
+                    module,
+                    lesson,
+                    extracted_excerpt,
+                )
+                script_json = call_ai_json(
+                    db,
+                    ai_provider,
+                    project,
+                    job,
+                    provider_record.id,
+                    "generate_lesson_scripts",
+                    LESSON_SCRIPT_PROMPT_VERSION,
+                    system_prompt,
+                    user_prompt,
+                )
+                script = script_json.get("lesson_script", {})
+                save_versioned_content(
+                    db,
+                    project,
+                    provider_record.id,
+                    "lesson_script",
+                    script.get("lesson_title") or lesson.get("title") or "Roteiro de aula",
+                    script_json,
+                )
+                counts["lesson_scripts"] += 1
+
+        system_prompt, user_prompt = build_complementary_material_prompt(project, document_analysis, course_structure)
+        material_json = call_ai_json(
+            db,
+            ai_provider,
+            project,
+            job,
+            provider_record.id,
+            "generate_complementary_materials",
+            COMPLEMENTARY_MATERIAL_PROMPT_VERSION,
+            system_prompt,
+            user_prompt,
+        )
+        material = material_json.get("complementary_material", {})
+        save_versioned_content(
+            db,
+            project,
+            provider_record.id,
+            "complementary_material",
+            material.get("material_title") or "Material complementar",
+            material_json,
+        )
+        counts["complementary_materials"] += 1
+
+        project.processing_status = "educational_content_generated"
+        job.status = "completed"
+        job.finished_at = datetime.now(UTC)
+        job.result_json = {"contents_created": counts}
+        add_processing_log(
+            db,
+            project_id=project.id,
+            organization_id=current_user.organization_id,
+            job_id=job.id,
+            message="Conteudos educacionais gerados com sucesso",
+            context_json=counts,
+        )
+        db.commit()
+        return {
+            "project_id": project.id,
+            "processing_status": project.processing_status,
+            "message": "Conteudos educacionais gerados com sucesso",
+            "contents_created": counts,
+        }
+    except Exception as exc:
+        project.processing_status = "failed"
+        job.status = "failed"
+        job.error_message = str(exc)
+        job.finished_at = datetime.now(UTC)
+        add_processing_log(
+            db,
+            project_id=project.id,
+            organization_id=current_user.organization_id,
+            job_id=job.id,
+            level="error",
+            message="Falha ao gerar conteudos educacionais",
+            context_json={"error": str(exc)},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+
+def list_educational_content(db: Session, current_user: User, project_id: UUID) -> dict[str, list[GeneratedContent]]:
+    project = get_project_by_id(db, current_user.organization_id, project_id)
+    contents = db.execute(
+        select(GeneratedContent)
+        .where(
+            GeneratedContent.project_id == project.id,
+            GeneratedContent.organization_id == current_user.organization_id,
+            GeneratedContent.content_type.in_(
+                ["lesson_script", "module_quiz", "complementary_material", "course_summary"]
+            ),
+        )
+        .order_by(GeneratedContent.content_type.asc(), GeneratedContent.version.desc(), GeneratedContent.created_at.desc())
+    ).scalars().all()
+
+    grouped: dict[str, list[GeneratedContent]] = {
+        "lesson_scripts": [],
+        "module_quizzes": [],
+        "complementary_materials": [],
+        "course_summaries": [],
+    }
+    type_map = {
+        "lesson_script": "lesson_scripts",
+        "module_quiz": "module_quizzes",
+        "complementary_material": "complementary_materials",
+        "course_summary": "course_summaries",
+    }
+    for content in contents:
+        grouped[type_map[content.content_type]].append(content)
+
+    return grouped

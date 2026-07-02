@@ -8,6 +8,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { apiFetch } from "@/lib/api";
 import type { GenerateStructureResponse } from "@/types/ai";
+import type { GenerateEducationalContentResponse } from "@/types/educational-content";
 import type { ProjectFile } from "@/types/file";
 import type { StartProcessingResponse } from "@/types/processing";
 import type { Project } from "@/types/project";
@@ -21,6 +22,7 @@ export default function ProjectDetailPage() {
   const [error, setError] = useState("");
   const [processing, setProcessing] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingEducationalContent, setGeneratingEducationalContent] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -62,6 +64,21 @@ export default function ProjectDetailPage() {
       setError("Nao foi possivel gerar a estrutura com IA.");
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function generateEducationalContent(projectId: string) {
+    setGeneratingEducationalContent(true);
+    setError("");
+    try {
+      await apiFetch<GenerateEducationalContentResponse>(`/projects/${projectId}/generate-educational-content`, {
+        method: "POST",
+      });
+      router.push(`/projects/${projectId}/educational-content`);
+    } catch {
+      setError("Nao foi possivel gerar os conteudos educacionais.");
+    } finally {
+      setGeneratingEducationalContent(false);
     }
   }
 
@@ -133,15 +150,35 @@ export default function ProjectDetailPage() {
               ) : null}
 
               {project.processing_status === "ai_structure_generated" ? (
+                <button
+                  type="button"
+                  onClick={() => generateEducationalContent(project.id)}
+                  disabled={generatingEducationalContent}
+                  className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {generatingEducationalContent ? "Gerando conteudos..." : "Gerar conteudos educacionais"}
+                </button>
+              ) : null}
+
+              {project.processing_status === "educational_content_generated" ? (
+                <Link
+                  href={`/projects/${project.id}/educational-content`}
+                  className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
+                >
+                  Ver conteudos educacionais
+                </Link>
+              ) : null}
+
+              {project.processing_status === "ai_structure_generated" || project.processing_status === "educational_content_generated" ? (
                 <Link
                   href={`/projects/${project.id}/review`}
-                  className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
+                  className="inline-flex rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
                 >
                   Revisar estrutura
                 </Link>
               ) : null}
 
-              {files.length && project.processing_status !== "text_extracted" && project.processing_status !== "failed" && project.processing_status !== "ai_structure_generated" ? (
+              {files.length && project.processing_status !== "text_extracted" && project.processing_status !== "failed" && project.processing_status !== "ai_structure_generated" && project.processing_status !== "educational_content_generated" ? (
                 <button
                   type="button"
                   onClick={() => startProcessing(project.id)}
