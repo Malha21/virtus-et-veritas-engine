@@ -40,6 +40,7 @@ def generate_unique_slug(db: Session, organization_id: UUID, title: str) -> str:
 
 
 def create_project(db: Session, current_user: User, payload: ProjectCreate) -> Project:
+    created_at = datetime.now(UTC)
     project = Project(
         organization_id=current_user.organization_id,
         owner_id=current_user.id,
@@ -52,7 +53,9 @@ def create_project(db: Session, current_user: User, payload: ProjectCreate) -> P
         description=payload.description,
         status="active",
         processing_status="draft",
-        expires_at=datetime.now(UTC) + timedelta(days=PROJECT_RETENTION_DAYS),
+        created_at=created_at,
+        updated_at=created_at,
+        expires_at=created_at + timedelta(days=PROJECT_RETENTION_DAYS),
     )
     db.add(project)
     db.commit()
