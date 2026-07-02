@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, deleteProject } from "@/lib/api";
 import type { ProjectListResponse } from "@/types/project";
 
 export default function ProjectsPage() {
@@ -19,6 +19,34 @@ export default function ProjectsPage() {
       .catch(() => setError("Não foi possível carregar os projetos."))
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleDeleteProject(projectId: string) {
+    const confirmed = window.confirm("Tem certeza que deseja excluir este projeto? Ele será removido da sua lista.");
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    try {
+      await deleteProject(projectId);
+      setData((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          items: current.items.filter((project) => project.id !== projectId),
+          total: Math.max(current.total - 1, 0),
+        };
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Nao foi possivel excluir o projeto.");
+      }
+    }
+  }
 
   return (
     <AppShell>
@@ -75,9 +103,18 @@ export default function ProjectsPage() {
                         {new Date(project.updated_at).toLocaleDateString("pt-BR")}
                       </td>
                       <td className="px-5 py-4">
-                        <Link href={`/projects/${project.id}`} className="text-gold-400 hover:text-gold-500">
-                          Abrir
-                        </Link>
+                        <div className="flex items-center gap-3">
+                          <Link href={`/projects/${project.id}`} className="text-gold-400 hover:text-gold-500">
+                            Abrir
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProject(project.id)}
+                            className="text-red-300 transition hover:text-red-200"
+                          >
+                            Excluir
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

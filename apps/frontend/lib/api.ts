@@ -112,3 +112,15 @@ export async function generateEducationalContent(
     body: JSON.stringify({ generation_language: generationLanguage }),
   });
 }
+
+export async function deleteProject(projectId: string): Promise<{ message: string }> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<{ message: string }>(`/projects/${projectId}`, {
+    method: "DELETE",
+    token,
+  });
+}

@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   ApiError,
   apiFetch,
+  deleteProject,
   generateEducationalContent as generateEducationalContentRequest,
   generateStructure as generateStructureRequest,
 } from "@/lib/api";
@@ -93,12 +94,44 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleDeleteProject(projectId: string) {
+    const confirmed = window.confirm("Tem certeza que deseja excluir este projeto? Ele será removido da sua lista.");
+    if (!confirmed) {
+      return;
+    }
+
+    setError("");
+    try {
+      await deleteProject(projectId);
+      router.push("/projects");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Nao foi possivel excluir o projeto.");
+      }
+    }
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-4xl">
-        <Link href="/projects" className="text-sm text-gold-400 hover:text-gold-500">
-          Voltar para projetos
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link href="/projects" className="text-sm text-gold-400 hover:text-gold-500">
+            Voltar para projetos
+          </Link>
+          {project ? (
+            <button
+              type="button"
+              onClick={() => handleDeleteProject(project.id)}
+              className="rounded-md border border-red-400/30 px-3 py-2 text-sm text-red-300 transition hover:border-red-300/60 hover:text-red-200"
+            >
+              Excluir projeto
+            </button>
+          ) : null}
+        </div>
 
         {loading ? (
           <p className="mt-8 text-slate-300">Carregando projeto...</p>

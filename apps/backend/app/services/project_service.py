@@ -71,6 +71,8 @@ def list_projects(
     filters = [Project.organization_id == organization_id]
     if status_filter:
         filters.append(Project.status == status_filter)
+    else:
+        filters.append(Project.status != "archived")
     if product_type:
         filters.append(Project.product_type == product_type)
     if processing_status:
