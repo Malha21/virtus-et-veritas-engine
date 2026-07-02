@@ -104,7 +104,9 @@ def save_project_pdf(db: Session, current_user: User, project_id: uuid.UUID, fil
         checksum=checksum,
         status="uploaded",
     )
+    project.processing_status = "uploaded"
     db.add(project_file)
+    db.add(project)
     db.commit()
     db.refresh(project_file)
     return project_file

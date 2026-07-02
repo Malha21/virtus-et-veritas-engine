@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
 from app.core.database import Base
-from app.models import AIProvider, Organization, Project, ProjectFile, User  # noqa: F401
+from app.models import AIProvider, Organization, ProcessingJob, ProcessingLog, Project, ProjectFile, User  # noqa: F401
 
 config = context.config
 

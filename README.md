@@ -6,23 +6,23 @@ O primeiro uso será interno na Virtus et Veritas Academy, com foco em transform
 
 ## Status
 
-Fase 5: upload de PDF e storage local.
+Fase 6: extração de texto e jobs.
 
 Esta fase entrega:
 
 - frontend Next.js inicial;
 - login no frontend;
 - dashboard e projetos;
-- detalhe do projeto;
 - upload de PDF vinculado ao projeto;
-- listagem de arquivos enviados;
-- backend FastAPI com CRUD inicial de projetos;
-- tabela `project_files`;
+- extração síncrona de texto do PDF;
+- registros em `processing_jobs`;
+- registros em `processing_logs`;
+- tela de processamento;
 - storage local persistido via volume Docker;
 - PostgreSQL via Docker Compose;
 - migrations Alembic.
 
-Ainda não há extração de texto, processamento, IA, Redis, MinIO, worker, exportação, Nginx ou SSL.
+Ainda não há IA, Redis, MinIO, worker separado, exportação, slides, voz, avatar, Nginx ou SSL.
 
 ## Estrutura
 
@@ -103,7 +103,14 @@ docker compose exec backend python -m app.scripts.seed
 3. Crie ou abra um projeto.
 4. Clique em `Enviar PDF`.
 5. Envie um arquivo PDF.
-6. Confira a listagem de arquivos enviados.
+6. Clique em `Iniciar processamento`.
+7. Confira a tela de processamento e os logs.
+
+O texto extraído será salvo no storage local em uma estrutura como:
+
+```text
+storage/organizations/{organization_id}/projects/{project_id}/extracted/extracted_text.txt
+```
 
 ## Verificar Containers
 
@@ -160,6 +167,27 @@ curl http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/files \
   -H "Authorization: Bearer TOKEN_AQUI"
 ```
 
+## Iniciar Processamento
+
+```bash
+curl -X POST http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/process \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
+## Consultar Status
+
+```bash
+curl http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/status \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
+## Consultar Logs
+
+```bash
+curl http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/logs \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
 ## Testar Projetos
 
 Criar projeto:
@@ -192,4 +220,4 @@ docker compose down -v
 
 ## Próximas Fases
 
-A próxima fase técnica deve implementar extração de texto e jobs, conforme `docs/10-roadmap.md`.
+A próxima fase técnica deve implementar o AI Orchestrator V1, conforme `docs/10-roadmap.md`.

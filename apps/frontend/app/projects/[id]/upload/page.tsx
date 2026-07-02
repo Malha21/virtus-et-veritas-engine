@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -9,14 +9,17 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { FileUploader } from "@/components/upload/FileUploader";
 import { apiFetch } from "@/lib/api";
 import type { ProjectFile } from "@/types/file";
+import type { StartProcessingResponse } from "@/types/processing";
 import type { Project } from "@/types/project";
 
 export default function ProjectUploadPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [processing, setProcessing] = useState(false);
 
   function refreshFiles() {
     apiFetch<ProjectFile[]>(`/projects/${params.id}/files`)
@@ -36,6 +39,21 @@ export default function ProjectUploadPage() {
       .catch(() => setError("Não foi possível carregar os dados do projeto."))
       .finally(() => setLoading(false));
   }, [params.id]);
+
+  async function startProcessing() {
+    setProcessing(true);
+    setError("");
+    try {
+      await apiFetch<StartProcessingResponse>(`/projects/${params.id}/process`, {
+        method: "POST",
+      });
+      router.push(`/projects/${params.id}/processing`);
+    } catch {
+      setError("Não foi possível iniciar o processamento do PDF.");
+    } finally {
+      setProcessing(false);
+    }
+  }
 
   return (
     <AppShell>
@@ -85,13 +103,21 @@ export default function ProjectUploadPage() {
               )}
             </section>
 
-            <button
-              type="button"
-              disabled
-              className="w-fit rounded-md border border-white/10 px-4 py-2 text-sm text-slate-500"
-            >
-              Iniciar processamento — disponível na próxima fase
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={startProcessing}
+                disabled={!files.length || processing}
+                className="w-fit rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {processing ? "Processando..." : "Iniciar processamento"}
+              </button>
+              {!files.length ? (
+                <p className="self-center text-sm text-slate-400">
+                  Envie um PDF antes de iniciar o processamento.
+                </p>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </div>

@@ -2,25 +2,51 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { apiFetch } from "@/lib/api";
+import type { ProjectFile } from "@/types/file";
+import type { StartProcessingResponse } from "@/types/processing";
 import type { Project } from "@/types/project";
 
 export default function ProjectDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const [project, setProject] = useState<Project | null>(null);
+  const [files, setFiles] = useState<ProjectFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
-    apiFetch<Project>(`/projects/${params.id}`)
-      .then(setProject)
+    Promise.all([
+      apiFetch<Project>(`/projects/${params.id}`),
+      apiFetch<ProjectFile[]>(`/projects/${params.id}/files`),
+    ])
+      .then(([projectData, fileData]) => {
+        setProject(projectData);
+        setFiles(fileData);
+      })
       .catch(() => setError("Não foi possível carregar este projeto."))
       .finally(() => setLoading(false));
   }, [params.id]);
+
+  async function startProcessing(projectId: string) {
+    setProcessing(true);
+    setError("");
+    try {
+      await apiFetch<StartProcessingResponse>(`/projects/${projectId}/process`, {
+        method: "POST",
+      });
+      router.push(`/projects/${projectId}/processing`);
+    } catch {
+      setError("Não foi possível iniciar o processamento.");
+    } finally {
+      setProcessing(false);
+    }
+  }
 
   return (
     <AppShell>
@@ -61,12 +87,34 @@ export default function ProjectDetailPage() {
               </p>
             </div>
 
-            <Link
-              href={`/projects/${project.id}/upload`}
-              className="mt-8 inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
-            >
-              Enviar PDF
-            </Link>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                href={`/projects/${project.id}/upload`}
+                className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
+              >
+                {files.length ? "Gerenciar PDF" : "Enviar PDF"}
+              </Link>
+
+              {files.length && (project.processing_status === "text_extracted" || project.processing_status === "failed") ? (
+                <Link
+                  href={`/projects/${project.id}/processing`}
+                  className="inline-flex rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                >
+                  Ver processamento
+                </Link>
+              ) : null}
+
+              {files.length && project.processing_status !== "text_extracted" && project.processing_status !== "failed" ? (
+                <button
+                  type="button"
+                  onClick={() => startProcessing(project.id)}
+                  disabled={processing}
+                  className="inline-flex rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {processing ? "Processando..." : "Iniciar processamento"}
+                </button>
+              ) : null}
+            </div>
           </section>
         ) : null}
       </div>
