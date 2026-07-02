@@ -14,9 +14,10 @@ import type {
   EducationalContentSummaryResponse,
   LessonScriptContent,
   ModuleQuizContent,
+  PresentationDeckContent,
 } from "@/types/educational-content";
 
-type Tab = "summary" | "scripts" | "quizzes" | "materials";
+type Tab = "summary" | "scripts" | "quizzes" | "materials" | "presentation";
 
 function getGenerationLanguage(content?: GeneratedContent): string | undefined {
   return content?.language || (content?.content_json?.generation_language as string | undefined);
@@ -89,6 +90,7 @@ export default function EducationalContentPage() {
           module_quizzes: sortModuleQuizzes(payload.module_quizzes),
           complementary_materials: sortByCreatedAt(payload.complementary_materials),
           course_summaries: sortSummaries(payload.course_summaries),
+          presentation_decks: sortSummaries(payload.presentation_decks || []),
         }),
       )
       .catch(() => setError("Nao foi possivel carregar os conteudos educacionais."))
@@ -136,6 +138,9 @@ export default function EducationalContentPage() {
             <TabButton active={activeTab === "materials"} onClick={() => setActiveTab("materials")}>
               Materiais Complementares
             </TabButton>
+            <TabButton active={activeTab === "presentation"} onClick={() => setActiveTab("presentation")}>
+              Apresentacao
+            </TabButton>
           </div>
 
           {loading ? (
@@ -148,6 +153,7 @@ export default function EducationalContentPage() {
               {activeTab === "scripts" ? <ScriptsView contents={data.lesson_scripts} /> : null}
               {activeTab === "quizzes" ? <QuizzesView contents={data.module_quizzes} /> : null}
               {activeTab === "materials" ? <MaterialsView contents={data.complementary_materials} /> : null}
+              {activeTab === "presentation" ? <PresentationView contents={data.presentation_decks} /> : null}
             </div>
           ) : null}
         </section>
@@ -351,6 +357,60 @@ function MaterialsView({ contents }: { contents: GeneratedContent[] }) {
   );
 }
 
+function PresentationView({ contents }: { contents: GeneratedContent[] }) {
+  const content = sortSummaries(contents)[0];
+  const deck = content?.content_json as PresentationDeckContent | undefined;
+
+  if (!deck) {
+    return (
+      <EmptyState text="A apresentacao ainda nao foi gerada. Gere os conteudos educacionais para criar a apresentacao." />
+    );
+  }
+
+  const slides = Array.isArray(deck.slides) ? deck.slides : [];
+
+  return (
+    <div className="grid gap-6">
+      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+        <p className="text-sm text-gold-400">Apresentacao</p>
+        <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+        <h2 className="mt-2 text-2xl font-semibold text-slate-50">{safeText(deck.presentation_title)}</h2>
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <InfoBlock label="Publico-alvo" value={deck.target_audience} />
+          <InfoBlock label="Duracao estimada" value={deck.estimated_duration} />
+          <InfoBlock label="Estilo visual sugerido" value={deck.visual_style} />
+          <InfoBlock label="Objetivo da apresentacao" value={deck.presentation_objective} />
+        </div>
+      </section>
+
+      {slides.length ? (
+        <div className="grid gap-5">
+          {slides.map((slide, index) => (
+            <article key={itemKey(slide, index)} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+              <p className="text-xs font-medium text-gold-400">
+                Slide {safeText(slide?.slide_number ?? index + 1)}
+              </p>
+              <h3 className="mt-2 text-xl font-semibold text-slate-50">{safeText(slide?.title)}</h3>
+              {slide?.subtitle ? <p className="mt-2 text-sm text-slate-400">{safeText(slide.subtitle)}</p> : null}
+
+              <ListBlock title="Pontos principais" items={toArray(slide?.bullets)} />
+              <InfoBlock label="Notas do apresentador" value={slide?.speaker_notes} />
+              <InfoBlock label="Sugestao visual" value={slide?.visual_suggestion} />
+              {slide?.interaction_question ? (
+                <InfoBlock label="Pergunta de interacao" value={slide.interaction_question} />
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState text="Nenhum slide encontrado nesta apresentacao." />
+      )}
+
+      <InfoBlock label="Mensagem de encerramento" value={deck.closing_message} />
+    </div>
+  );
+}
+
 function safeText(value: unknown): string {
   if (value === null || value === undefined) return "Nao informado";
 
@@ -386,6 +446,12 @@ function safeText(value: unknown): string {
   }
 
   return String(value);
+}
+
+function toArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined || value === "") return [];
+  return [value];
 }
 
 function itemKey(item: unknown, index: number): string {

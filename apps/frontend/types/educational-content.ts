@@ -5,6 +5,7 @@ export type EducationalContentCounts = {
   module_quizzes: number;
   complementary_materials: number;
   course_summaries: number;
+  presentation_decks: number;
 };
 
 export type GenerateEducationalContentResponse = {
@@ -19,6 +20,7 @@ export type EducationalContentSummaryResponse = {
   module_quizzes: GeneratedContent[];
   complementary_materials: GeneratedContent[];
   course_summaries: GeneratedContent[];
+  presentation_decks: GeneratedContent[];
 };
 
 export type LessonScriptContent = {
@@ -92,4 +94,22 @@ export type CourseSummaryContent = {
     suggested_instagram_caption?: string;
     suggested_whatsapp_message?: string;
   };
+};
+
+export type PresentationDeckContent = {
+  presentation_title?: unknown;
+  target_audience?: unknown;
+  estimated_duration?: unknown;
+  visual_style?: unknown;
+  presentation_objective?: unknown;
+  slides?: Array<{
+    slide_number?: unknown;
+    title?: unknown;
+    subtitle?: unknown;
+    bullets?: unknown[];
+    speaker_notes?: unknown;
+    visual_suggestion?: unknown;
+    interaction_question?: unknown;
+  }>;
+  closing_message?: unknown;
 };

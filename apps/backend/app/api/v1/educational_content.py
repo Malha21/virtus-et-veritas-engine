@@ -45,5 +45,6 @@ def get_project_educational_content(
             GeneratedContentResponse.model_validate(item) for item in grouped["complementary_materials"]
         ],
         course_summaries=[GeneratedContentResponse.model_validate(item) for item in grouped["course_summaries"]],
+        presentation_decks=[GeneratedContentResponse.model_validate(item) for item in grouped["presentation_decks"]],
     )
     return {"success": True, "data": data.model_dump(mode="json")}

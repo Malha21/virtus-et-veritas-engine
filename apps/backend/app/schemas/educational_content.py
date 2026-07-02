@@ -23,6 +23,7 @@ class EducationalContentCounts(BaseModel):
     module_quizzes: int
     complementary_materials: int
     course_summaries: int
+    presentation_decks: int
 
 
 class GenerateEducationalContentResponse(BaseModel):
@@ -37,3 +38,4 @@ class EducationalContentSummaryResponse(BaseModel):
     module_quizzes: list[GeneratedContentResponse]
     complementary_materials: list[GeneratedContentResponse]
     course_summaries: list[GeneratedContentResponse]
+    presentation_decks: list[GeneratedContentResponse]

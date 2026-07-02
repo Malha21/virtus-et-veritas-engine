@@ -16,10 +16,12 @@ from app.prompts import (
     COURSE_SUMMARY_PROMPT_VERSION,
     LESSON_SCRIPT_PROMPT_VERSION,
     MODULE_QUIZ_PROMPT_VERSION,
+    PRESENTATION_DECK_PROMPT_VERSION,
     build_complementary_material_prompt,
     build_course_summary_prompt,
     build_lesson_script_prompt,
     build_module_quiz_prompt,
+    build_presentation_deck_prompt,
 )
 from app.providers.ai import AIProviderRequest, OpenAIProvider
 from app.services.ai_orchestrator_service import (
@@ -36,6 +38,7 @@ EXCERPT_CHARS = 20000
 MAX_LESSON_SCRIPTS_PER_RUN = 3
 MAX_MODULE_QUIZZES_PER_RUN = 2
 MAX_COMPLEMENTARY_MATERIALS_PER_RUN = 1
+MAX_PRESENTATION_CONTEXT_ITEMS = 8
 
 
 def get_content_metadata_number(content: GeneratedContent, field: str) -> int:
@@ -75,6 +78,26 @@ def get_latest_content(
         )
         .order_by(GeneratedContent.version.desc(), GeneratedContent.created_at.desc())
     ).scalars().first()
+
+
+def get_latest_contents(
+    db: Session,
+    project: Project,
+    content_type: str,
+    limit: int = MAX_PRESENTATION_CONTEXT_ITEMS,
+) -> list[GeneratedContent]:
+    return list(
+        db.execute(
+            select(GeneratedContent)
+            .where(
+                GeneratedContent.project_id == project.id,
+                GeneratedContent.organization_id == project.organization_id,
+                GeneratedContent.content_type == content_type,
+            )
+            .order_by(GeneratedContent.version.desc(), GeneratedContent.created_at.desc())
+            .limit(limit)
+        ).scalars().all()
+    )
 
 
 def get_next_content_version(db: Session, project: Project, content_type: str, title: str) -> int:
@@ -226,6 +249,7 @@ def generate_educational_content(
         "module_quizzes": 0,
         "complementary_materials": 0,
         "course_summaries": 0,
+        "presentation_decks": 0,
     }
 
     try:
@@ -245,6 +269,7 @@ def generate_educational_content(
                 "max_lesson_scripts": MAX_LESSON_SCRIPTS_PER_RUN,
                 "max_module_quizzes": MAX_MODULE_QUIZZES_PER_RUN,
                 "max_complementary_materials": MAX_COMPLEMENTARY_MATERIALS_PER_RUN,
+                "presentation_deck": True,
             },
         )
         try:
@@ -293,7 +318,7 @@ def generate_educational_content(
         for module in modules[:MAX_MODULE_QUIZZES_PER_RUN]:
             module_number_for_log = module.get("module_number") or "?"
             try:
-                update_processing_job(db, job, 55, "Gerando quizzes", f"Gerando quiz do modulo {module_number_for_log}")
+                update_processing_job(db, job, 50, "Gerando quizzes", f"Gerando quiz do modulo {module_number_for_log}")
                 system_prompt, user_prompt = build_module_quiz_prompt(
                     project,
                     document_analysis,
@@ -434,7 +459,7 @@ def generate_educational_content(
                 update_processing_job(
                     db,
                     job,
-                    75,
+                    65,
                     "Gerando materiais complementares",
                     "Gerando material complementar",
                 )
@@ -480,6 +505,67 @@ def generate_educational_content(
                 )
                 raise RuntimeError("Falha ao gerar material complementar com IA. Tente novamente em instantes.") from exc
 
+        try:
+            update_processing_job(
+                db,
+                job,
+                80,
+                "Gerando apresentacao",
+                "Gerando apresentacao pronta a partir dos conteudos educacionais",
+            )
+            course_summaries = [
+                content.content_json or {} for content in get_latest_contents(db, project, "course_summary", limit=3)
+            ]
+            lesson_scripts = [
+                content.content_json or {} for content in get_latest_contents(db, project, "lesson_script")
+            ]
+            complementary_materials = [
+                content.content_json or {} for content in get_latest_contents(db, project, "complementary_material")
+            ]
+            system_prompt, user_prompt = build_presentation_deck_prompt(
+                project,
+                document_analysis,
+                course_structure,
+                course_summaries,
+                lesson_scripts,
+                complementary_materials,
+                generation_language,
+            )
+            presentation_json = call_ai_json(
+                db,
+                ai_provider,
+                project,
+                job,
+                provider_record.id,
+                "generate_presentation_deck",
+                PRESENTATION_DECK_PROMPT_VERSION,
+                system_prompt,
+                user_prompt,
+                generation_language,
+            )
+            save_versioned_content(
+                db,
+                project,
+                provider_record.id,
+                "presentation_deck",
+                presentation_json.get("presentation_title") or "Apresentacao do curso",
+                presentation_json,
+                generation_language,
+            )
+            counts["presentation_decks"] += 1
+            add_educational_log(db, project, current_user, job, "Apresentacao gerada")
+        except Exception as exc:
+            add_educational_log(
+                db,
+                project,
+                current_user,
+                job,
+                "Falha ao gerar apresentacao",
+                level="error",
+                context_json={"error": str(exc)},
+            )
+            raise RuntimeError("Falha ao gerar apresentacao com IA. Tente novamente em instantes.") from exc
+
         update_processing_job(db, job, 90, "Salvando conteudos", "Salvando conteudos educacionais")
         project.processing_status = "educational_content_generated"
         job.status = "completed"
@@ -500,7 +586,7 @@ def generate_educational_content(
             "processing_status": project.processing_status,
             "message": (
                 "Conteúdos educacionais iniciais gerados com sucesso. "
-                "Nesta versão foram gerados os primeiros roteiros, quizzes e materiais."
+                "Nesta versão foram gerados os primeiros roteiros, quizzes, materiais e a apresentacao."
             ),
             "contents_created": counts,
         }
@@ -534,7 +620,7 @@ def list_educational_content(db: Session, current_user: User, project_id: UUID) 
             GeneratedContent.project_id == project.id,
             GeneratedContent.organization_id == current_user.organization_id,
             GeneratedContent.content_type.in_(
-                ["lesson_script", "module_quiz", "complementary_material", "course_summary"]
+                ["lesson_script", "module_quiz", "complementary_material", "course_summary", "presentation_deck"]
             ),
         )
         .order_by(GeneratedContent.content_type.asc(), GeneratedContent.version.desc(), GeneratedContent.created_at.desc())
@@ -545,12 +631,14 @@ def list_educational_content(db: Session, current_user: User, project_id: UUID) 
         "module_quizzes": [],
         "complementary_materials": [],
         "course_summaries": [],
+        "presentation_decks": [],
     }
     type_map = {
         "lesson_script": "lesson_scripts",
         "module_quiz": "module_quizzes",
         "complementary_material": "complementary_materials",
         "course_summary": "course_summaries",
+        "presentation_deck": "presentation_decks",
     }
     for content in contents:
         grouped[type_map[content.content_type]].append(content)
@@ -570,5 +658,6 @@ def list_educational_content(db: Session, current_user: User, project_id: UUID) 
     )
     grouped["complementary_materials"].sort(key=lambda item: item.created_at)
     grouped["course_summaries"].sort(key=lambda item: (item.version, item.created_at))
+    grouped["presentation_decks"].sort(key=lambda item: (item.version, item.created_at))
 
     return grouped
