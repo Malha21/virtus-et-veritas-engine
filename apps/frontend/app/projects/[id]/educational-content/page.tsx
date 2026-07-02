@@ -316,20 +316,33 @@ function MaterialsView({ contents }: { contents: GeneratedContent[] }) {
   return (
     <div className="grid gap-5">
       {sortByCreatedAt(contents).map((content) => {
-        const material = (content.content_json as ComplementaryMaterialContent | null)?.complementary_material;
-        if (!material) return null;
+        const raw = content.content_json || {};
+        const material = (raw as ComplementaryMaterialContent | null)?.complementary_material;
+
+        if (!material) {
+          return (
+            <article key={content.id} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+              <p className="text-xs font-medium text-gold-400">Material complementar</p>
+              <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+              <pre className="mt-5 max-h-[720px] overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-4 text-sm leading-6 text-slate-200">
+                {JSON.stringify(raw, null, 2)}
+              </pre>
+            </article>
+          );
+        }
 
         return (
           <article key={content.id} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
-            <p className="text-xs font-medium text-gold-400">{material.material_type}</p>
+            <p className="text-xs font-medium text-gold-400">{safeText(material.material_type || "Material complementar")}</p>
             <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-50">{material.material_title}</h3>
-            <p className="mt-3 leading-7 text-slate-400">{material.overview}</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-50">{safeText(material.material_title || "Material complementar")}</h3>
+            <p className="mt-3 whitespace-pre-wrap leading-7 text-slate-400">{safeText(material.overview)}</p>
+
             <div className="mt-5 grid gap-5 md:grid-cols-2">
-              <ConceptBlock items={material.key_concepts} />
-              <ListBlock title="Aplicacoes praticas" items={material.practical_applications} />
-              <ListBlock title="Exercicios reflexivos" items={material.reflection_exercises} />
-              <ListBlock title="Proximos passos" items={material.recommended_next_steps} />
+              <ConceptBlock items={Array.isArray(material.key_concepts) ? material.key_concepts : []} />
+              <ListBlock title="Aplicacoes praticas" items={Array.isArray(material.practical_applications) ? material.practical_applications : []} />
+              <ListBlock title="Exercicios reflexivos" items={Array.isArray(material.reflection_exercises) ? material.reflection_exercises : []} />
+              <ListBlock title="Proximos passos" items={Array.isArray(material.recommended_next_steps) ? material.recommended_next_steps : []} />
             </div>
           </article>
         );
@@ -338,18 +351,65 @@ function MaterialsView({ contents }: { contents: GeneratedContent[] }) {
   );
 }
 
-function ConceptBlock({ items }: { items?: Array<{ concept?: string; explanation?: string }> }) {
+function safeText(value: unknown): string {
+  if (value === null || value === undefined) return "Nao informado";
+
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => safeText(item)).join("\n");
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+
+    const title = record.title ?? record.concept ?? record.step ?? record.action ?? record.name;
+    const description =
+      record.question ??
+      record.description ??
+      record.explanation ??
+      record.text ??
+      record.content ??
+      record.value ??
+      record.summary ??
+      record.details;
+
+    if (title && description) {
+      return `${safeText(title)}: ${safeText(description)}`;
+    }
+
+    if (description) return safeText(description);
+    if (title) return safeText(title);
+
+    return JSON.stringify(record, null, 2);
+  }
+
+  return String(value);
+}
+
+function itemKey(item: unknown, index: number): string {
+  return `${index}-${safeText(item).slice(0, 60)}`;
+}
+
+function ConceptBlock({ items }: { items?: unknown[] }) {
   return (
     <div className="rounded-md border border-white/10 bg-black/20 p-4">
       <p className="text-sm text-slate-400">Conceitos-chave</p>
       <div className="mt-3 grid gap-3">
-        {items?.length ? (
-          items.map((item) => (
-            <div key={item.concept} className="rounded border border-white/10 px-3 py-2">
-              <p className="font-medium text-slate-100">{item.concept}</p>
-              <p className="mt-1 text-sm text-slate-400">{item.explanation}</p>
-            </div>
-          ))
+        {Array.isArray(items) && items.length ? (
+          items.map((item, index) => {
+            const record = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : null;
+            const title = safeText(record?.concept ?? record?.title ?? `Conceito ${index + 1}`);
+            const explanation = safeText(record?.explanation ?? record?.description ?? record?.text ?? item);
+
+            return (
+              <div key={itemKey(item, index)} className="rounded border border-white/10 px-3 py-2">
+                <p className="font-medium text-slate-100">{title}</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-400">{explanation}</p>
+              </div>
+            );
+          })
         ) : (
           <p className="text-slate-100">Nao informado</p>
         )}
@@ -358,24 +418,24 @@ function ConceptBlock({ items }: { items?: Array<{ concept?: string; explanation
   );
 }
 
-function InfoBlock({ label, value }: { label: string; value?: string }) {
+function InfoBlock({ label, value }: { label: string; value?: unknown }) {
   return (
     <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-4">
       <p className="text-sm text-slate-400">{label}</p>
-      <p className="mt-2 whitespace-pre-wrap text-slate-100">{value || "Nao informado"}</p>
+      <p className="mt-2 whitespace-pre-wrap text-slate-100">{safeText(value)}</p>
     </div>
   );
 }
 
-function ListBlock({ title, items }: { title: string; items?: string[] }) {
+function ListBlock({ title, items }: { title: string; items?: unknown[] }) {
   return (
     <div className="rounded-md border border-white/10 bg-black/20 p-4">
       <p className="text-sm text-slate-400">{title}</p>
-      {items?.length ? (
+      {Array.isArray(items) && items.length ? (
         <ul className="mt-3 grid gap-2 text-sm text-slate-100">
-          {items.map((item) => (
-            <li key={item} className="rounded border border-white/10 bg-navy-950/60 px-3 py-2">
-              {item}
+          {items.map((item, index) => (
+            <li key={itemKey(item, index)} className="whitespace-pre-wrap rounded border border-white/10 bg-navy-950/60 px-3 py-2">
+              {safeText(item)}
             </li>
           ))}
         </ul>
