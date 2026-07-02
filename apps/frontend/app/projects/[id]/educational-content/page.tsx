@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, downloadPresentationPdf } from "@/lib/api";
 import type { GeneratedContent } from "@/types/content";
 import type {
   ComplementaryMaterialContent,
@@ -72,6 +72,8 @@ export default function EducationalContentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [generationMessage, setGenerationMessage] = useState("");
+  const [exportingPresentation, setExportingPresentation] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -153,7 +155,31 @@ export default function EducationalContentPage() {
               {activeTab === "scripts" ? <ScriptsView contents={data.lesson_scripts} /> : null}
               {activeTab === "quizzes" ? <QuizzesView contents={data.module_quizzes} /> : null}
               {activeTab === "materials" ? <MaterialsView contents={data.complementary_materials} /> : null}
-              {activeTab === "presentation" ? <PresentationView contents={data.presentation_decks} /> : null}
+              {activeTab === "presentation" ? (
+                <PresentationView
+                  contents={data.presentation_decks}
+                  projectId={params.id}
+                  exporting={exportingPresentation}
+                  exportError={exportError}
+                  onExport={async () => {
+                    setExportingPresentation(true);
+                    setExportError("");
+                    try {
+                      await downloadPresentationPdf(params.id);
+                    } catch (err) {
+                      if (err instanceof ApiError && err.status === 401) {
+                        setExportError("Sua sessao expirou. Faca login novamente.");
+                      } else if (err instanceof Error && err.message) {
+                        setExportError(err.message);
+                      } else {
+                        setExportError("Nao foi possivel baixar a apresentacao.");
+                      }
+                    } finally {
+                      setExportingPresentation(false);
+                    }
+                  }}
+                />
+              ) : null}
             </div>
           ) : null}
         </section>
@@ -357,7 +383,18 @@ function MaterialsView({ contents }: { contents: GeneratedContent[] }) {
   );
 }
 
-function PresentationView({ contents }: { contents: GeneratedContent[] }) {
+function PresentationView({
+  contents,
+  exporting,
+  exportError,
+  onExport,
+}: {
+  contents: GeneratedContent[];
+  projectId: string;
+  exporting: boolean;
+  exportError: string;
+  onExport: () => Promise<void>;
+}) {
   const content = sortSummaries(contents)[0];
   const deck = content?.content_json as PresentationDeckContent | undefined;
 
@@ -372,9 +409,22 @@ function PresentationView({ contents }: { contents: GeneratedContent[] }) {
   return (
     <div className="grid gap-6">
       <section className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
-        <p className="text-sm text-gold-400">Apresentacao</p>
-        <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-        <h2 className="mt-2 text-2xl font-semibold text-slate-50">{safeText(deck.presentation_title)}</h2>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-gold-400">Apresentacao</p>
+            <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-50">{safeText(deck.presentation_title)}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onExport}
+            disabled={exporting}
+            className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {exporting ? "Gerando PDF..." : "Baixar apresentacao em PDF"}
+          </button>
+        </div>
+        {exportError ? <p className="mt-4 text-sm text-red-300">{exportError}</p> : null}
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <InfoBlock label="Publico-alvo" value={deck.target_audience} />
           <InfoBlock label="Duracao estimada" value={deck.estimated_duration} />
