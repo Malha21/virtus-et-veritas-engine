@@ -1,6 +1,7 @@
 from uuid import UUID
+from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.schemas.content import GeneratedContentResponse
 
@@ -39,3 +40,27 @@ class EducationalContentSummaryResponse(BaseModel):
     complementary_materials: list[GeneratedContentResponse]
     course_summaries: list[GeneratedContentResponse]
     presentation_decks: list[GeneratedContentResponse]
+
+
+class PresentationSlideUpdate(BaseModel):
+    slide_number: int | str | None = None
+    title: str | None = None
+    subtitle: str | None = None
+    bullets: list[Any] | None = None
+    speaker_notes: str | None = None
+    visual_suggestion: str | None = None
+    interaction_question: str | None = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class PresentationDeckUpdateRequest(BaseModel):
+    presentation_title: str | None = None
+    target_audience: str | None = None
+    estimated_duration: str | None = None
+    visual_style: str | None = None
+    presentation_objective: str | None = None
+    slides: list[PresentationSlideUpdate] | None = None
+    closing_message: str | None = None
+
+    model_config = ConfigDict(extra="ignore")

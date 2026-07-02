@@ -1,6 +1,7 @@
 import { getToken } from "./auth";
 import type { GenerateStructureResponse } from "@/types/ai";
-import type { GenerateEducationalContentResponse } from "@/types/educational-content";
+import type { GenerateEducationalContentResponse, PresentationDeckContent } from "@/types/educational-content";
+import type { GeneratedContent } from "@/types/content";
 import type { ProcessingJob, StartAIJobResponse } from "@/types/processing";
 
 export type GenerationLanguage = "pt-BR" | "en-US";
@@ -183,6 +184,22 @@ export async function downloadPresentationPdf(projectId: string): Promise<void> 
   link.click();
   link.remove();
   window.URL.revokeObjectURL(objectUrl);
+}
+
+export async function updatePresentationDeck(
+  projectId: string,
+  presentationDeck: PresentationDeckContent,
+): Promise<GeneratedContent> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedContent>(`/projects/${projectId}/educational-content/presentation-deck`, {
+    method: "PUT",
+    token,
+    body: JSON.stringify(presentationDeck),
+  });
 }
 
 export async function deleteProject(projectId: string): Promise<{ message: string }> {

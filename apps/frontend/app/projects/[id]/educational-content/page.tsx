@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { ApiError, apiFetch, downloadPresentationPdf } from "@/lib/api";
+import { ApiError, apiFetch, downloadPresentationPdf, updatePresentationDeck } from "@/lib/api";
 import type { GeneratedContent } from "@/types/content";
 import type {
   ComplementaryMaterialContent,
@@ -18,6 +18,26 @@ import type {
 } from "@/types/educational-content";
 
 type Tab = "summary" | "scripts" | "quizzes" | "materials" | "presentation";
+
+type PresentationSlideDraft = {
+  slide_number: number;
+  title: string;
+  subtitle: string;
+  bulletsText: string;
+  speaker_notes: string;
+  visual_suggestion: string;
+  interaction_question: string;
+};
+
+type PresentationDeckDraft = {
+  presentation_title: string;
+  target_audience: string;
+  estimated_duration: string;
+  visual_style: string;
+  presentation_objective: string;
+  slides: PresentationSlideDraft[];
+  closing_message: string;
+};
 
 function getGenerationLanguage(content?: GeneratedContent): string | undefined {
   return content?.language || (content?.content_json?.generation_language as string | undefined);
@@ -161,6 +181,18 @@ export default function EducationalContentPage() {
                   projectId={params.id}
                   exporting={exportingPresentation}
                   exportError={exportError}
+                  onUpdated={(updatedContent) => {
+                    setData((current) => {
+                      if (!current) return current;
+                      return {
+                        ...current,
+                        presentation_decks: sortSummaries([
+                          updatedContent,
+                          ...current.presentation_decks.filter((item) => item.id !== updatedContent.id),
+                        ]),
+                      };
+                    });
+                  }}
                   onExport={async () => {
                     setExportingPresentation(true);
                     setExportError("");
@@ -385,18 +417,25 @@ function MaterialsView({ contents }: { contents: GeneratedContent[] }) {
 
 function PresentationView({
   contents,
+  projectId,
   exporting,
   exportError,
+  onUpdated,
   onExport,
 }: {
   contents: GeneratedContent[];
   projectId: string;
   exporting: boolean;
   exportError: string;
+  onUpdated: (content: GeneratedContent) => void;
   onExport: () => Promise<void>;
 }) {
   const content = sortSummaries(contents)[0];
   const deck = content?.content_json as PresentationDeckContent | undefined;
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState<PresentationDeckDraft | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   if (!deck) {
     return (
@@ -405,6 +444,184 @@ function PresentationView({
   }
 
   const slides = Array.isArray(deck.slides) ? deck.slides : [];
+
+  function startEditing() {
+    setDraft(deckToDraft(deck));
+    setSaveError("");
+    setIsEditing(true);
+  }
+
+  function updateDraftField(field: keyof Omit<PresentationDeckDraft, "slides">, value: string) {
+    setDraft((current) => (current ? { ...current, [field]: value } : current));
+  }
+
+  function updateSlide(index: number, field: keyof PresentationSlideDraft, value: string) {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        slides: current.slides.map((slide, slideIndex) =>
+          slideIndex === index ? { ...slide, [field]: value } : slide,
+        ),
+      };
+    });
+  }
+
+  function removeSlide(index: number) {
+    const confirmed = window.confirm("Tem certeza que deseja remover este slide?");
+    if (!confirmed) return;
+
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        slides: current.slides
+          .filter((_, slideIndex) => slideIndex !== index)
+          .map((slide, slideIndex) => ({ ...slide, slide_number: slideIndex + 1 })),
+      };
+    });
+  }
+
+  async function savePresentation() {
+    if (!draft) return;
+
+    setSaving(true);
+    setSaveError("");
+    try {
+      const updated = await updatePresentationDeck(projectId, draftToPayload(draft));
+      onUpdated(updated);
+      setIsEditing(false);
+      setDraft(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setSaveError("Sua sessao expirou. Faca login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setSaveError(err.message);
+      } else {
+        setSaveError("Nao foi possivel salvar a apresentacao.");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isEditing && draft) {
+    return (
+      <div className="grid gap-6">
+        <section className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-sm text-gold-400">Editor da apresentacao</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-50">Editar apresentacao</h2>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={savePresentation}
+                disabled={saving}
+                className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? "Salvando..." : "Salvar alteracoes"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditing(false);
+                  setDraft(null);
+                  setSaveError("");
+                }}
+                disabled={saving}
+                className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+          {saveError ? <p className="mt-4 text-sm text-red-300">{saveError}</p> : null}
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <InputField
+              label="Titulo da apresentacao"
+              value={draft.presentation_title}
+              onChange={(value) => updateDraftField("presentation_title", value)}
+            />
+            <InputField
+              label="Publico-alvo"
+              value={draft.target_audience}
+              onChange={(value) => updateDraftField("target_audience", value)}
+            />
+            <InputField
+              label="Duracao estimada"
+              value={draft.estimated_duration}
+              onChange={(value) => updateDraftField("estimated_duration", value)}
+            />
+            <InputField
+              label="Estilo visual"
+              value={draft.visual_style}
+              onChange={(value) => updateDraftField("visual_style", value)}
+            />
+            <TextAreaField
+              label="Objetivo da apresentacao"
+              value={draft.presentation_objective}
+              onChange={(value) => updateDraftField("presentation_objective", value)}
+            />
+            <TextAreaField
+              label="Mensagem de encerramento"
+              value={draft.closing_message}
+              onChange={(value) => updateDraftField("closing_message", value)}
+            />
+          </div>
+        </section>
+
+        <div className="grid gap-5">
+          {draft.slides.map((slide, index) => (
+            <article key={`${slide.slide_number}-${index}`} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p className="text-sm font-semibold text-gold-400">Slide {slide.slide_number}</p>
+                <button
+                  type="button"
+                  onClick={() => removeSlide(index)}
+                  disabled={saving}
+                  className="rounded-md border border-red-400/30 px-3 py-1.5 text-sm text-red-300 transition hover:border-red-300/60 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Remover slide
+                </button>
+              </div>
+              <div className="mt-4 grid gap-4">
+                <InputField label="Titulo" value={slide.title} onChange={(value) => updateSlide(index, "title", value)} />
+                <InputField
+                  label="Subtitulo"
+                  value={slide.subtitle}
+                  onChange={(value) => updateSlide(index, "subtitle", value)}
+                />
+                <TextAreaField
+                  label="Bullets - um por linha"
+                  value={slide.bulletsText}
+                  rows={5}
+                  onChange={(value) => updateSlide(index, "bulletsText", value)}
+                />
+                <TextAreaField
+                  label="Notas do apresentador"
+                  value={slide.speaker_notes}
+                  onChange={(value) => updateSlide(index, "speaker_notes", value)}
+                />
+                <TextAreaField
+                  label="Sugestao visual"
+                  value={slide.visual_suggestion}
+                  onChange={(value) => updateSlide(index, "visual_suggestion", value)}
+                />
+                <TextAreaField
+                  label="Pergunta de interacao"
+                  value={slide.interaction_question}
+                  onChange={(value) => updateSlide(index, "interaction_question", value)}
+                />
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-6">
@@ -422,6 +639,13 @@ function PresentationView({
             className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {exporting ? "Gerando PDF..." : "Baixar apresentacao em PDF"}
+          </button>
+          <button
+            type="button"
+            onClick={startEditing}
+            className="rounded-md border border-white/10 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+          >
+            Editar apresentacao
           </button>
         </div>
         {exportError ? <p className="mt-4 text-sm text-red-300">{exportError}</p> : null}
@@ -504,8 +728,97 @@ function toArray(value: unknown): unknown[] {
   return [value];
 }
 
+function editText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map((item) => editText(item)).filter(Boolean).join("\n");
+  return safeText(value);
+}
+
+function deckToDraft(deck: PresentationDeckContent): PresentationDeckDraft {
+  const slides = Array.isArray(deck.slides) ? deck.slides : [];
+  return {
+    presentation_title: editText(deck.presentation_title),
+    target_audience: editText(deck.target_audience),
+    estimated_duration: editText(deck.estimated_duration),
+    visual_style: editText(deck.visual_style),
+    presentation_objective: editText(deck.presentation_objective),
+    closing_message: editText(deck.closing_message),
+    slides: slides.map((slide, index) => ({
+      slide_number: index + 1,
+      title: editText(slide?.title),
+      subtitle: editText(slide?.subtitle),
+      bulletsText: toArray(slide?.bullets).map((item) => editText(item)).filter(Boolean).join("\n"),
+      speaker_notes: editText(slide?.speaker_notes),
+      visual_suggestion: editText(slide?.visual_suggestion),
+      interaction_question: editText(slide?.interaction_question),
+    })),
+  };
+}
+
+function draftToPayload(draft: PresentationDeckDraft): PresentationDeckContent {
+  return {
+    presentation_title: draft.presentation_title,
+    target_audience: draft.target_audience,
+    estimated_duration: draft.estimated_duration,
+    visual_style: draft.visual_style,
+    presentation_objective: draft.presentation_objective,
+    closing_message: draft.closing_message,
+    slides: draft.slides.map((slide, index) => ({
+      slide_number: index + 1,
+      title: slide.title,
+      subtitle: slide.subtitle,
+      bullets: slide.bulletsText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+      speaker_notes: slide.speaker_notes,
+      visual_suggestion: slide.visual_suggestion,
+      interaction_question: slide.interaction_question,
+    })),
+  };
+}
+
 function itemKey(item: unknown, index: number): string {
   return `${index}-${safeText(item).slice(0, 60)}`;
+}
+
+function InputField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="grid gap-2 text-sm text-slate-300">
+      {label}
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+      />
+    </label>
+  );
+}
+
+function TextAreaField({
+  label,
+  value,
+  rows = 4,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  rows?: number;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-2 text-sm text-slate-300">
+      {label}
+      <textarea
+        value={value}
+        rows={rows}
+        onChange={(event) => onChange(event.target.value)}
+        className="resize-y rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm leading-6 text-slate-100 outline-none transition focus:border-gold-500/60"
+      />
+    </label>
+  );
 }
 
 function ConceptBlock({ items }: { items?: unknown[] }) {

@@ -12,8 +12,13 @@ from app.schemas.educational_content import (
     EducationalContentSummaryResponse,
     GenerateEducationalContentRequest,
     GenerateEducationalContentResponse,
+    PresentationDeckUpdateRequest,
 )
-from app.services.educational_content_service import generate_educational_content, list_educational_content
+from app.services.educational_content_service import (
+    generate_educational_content,
+    list_educational_content,
+    update_presentation_deck,
+)
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["educational-content"])
 
@@ -47,4 +52,21 @@ def get_project_educational_content(
         course_summaries=[GeneratedContentResponse.model_validate(item) for item in grouped["course_summaries"]],
         presentation_decks=[GeneratedContentResponse.model_validate(item) for item in grouped["presentation_decks"]],
     )
+    return {"success": True, "data": data.model_dump(mode="json")}
+
+
+@router.put("/educational-content/presentation-deck")
+def put_project_presentation_deck(
+    project_id: UUID,
+    payload: PresentationDeckUpdateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, object]:
+    content = update_presentation_deck(
+        db,
+        current_user,
+        project_id,
+        payload.model_dump(mode="json"),
+    )
+    data = GeneratedContentResponse.model_validate(content)
     return {"success": True, "data": data.model_dump(mode="json")}
