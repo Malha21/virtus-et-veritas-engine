@@ -6,17 +6,21 @@ O primeiro uso será interno na Virtus et Veritas Academy, com foco em transform
 
 ## Status
 
-Fase 2: fundação técnica do repositório.
+Fase 3: banco de dados e autenticação básica.
 
-Esta fase cria apenas a base mínima:
+Esta fase entrega:
 
-- frontend Next.js;
+- frontend Next.js inicial;
 - backend FastAPI;
-- Dockerfiles;
-- Docker Compose com `frontend` e `backend`;
-- health checks públicos.
+- PostgreSQL via Docker Compose;
+- SQLAlchemy;
+- Alembic;
+- seed inicial;
+- autenticação com e-mail, senha, Argon2 e JWT;
+- endpoints públicos de health check;
+- endpoints `/api/v1/auth/login`, `/api/v1/auth/me` e `/api/v1/auth/logout`.
 
-Ainda não há banco de dados, autenticação, upload, IA, Redis, MinIO, Nginx ou SSL.
+Ainda não há upload de PDF, IA, Redis, MinIO, worker, exportação, Nginx ou SSL.
 
 ## Estrutura
 
@@ -37,38 +41,58 @@ Para validação na VPS:
 - VPS Linux, preferencialmente Ubuntu Server;
 - Docker instalado;
 - Docker Compose instalado;
-- porta `3000` liberada para o frontend;
-- porta `8000` liberada para o backend nesta fase inicial.
+- porta `3000` liberada para o frontend nesta fase;
+- porta `8000` liberada para o backend nesta fase.
+
+O PostgreSQL roda apenas na rede interna do Docker Compose.
 
 ## Configuração
 
-Crie o arquivo `.env` a partir do exemplo:
+Crie o arquivo `.env` a partir do exemplo, caso ainda não exista:
 
 ```bash
 cp .env.example .env
 ```
 
-Valores padrão:
+Edite o `.env` antes de usar em VPS:
 
-```env
-APP_NAME=Virtus et Veritas Engine
-APP_ENV=development
-API_PREFIX=/api/v1
-FRONTEND_PORT=3000
-BACKEND_PORT=8000
-NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-CORS_ORIGINS=http://localhost:3000
-```
-
-Na VPS, ajuste `NEXT_PUBLIC_API_URL` e `CORS_ORIGINS` para o IP ou domínio configurado.
+- troque `POSTGRES_PASSWORD`;
+- troque `JWT_SECRET`;
+- troque `SEED_ADMIN_EMAIL`;
+- troque `SEED_ADMIN_PASSWORD`;
+- ajuste `NEXT_PUBLIC_API_URL` para o IP ou domínio da VPS;
+- ajuste `CORS_ORIGINS` para o IP ou domínio do frontend.
 
 ## Subir na VPS com Docker Compose
 
 Na raiz do repositório:
 
 ```bash
+git pull
+cp .env.example .env
+nano .env
 docker compose up -d --build
 ```
+
+Se o arquivo `.env` já existir, não sobrescreva: apenas revise os valores.
+
+## Rodar Migrations
+
+```bash
+docker compose exec backend alembic upgrade head
+```
+
+## Rodar Seed Inicial
+
+```bash
+docker compose exec backend python -m app.scripts.seed
+```
+
+O seed cria, de forma idempotente:
+
+- organização `Virtus et Veritas Academy`;
+- usuário administrador;
+- provedor `OpenAI`.
 
 ## Verificar Containers
 
@@ -79,8 +103,9 @@ docker compose ps
 Para ver logs:
 
 ```bash
-docker compose logs -f frontend
 docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f postgres
 ```
 
 ## Acessar Frontend
@@ -129,12 +154,47 @@ Resposta esperada:
 }
 ```
 
+## Testar Login
+
+Use o e-mail e a senha definidos em `.env`:
+
+```bash
+curl -X POST http://IP_DA_VPS:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"change_me_admin_password"}'
+```
+
+A resposta retorna um `access_token`.
+
+## Testar Usuário Atual
+
+Substitua `TOKEN_AQUI` pelo token retornado no login:
+
+```bash
+curl http://IP_DA_VPS:8000/api/v1/auth/me \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
+## Logout
+
+```bash
+curl -X POST http://IP_DA_VPS:8000/api/v1/auth/logout
+```
+
+Na V1, o logout apenas retorna sucesso porque o token JWT é stateless.
+
 ## Parar Containers
 
 ```bash
 docker compose down
 ```
 
+Para remover também o volume do banco, use apenas quando tiver certeza:
+
+```bash
+docker compose down -v
+```
+
 ## Próximas Fases
 
-A próxima fase técnica deve adicionar PostgreSQL, models, migrations, seed inicial e autenticação básica, conforme `docs/10-roadmap.md`.
+A próxima fase técnica deve implementar dashboard e projetos, conforme `docs/10-roadmap.md`.

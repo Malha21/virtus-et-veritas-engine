@@ -23,3 +23,30 @@ services:
       APP_ENV: ${APP_ENV:-development}
       API_PREFIX: ${API_PREFIX:-/api/v1}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://vve_user:change_me_secure_password@postgres:5432/vve_engine}
+      JWT_SECRET: ${JWT_SECRET:-change_me_super_secret_key}
+      JWT_EXPIRES_MINUTES: ${JWT_EXPIRES_MINUTES:-1440}
+      SEED_ORGANIZATION_NAME: ${SEED_ORGANIZATION_NAME:-Virtus et Veritas Academy}
+      SEED_ORGANIZATION_SLUG: ${SEED_ORGANIZATION_SLUG:-virtus-et-veritas-academy}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Leonardo Elias}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-change_me_admin_password}
+      OPENAI_PROVIDER_NAME: ${OPENAI_PROVIDER_NAME:-OpenAI}
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:16
+    container_name: vve-postgres
+    restart: unless-stopped
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vve_engine}
+      POSTGRES_USER: ${POSTGRES_USER:-vve_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

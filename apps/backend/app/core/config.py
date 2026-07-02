@@ -8,6 +8,27 @@ class Settings(BaseSettings):
     app_env: str = Field(default="development", alias="APP_ENV")
     api_prefix: str = Field(default="/api/v1", alias="API_PREFIX")
     cors_origins: str = Field(default="http://localhost:3000", alias="CORS_ORIGINS")
+    database_url: str = Field(
+        default="postgresql+psycopg://vve_user:change_me_secure_password@postgres:5432/vve_engine",
+        alias="DATABASE_URL",
+    )
+    jwt_secret: str = Field(default="change_me_super_secret_key", alias="JWT_SECRET")
+    jwt_expires_minutes: int = Field(default=1440, alias="JWT_EXPIRES_MINUTES")
+    seed_organization_name: str = Field(
+        default="Virtus et Veritas Academy",
+        alias="SEED_ORGANIZATION_NAME",
+    )
+    seed_organization_slug: str = Field(
+        default="virtus-et-veritas-academy",
+        alias="SEED_ORGANIZATION_SLUG",
+    )
+    seed_admin_name: str = Field(default="Leonardo Elias", alias="SEED_ADMIN_NAME")
+    seed_admin_email: str = Field(default="admin@example.com", alias="SEED_ADMIN_EMAIL")
+    seed_admin_password: str = Field(
+        default="change_me_admin_password",
+        alias="SEED_ADMIN_PASSWORD",
+    )
+    openai_provider_name: str = Field(default="OpenAI", alias="OPENAI_PROVIDER_NAME")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
