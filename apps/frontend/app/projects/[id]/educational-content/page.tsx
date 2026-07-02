@@ -32,9 +32,9 @@ function getContentNumber(content: GeneratedContent, section: string, field: str
   const contentJson = content.content_json || {};
   const metadata = contentJson.metadata as Record<string, unknown> | undefined;
   const nested = contentJson[section] as Record<string, unknown> | undefined;
-  const value = metadata?.[field] ?? nested?.[field] ?? 0;
+  const value = nested?.[field] ?? metadata?.[field];
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) ? parsed : 9999;
 }
 
 function sortLessonScripts(contents: GeneratedContent[]): GeneratedContent[] {
