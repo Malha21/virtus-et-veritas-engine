@@ -1,22 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { apiFetch } from "@/lib/api";
+import type { GenerateStructureResponse } from "@/types/ai";
 import type { ProcessingLog, ProcessingStatus } from "@/types/processing";
 
-const steps = ["Recebendo arquivo", "Extraindo texto", "Texto extraído"];
+const steps = ["Recebendo arquivo", "Extraindo texto", "Texto extraido", "Estrutura com IA"];
 
 export default function ProcessingPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const [status, setStatus] = useState<ProcessingStatus | null>(null);
   const [logs, setLogs] = useState<ProcessingLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -27,9 +30,24 @@ export default function ProcessingPage() {
         setStatus(statusData);
         setLogs(logData);
       })
-      .catch(() => setError("Não foi possível carregar o processamento."))
+      .catch(() => setError("Nao foi possivel carregar o processamento."))
       .finally(() => setLoading(false));
   }, [params.id]);
+
+  async function generateStructure() {
+    setGenerating(true);
+    setError("");
+    try {
+      await apiFetch<GenerateStructureResponse>(`/projects/${params.id}/generate-structure`, {
+        method: "POST",
+      });
+      router.push(`/projects/${params.id}/review`);
+    } catch {
+      setError("Nao foi possivel gerar a estrutura com IA.");
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   return (
     <AppShell>
@@ -48,10 +66,13 @@ export default function ProcessingPage() {
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-sm text-gold-400">Processamento</p>
-                  <h1 className="mt-2 text-3xl font-semibold">Extração de texto</h1>
+                  <h1 className="mt-2 text-3xl font-semibold">Processamento inteligente</h1>
                   <p className="mt-2 text-slate-400">{status.current_step}</p>
                 </div>
-                <StatusBadge label={status.processing_status} tone={status.processing_status === "failed" ? "neutral" : "success"} />
+                <StatusBadge
+                  label={status.processing_status}
+                  tone={status.processing_status === "failed" ? "neutral" : "success"}
+                />
               </div>
 
               <div className="mt-8">
@@ -61,10 +82,10 @@ export default function ProcessingPage() {
                     style={{ width: `${status.progress}%` }}
                   />
                 </div>
-                <p className="mt-2 text-sm text-slate-400">{status.progress}% concluído</p>
+                <p className="mt-2 text-sm text-slate-400">{status.progress}% concluido</p>
               </div>
 
-              <div className="mt-8 grid gap-3 md:grid-cols-3">
+              <div className="mt-8 grid gap-3 md:grid-cols-4">
                 {steps.map((step, index) => (
                   <div key={step} className="rounded-md border border-white/10 bg-navy-950/60 p-4">
                     <p className="text-xs font-medium text-gold-400">0{index + 1}</p>
@@ -95,13 +116,25 @@ export default function ProcessingPage() {
               )}
             </section>
 
-            <button
-              type="button"
-              disabled
-              className="w-fit rounded-md border border-white/10 px-4 py-2 text-sm text-slate-500"
-            >
-              Gerar estrutura com IA — disponível na próxima fase
-            </button>
+            <div className="flex flex-wrap gap-3">
+              {status.processing_status === "ai_structure_generated" ? (
+                <Link
+                  href={`/projects/${params.id}/review`}
+                  className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
+                >
+                  Revisar estrutura
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={generateStructure}
+                  disabled={status.processing_status !== "text_extracted" || generating}
+                  className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {generating ? "Gerando estrutura..." : "Gerar estrutura com IA"}
+                </button>
+              )}
+            </div>
           </div>
         ) : null}
       </div>

@@ -1,12 +1,12 @@
 # Virtus et Veritas Engine
 
-O Virtus et Veritas Engine, também chamado internamente de VVE Engine, é uma plataforma de inteligência artificial para transformar conhecimento em produtos educacionais.
+O Virtus et Veritas Engine, tambem chamado internamente de VVE Engine, e uma plataforma de inteligencia artificial para transformar conhecimento em produtos educacionais.
 
-O primeiro uso será interno na Virtus et Veritas Academy, com foco em transformar conhecimento bruto em cursos, roteiros, materiais e experiências educacionais.
+O primeiro uso sera interno na Virtus et Veritas Academy, com foco em transformar conhecimento bruto em cursos, roteiros, materiais e experiencias educacionais.
 
 ## Status
 
-Fase 6: extração de texto e jobs.
+Fase 7: AI Orchestrator V1.
 
 Esta fase entrega:
 
@@ -14,15 +14,23 @@ Esta fase entrega:
 - login no frontend;
 - dashboard e projetos;
 - upload de PDF vinculado ao projeto;
-- extração síncrona de texto do PDF;
+- extracao sincrona de texto do PDF;
+- OpenAI Provider para geracao textual;
+- AI Orchestrator V1;
+- prompts versionados;
+- geracao de analise do documento;
+- geracao de estrutura inicial de curso;
+- registros em `generated_contents`;
+- registros em `ai_requests`;
 - registros em `processing_jobs`;
 - registros em `processing_logs`;
 - tela de processamento;
+- tela de revisao da estrutura;
 - storage local persistido via volume Docker;
 - PostgreSQL via Docker Compose;
 - migrations Alembic.
 
-Ainda não há IA, Redis, MinIO, worker separado, exportação, slides, voz, avatar, Nginx ou SSL.
+Ainda nao ha roteiros completos aula por aula, quizzes, materiais complementares, Redis, MinIO, worker separado, exportacao, slides, voz, avatar, Nginx ou SSL.
 
 ## Estrutura
 
@@ -37,9 +45,9 @@ docker-compose.yml
 .env.example
 ```
 
-## Pré-requisitos
+## Pre-requisitos
 
-Para validação na VPS:
+Para validacao na VPS:
 
 - VPS Linux, preferencialmente Ubuntu Server;
 - Docker instalado;
@@ -49,9 +57,9 @@ Para validação na VPS:
 
 O PostgreSQL roda apenas na rede interna do Docker Compose.
 
-## Configuração
+## Configuracao
 
-Crie o arquivo `.env` a partir do exemplo, caso ainda não exista:
+Crie o arquivo `.env` a partir do exemplo, caso ainda nao exista:
 
 ```bash
 cp .env.example .env
@@ -63,21 +71,23 @@ Edite o `.env` antes de usar em VPS:
 - troque `JWT_SECRET`;
 - troque `SEED_ADMIN_EMAIL`;
 - troque `SEED_ADMIN_PASSWORD`;
-- ajuste `NEXT_PUBLIC_API_URL` para o IP ou domínio da VPS;
-- ajuste `CORS_ORIGINS` para o IP ou domínio do frontend;
+- ajuste `NEXT_PUBLIC_API_URL` para o IP ou dominio da VPS;
+- ajuste `CORS_ORIGINS` para o IP ou dominio do frontend;
+- configure `OPENAI_API_KEY` com a chave real apenas no `.env` da VPS;
+- mantenha `OPENAI_DEFAULT_MODEL=gpt-4.1-mini`, salvo necessidade especifica;
 - mantenha `STORAGE_DRIVER=local`;
 - mantenha `STORAGE_PATH=/app/storage`.
 
 ## Subir na VPS com Docker Compose
 
-Na raiz do repositório:
+Na raiz do repositorio:
 
 ```bash
 git pull
 docker compose up -d --build
 ```
 
-Se o arquivo `.env` ainda não existir:
+Se o arquivo `.env` ainda nao existir:
 
 ```bash
 cp .env.example .env
@@ -90,6 +100,8 @@ nano .env
 docker compose exec backend alembic upgrade head
 ```
 
+Para a Fase 7, garanta que a migration `0005_ai_content` seja aplicada.
+
 ## Rodar Seed Inicial
 
 ```bash
@@ -99,14 +111,16 @@ docker compose exec backend python -m app.scripts.seed
 ## Testar Pelo Frontend
 
 1. Acesse `http://IP_DA_VPS:3000`.
-2. Faça login com o administrador.
+2. Faca login com o administrador.
 3. Crie ou abra um projeto.
 4. Clique em `Enviar PDF`.
 5. Envie um arquivo PDF.
 6. Clique em `Iniciar processamento`.
 7. Confira a tela de processamento e os logs.
+8. Quando o status estiver `text_extracted`, clique em `Gerar estrutura com IA`.
+9. Revise a analise do documento e a estrutura do curso em `Revisar estrutura`.
 
-O texto extraído será salvo no storage local em uma estrutura como:
+O texto extraido sera salvo no storage local em uma estrutura como:
 
 ```text
 storage/organizations/{organization_id}/projects/{project_id}/extracted/extracted_text.txt
@@ -128,7 +142,7 @@ docker compose logs -f postgres
 
 ## Testar Backend
 
-Health check público:
+Health check publico:
 
 ```bash
 curl http://IP_DA_VPS:8000/health
@@ -188,6 +202,29 @@ curl http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/logs \
   -H "Authorization: Bearer TOKEN_AQUI"
 ```
 
+## Gerar Estrutura com IA
+
+Antes de gerar a estrutura, o projeto precisa ter um PDF ja processado com status `text_extracted`.
+
+```bash
+curl -X POST http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/generate-structure \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
+## Listar Conteudos Gerados
+
+```bash
+curl http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/contents \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
+Filtrar por tipo de conteudo:
+
+```bash
+curl "http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/contents?content_type=course_structure" \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
 ## Testar Projetos
 
 Criar projeto:
@@ -196,7 +233,7 @@ Criar projeto:
 curl -X POST http://IP_DA_VPS:8000/api/v1/projects \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer TOKEN_AQUI" \
-  -d '{"title":"Curso de Liderança Filosófica","product_type":"course"}'
+  -d '{"title":"Curso de Lideranca Filosofica","product_type":"course"}'
 ```
 
 Listar projetos:
@@ -206,18 +243,29 @@ curl http://IP_DA_VPS:8000/api/v1/projects \
   -H "Authorization: Bearer TOKEN_AQUI"
 ```
 
+## Fluxo de Atualizacao da Fase 7 na VPS
+
+```bash
+git pull
+nano .env
+docker compose up -d --build
+docker compose exec backend alembic upgrade head
+```
+
+No `.env`, configure `OPENAI_API_KEY` com a chave real. Depois, processe um PDF ate `text_extracted`, clique em `Gerar estrutura com IA` e revise a estrutura gerada.
+
 ## Parar Containers
 
 ```bash
 docker compose down
 ```
 
-Para remover também o volume do banco, use apenas quando tiver certeza:
+Para remover tambem o volume do banco, use apenas quando tiver certeza:
 
 ```bash
 docker compose down -v
 ```
 
-## Próximas Fases
+## Proximas Fases
 
-A próxima fase técnica deve implementar o AI Orchestrator V1, conforme `docs/10-roadmap.md`.
+A proxima fase tecnica deve expandir o nucleo de IA para roteiros completos, quizzes, materiais complementares e fluxos de producao educacional, conforme `docs/10-roadmap.md`.

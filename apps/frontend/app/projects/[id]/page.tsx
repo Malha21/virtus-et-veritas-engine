@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { apiFetch } from "@/lib/api";
+import type { GenerateStructureResponse } from "@/types/ai";
 import type { ProjectFile } from "@/types/file";
 import type { StartProcessingResponse } from "@/types/processing";
 import type { Project } from "@/types/project";
@@ -19,6 +20,7 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -29,7 +31,7 @@ export default function ProjectDetailPage() {
         setProject(projectData);
         setFiles(fileData);
       })
-      .catch(() => setError("Não foi possível carregar este projeto."))
+      .catch(() => setError("Nao foi possivel carregar este projeto."))
       .finally(() => setLoading(false));
   }, [params.id]);
 
@@ -42,9 +44,24 @@ export default function ProjectDetailPage() {
       });
       router.push(`/projects/${projectId}/processing`);
     } catch {
-      setError("Não foi possível iniciar o processamento.");
+      setError("Nao foi possivel iniciar o processamento.");
     } finally {
       setProcessing(false);
+    }
+  }
+
+  async function generateStructure(projectId: string) {
+    setGenerating(true);
+    setError("");
+    try {
+      await apiFetch<GenerateStructureResponse>(`/projects/${projectId}/generate-structure`, {
+        method: "POST",
+      });
+      router.push(`/projects/${projectId}/review`);
+    } catch {
+      setError("Nao foi possivel gerar a estrutura com IA.");
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -74,16 +91,16 @@ export default function ProjectDetailPage() {
             </div>
 
             <div className="mt-8 grid gap-5 md:grid-cols-2">
-              <Info label="Público-alvo" value={project.target_audience} />
+              <Info label="Publico-alvo" value={project.target_audience} />
               <Info label="Tom de voz" value={project.tone_of_voice} />
-              <Info label="Duração desejada" value={project.desired_duration} />
+              <Info label="Duracao desejada" value={project.desired_duration} />
               <Info label="Atualizado em" value={new Date(project.updated_at).toLocaleDateString("pt-BR")} />
             </div>
 
             <div className="mt-6">
-              <p className="text-sm text-slate-400">Descrição</p>
+              <p className="text-sm text-slate-400">Descricao</p>
               <p className="mt-2 whitespace-pre-wrap text-slate-200">
-                {project.description || "Nenhuma descrição informada."}
+                {project.description || "Nenhuma descricao informada."}
               </p>
             </div>
 
@@ -104,7 +121,27 @@ export default function ProjectDetailPage() {
                 </Link>
               ) : null}
 
-              {files.length && project.processing_status !== "text_extracted" && project.processing_status !== "failed" ? (
+              {project.processing_status === "text_extracted" ? (
+                <button
+                  type="button"
+                  onClick={() => generateStructure(project.id)}
+                  disabled={generating}
+                  className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {generating ? "Gerando..." : "Gerar estrutura com IA"}
+                </button>
+              ) : null}
+
+              {project.processing_status === "ai_structure_generated" ? (
+                <Link
+                  href={`/projects/${project.id}/review`}
+                  className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
+                >
+                  Revisar estrutura
+                </Link>
+              ) : null}
+
+              {files.length && project.processing_status !== "text_extracted" && project.processing_status !== "failed" && project.processing_status !== "ai_structure_generated" ? (
                 <button
                   type="button"
                   onClick={() => startProcessing(project.id)}
@@ -126,7 +163,7 @@ function Info({ label, value }: { label: string; value?: string | null }) {
   return (
     <div className="rounded-md border border-white/10 bg-navy-950/60 p-4">
       <p className="text-sm text-slate-400">{label}</p>
-      <p className="mt-2 text-slate-100">{value || "Não informado"}</p>
+      <p className="mt-2 text-slate-100">{value || "Nao informado"}</p>
     </div>
   );
 }
