@@ -35,6 +35,29 @@ from app.services.project_service import get_project_by_id
 EXCERPT_CHARS = 20000
 
 
+def get_content_metadata_number(content: GeneratedContent, field: str) -> int:
+    def to_int(value: Any) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    content_json = content.content_json or {}
+    metadata = content_json.get("metadata", {})
+    if isinstance(metadata, dict) and metadata.get(field) is not None:
+        return to_int(metadata.get(field))
+
+    content_key = {
+        "module_quiz": "module_quiz",
+        "lesson_script": "lesson_script",
+    }.get(content.content_type)
+    nested = content_json.get(content_key, {}) if content_key else {}
+    if isinstance(nested, dict) and nested.get(field) is not None:
+        return to_int(nested.get(field))
+
+    return 0
+
+
 def get_latest_content(
     db: Session,
     project: Project,
@@ -70,14 +93,19 @@ def save_versioned_content(
     content_type: str,
     title: str,
     content_json: dict[str, Any],
+    generation_language: str = "pt-BR",
 ) -> GeneratedContent:
+    content_json = {
+        **content_json,
+        "generation_language": generation_language,
+    }
     content = GeneratedContent(
         project_id=project.id,
         organization_id=project.organization_id,
         content_type=content_type,
         title=title,
         version=get_next_content_version(db, project, content_type, title),
-        language="pt-BR",
+        language=generation_language,
         content_json=content_json,
         status="generated",
         created_by_ai_provider_id=provider_id,
@@ -97,6 +125,7 @@ def call_ai_json(
     prompt_version: str,
     system_prompt: str,
     user_prompt: str,
+    generation_language: str,
 ) -> dict[str, Any]:
     settings = get_settings()
     response = ai_provider.generate_text(
@@ -112,7 +141,7 @@ def call_ai_json(
         job_id=job.id,
         provider_id=provider_id,
         request_type=request_type,
-        prompt_version=prompt_version,
+        prompt_version=f"{prompt_version}:{generation_language}",
         response=response,
         model_name=settings.openai_default_model,
     )
@@ -121,7 +150,12 @@ def call_ai_json(
     return parse_json_content(response.content)
 
 
-def generate_educational_content(db: Session, current_user: User, project_id: UUID) -> dict[str, Any]:
+def generate_educational_content(
+    db: Session,
+    current_user: User,
+    project_id: UUID,
+    generation_language: str = "pt-BR",
+) -> dict[str, Any]:
     project = get_project_by_id(db, current_user.organization_id, project_id)
     analysis_content = get_latest_content(db, project, "document_analysis")
     structure_content = get_latest_content(db, project, "course_structure")
@@ -174,7 +208,12 @@ def generate_educational_content(db: Session, current_user: User, project_id: UU
         )
         db.flush()
 
-        system_prompt, user_prompt = build_course_summary_prompt(project, document_analysis, course_structure)
+        system_prompt, user_prompt = build_course_summary_prompt(
+            project,
+            document_analysis,
+            course_structure,
+            generation_language,
+        )
         summary_json = call_ai_json(
             db,
             ai_provider,
@@ -185,6 +224,7 @@ def generate_educational_content(db: Session, current_user: User, project_id: UU
             COURSE_SUMMARY_PROMPT_VERSION,
             system_prompt,
             user_prompt,
+            generation_language,
         )
         save_versioned_content(
             db,
@@ -193,11 +233,18 @@ def generate_educational_content(db: Session, current_user: User, project_id: UU
             "course_summary",
             summary_json.get("course_summary", {}).get("title") or "Resumo executivo do curso",
             summary_json,
+            generation_language,
         )
         counts["course_summaries"] += 1
 
         for module in modules:
-            system_prompt, user_prompt = build_module_quiz_prompt(project, document_analysis, course_structure, module)
+            system_prompt, user_prompt = build_module_quiz_prompt(
+                project,
+                document_analysis,
+                course_structure,
+                module,
+                generation_language,
+            )
             quiz_json = call_ai_json(
                 db,
                 ai_provider,
@@ -208,15 +255,26 @@ def generate_educational_content(db: Session, current_user: User, project_id: UU
                 MODULE_QUIZ_PROMPT_VERSION,
                 system_prompt,
                 user_prompt,
+                generation_language,
             )
             module_quiz = quiz_json.get("module_quiz", {})
+            module_number = module_quiz.get("module_number") or module.get("module_number")
+            module_title = module_quiz.get("module_title") or module.get("title")
+            module_quiz["module_number"] = module_number
+            module_quiz["module_title"] = module_title
+            quiz_json["module_quiz"] = module_quiz
+            quiz_json["metadata"] = {
+                "module_number": module_number,
+                "module_title": module_title,
+            }
             save_versioned_content(
                 db,
                 project,
                 provider_record.id,
                 "module_quiz",
-                f"Quiz - Modulo {module_quiz.get('module_number') or module.get('module_number')}",
+                f"Quiz - Modulo {module_number}",
                 quiz_json,
+                generation_language,
             )
             counts["module_quizzes"] += 1
 
@@ -228,6 +286,7 @@ def generate_educational_content(db: Session, current_user: User, project_id: UU
                     module,
                     lesson,
                     extracted_excerpt,
+                    generation_language,
                 )
                 script_json = call_ai_json(
                     db,
@@ -239,19 +298,41 @@ def generate_educational_content(db: Session, current_user: User, project_id: UU
                     LESSON_SCRIPT_PROMPT_VERSION,
                     system_prompt,
                     user_prompt,
+                    generation_language,
                 )
                 script = script_json.get("lesson_script", {})
+                module_number = script.get("module_number") or module.get("module_number")
+                lesson_number = script.get("lesson_number") or lesson.get("lesson_number")
+                module_title = script.get("module_title") or module.get("title")
+                lesson_title = script.get("lesson_title") or lesson.get("title")
+                script["module_number"] = module_number
+                script["lesson_number"] = lesson_number
+                script["module_title"] = module_title
+                script["lesson_title"] = lesson_title
+                script_json["lesson_script"] = script
+                script_json["metadata"] = {
+                    "module_number": module_number,
+                    "lesson_number": lesson_number,
+                    "module_title": module_title,
+                    "lesson_title": lesson_title,
+                }
                 save_versioned_content(
                     db,
                     project,
                     provider_record.id,
                     "lesson_script",
-                    script.get("lesson_title") or lesson.get("title") or "Roteiro de aula",
+                    lesson_title or "Roteiro de aula",
                     script_json,
+                    generation_language,
                 )
                 counts["lesson_scripts"] += 1
 
-        system_prompt, user_prompt = build_complementary_material_prompt(project, document_analysis, course_structure)
+        system_prompt, user_prompt = build_complementary_material_prompt(
+            project,
+            document_analysis,
+            course_structure,
+            generation_language,
+        )
         material_json = call_ai_json(
             db,
             ai_provider,
@@ -262,6 +343,7 @@ def generate_educational_content(db: Session, current_user: User, project_id: UU
             COMPLEMENTARY_MATERIAL_PROMPT_VERSION,
             system_prompt,
             user_prompt,
+            generation_language,
         )
         material = material_json.get("complementary_material", {})
         save_versioned_content(
@@ -271,6 +353,7 @@ def generate_educational_content(db: Session, current_user: User, project_id: UU
             "complementary_material",
             material.get("material_title") or "Material complementar",
             material_json,
+            generation_language,
         )
         counts["complementary_materials"] += 1
 
@@ -342,5 +425,21 @@ def list_educational_content(db: Session, current_user: User, project_id: UUID) 
     }
     for content in contents:
         grouped[type_map[content.content_type]].append(content)
+
+    grouped["lesson_scripts"].sort(
+        key=lambda item: (
+            get_content_metadata_number(item, "module_number"),
+            get_content_metadata_number(item, "lesson_number"),
+            item.created_at,
+        )
+    )
+    grouped["module_quizzes"].sort(
+        key=lambda item: (
+            get_content_metadata_number(item, "module_number"),
+            item.created_at,
+        )
+    )
+    grouped["complementary_materials"].sort(key=lambda item: item.created_at)
+    grouped["course_summaries"].sort(key=lambda item: (item.version, item.created_at))
 
     return grouped

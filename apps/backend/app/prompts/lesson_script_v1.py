@@ -16,6 +16,23 @@ Se o tema for filosofico ou humano, conecte conhecimento, vida pratica e transfo
 """
 
 
+def build_language_instruction(generation_language: str) -> str:
+    if generation_language == "en-US":
+        return """
+Language rule:
+- Respond 100% in English.
+- Do not write Portuguese in titles, questions, options, explanations, materials, calls to action or texts.
+- Even if the original document is in Portuguese, translate and adapt the output to English.
+"""
+    return """
+Regra de idioma:
+- Responda 100% em portugues do Brasil.
+- Nao use ingles nos titulos, perguntas, alternativas, explicacoes, materiais, chamadas ou textos.
+- Mesmo que o documento original esteja em ingles, traduza e adapte a saida para portugues do Brasil.
+- Mantenha termos tecnicos em ingles apenas quando forem nomes proprios, siglas ou expressoes consagradas, explicando em portugues quando necessario.
+"""
+
+
 def build_lesson_script_prompt(
     project: Project,
     document_analysis: dict[str, Any],
@@ -23,8 +40,12 @@ def build_lesson_script_prompt(
     module: dict[str, Any],
     lesson: dict[str, Any],
     extracted_text_excerpt: str,
+    generation_language: str = "pt-BR",
 ) -> tuple[str, str]:
+    language_instruction = build_language_instruction(generation_language)
     user_prompt = f"""
+{language_instruction}
+
 Gere um roteiro completo para a aula indicada.
 
 Projeto:
@@ -74,4 +95,4 @@ Retorne somente JSON valido exatamente neste formato:
 Trecho do texto extraido:
 {extracted_text_excerpt}
 """
-    return SYSTEM_PROMPT.strip(), user_prompt.strip()
+    return f"{SYSTEM_PROMPT.strip()}\n\n{language_instruction.strip()}", user_prompt.strip()

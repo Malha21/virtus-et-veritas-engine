@@ -1,10 +1,13 @@
 import { getToken } from "./auth";
+import type { GenerateStructureResponse } from "@/types/ai";
 import type { GenerateEducationalContentResponse } from "@/types/educational-content";
+
+export type GenerationLanguage = "pt-BR" | "en-US";
 
 type ApiEnvelope<T> = {
   success: boolean;
   data?: T;
-  detail?: string;
+  detail?: string | Array<{ msg?: string }>;
   error?: {
     code?: string;
     message?: string;
@@ -22,6 +25,28 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
   }
+}
+
+function getApiErrorMessage<T>(payload: ApiEnvelope<T> | null): string {
+  if (payload?.error?.message) {
+    return payload.error.message;
+  }
+
+  if (typeof payload?.detail === "string") {
+    return payload.detail;
+  }
+
+  if (Array.isArray(payload?.detail)) {
+    const validationMessage = payload.detail.find((item) => item.msg)?.msg;
+    if (validationMessage?.includes("Idioma de geração inválido")) {
+      return "Idioma de geração inválido.";
+    }
+    if (validationMessage) {
+      return validationMessage;
+    }
+  }
+
+  return "Nao foi possivel concluir a solicitacao.";
 }
 
 export async function apiFetch<T>(
@@ -49,14 +74,33 @@ export async function apiFetch<T>(
   const payload = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
 
   if (!response.ok || payload?.success === false) {
-    const message = payload?.error?.message || payload?.detail || "Nao foi possivel concluir a solicitacao.";
+    const message = getApiErrorMessage(payload);
     throw new ApiError(message, response.status);
   }
 
   return payload?.data as T;
 }
 
-export async function generateEducationalContent(projectId: string): Promise<GenerateEducationalContentResponse> {
+export async function generateStructure(
+  projectId: string,
+  generationLanguage: GenerationLanguage = "pt-BR",
+): Promise<GenerateStructureResponse> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<GenerateStructureResponse>(`/projects/${projectId}/generate-structure`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ generation_language: generationLanguage }),
+  });
+}
+
+export async function generateEducationalContent(
+  projectId: string,
+  generationLanguage: GenerationLanguage = "pt-BR",
+): Promise<GenerateEducationalContentResponse> {
   const token = getToken();
   if (!token) {
     throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
@@ -65,5 +109,6 @@ export async function generateEducationalContent(projectId: string): Promise<Gen
   return apiFetch<GenerateEducationalContentResponse>(`/projects/${projectId}/generate-educational-content`, {
     method: "POST",
     token,
+    body: JSON.stringify({ generation_language: generationLanguage }),
   });
 }

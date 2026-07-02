@@ -8,7 +8,11 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.content import GeneratedContentResponse
-from app.schemas.educational_content import EducationalContentSummaryResponse, GenerateEducationalContentResponse
+from app.schemas.educational_content import (
+    EducationalContentSummaryResponse,
+    GenerateEducationalContentRequest,
+    GenerateEducationalContentResponse,
+)
 from app.services.educational_content_service import generate_educational_content, list_educational_content
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["educational-content"])
@@ -19,8 +23,10 @@ def generate_project_educational_content(
     project_id: UUID,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
+    payload: GenerateEducationalContentRequest | None = None,
 ) -> dict[str, object]:
-    result = generate_educational_content(db, current_user, project_id)
+    generation_language = payload.generation_language if payload else "pt-BR"
+    result = generate_educational_content(db, current_user, project_id, generation_language)
     data = GenerateEducationalContentResponse(**result)
     return {"success": True, "data": data.model_dump(mode="json")}
 

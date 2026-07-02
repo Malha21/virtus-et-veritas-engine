@@ -18,6 +18,52 @@ import type {
 
 type Tab = "summary" | "scripts" | "quizzes" | "materials";
 
+function getGenerationLanguage(content?: GeneratedContent): string | undefined {
+  return content?.language || (content?.content_json?.generation_language as string | undefined);
+}
+
+function getLanguageLabel(language?: string): string {
+  if (language === "en-US") return "English";
+  if (language === "pt-BR") return "Português do Brasil";
+  return "Idioma não informado";
+}
+
+function getContentNumber(content: GeneratedContent, section: string, field: string): number {
+  const contentJson = content.content_json || {};
+  const metadata = contentJson.metadata as Record<string, unknown> | undefined;
+  const nested = contentJson[section] as Record<string, unknown> | undefined;
+  const value = metadata?.[field] ?? nested?.[field] ?? 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortLessonScripts(contents: GeneratedContent[]): GeneratedContent[] {
+  return [...contents].sort(
+    (a, b) =>
+      getContentNumber(a, "lesson_script", "module_number") - getContentNumber(b, "lesson_script", "module_number") ||
+      getContentNumber(a, "lesson_script", "lesson_number") - getContentNumber(b, "lesson_script", "lesson_number") ||
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+}
+
+function sortModuleQuizzes(contents: GeneratedContent[]): GeneratedContent[] {
+  return [...contents].sort(
+    (a, b) =>
+      getContentNumber(a, "module_quiz", "module_number") - getContentNumber(b, "module_quiz", "module_number") ||
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+}
+
+function sortByCreatedAt(contents: GeneratedContent[]): GeneratedContent[] {
+  return [...contents].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+}
+
+function sortSummaries(contents: GeneratedContent[]): GeneratedContent[] {
+  return [...contents].sort(
+    (a, b) => a.version - b.version || new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+}
+
 export default function EducationalContentPage() {
   const params = useParams<{ id: string }>();
   const [data, setData] = useState<EducationalContentSummaryResponse | null>(null);
@@ -27,7 +73,14 @@ export default function EducationalContentPage() {
 
   useEffect(() => {
     apiFetch<EducationalContentSummaryResponse>(`/projects/${params.id}/educational-content`)
-      .then(setData)
+      .then((payload) =>
+        setData({
+          lesson_scripts: sortLessonScripts(payload.lesson_scripts),
+          module_quizzes: sortModuleQuizzes(payload.module_quizzes),
+          complementary_materials: sortByCreatedAt(payload.complementary_materials),
+          course_summaries: sortSummaries(payload.course_summaries),
+        }),
+      )
       .catch(() => setError("Nao foi possivel carregar os conteudos educacionais."))
       .finally(() => setLoading(false));
   }, [params.id]);
@@ -105,7 +158,8 @@ function TabButton({ active, children, onClick }: { active: boolean; children: R
 }
 
 function SummaryView({ contents }: { contents: GeneratedContent[] }) {
-  const summary = contents[0]?.content_json as CourseSummaryContent | undefined;
+  const content = sortSummaries(contents)[0];
+  const summary = content?.content_json as CourseSummaryContent | undefined;
   const item = summary?.course_summary;
 
   if (!item) {
@@ -116,6 +170,7 @@ function SummaryView({ contents }: { contents: GeneratedContent[] }) {
     <div className="grid gap-5">
       <div>
         <p className="text-sm text-gold-400">Resumo executivo</p>
+        <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
         <h2 className="mt-2 text-2xl font-semibold text-slate-50">{item.title}</h2>
         <p className="mt-3 text-lg text-slate-200">{item.promise}</p>
         <p className="mt-3 leading-7 text-slate-400">{item.long_description || item.short_description}</p>
@@ -138,19 +193,36 @@ function ScriptsView({ contents }: { contents: GeneratedContent[] }) {
     return <EmptyState text="Roteiros de aula ainda nao encontrados." />;
   }
 
+  const grouped = sortLessonScripts(contents).reduce<Record<string, GeneratedContent[]>>((acc, content) => {
+    const moduleNumber = getContentNumber(content, "lesson_script", "module_number");
+    const key = String(moduleNumber || "sem-modulo");
+    acc[key] = acc[key] || [];
+    acc[key].push(content);
+    return acc;
+  }, {});
+
   return (
     <div className="grid gap-5">
-      {contents.map((content) => {
-        const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
-        if (!script) return null;
-
+      {Object.entries(grouped).map(([moduleKey, moduleContents]) => {
+        const firstScript = (moduleContents[0]?.content_json as LessonScriptContent | null)?.lesson_script;
         return (
-          <article key={content.id} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+          <section key={moduleKey} className="grid gap-4">
+            <div>
+              <p className="text-xs font-medium text-gold-400">Modulo {firstScript?.module_number || moduleKey}</p>
+              <h3 className="mt-1 text-xl font-semibold text-slate-50">{firstScript?.module_title || "Modulo"}</h3>
+            </div>
+            {moduleContents.map((content) => {
+              const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
+              if (!script) return null;
+
+              return (
+                <article key={content.id} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-medium text-gold-400">
                   Modulo {script.module_number} - Aula {script.lesson_number}
                 </p>
+                <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
                 <h3 className="mt-2 text-xl font-semibold text-slate-50">{script.lesson_title}</h3>
               </div>
               <span className="text-xs text-gold-400">{script.estimated_duration_minutes || 10} min</span>
@@ -170,7 +242,10 @@ function ScriptsView({ contents }: { contents: GeneratedContent[] }) {
             <InfoBlock label="Exemplo pratico" value={script.practical_example} />
             <InfoBlock label="Pergunta reflexiva" value={script.reflection_question} />
             <InfoBlock label="Fechamento" value={script.closing} />
-          </article>
+                </article>
+              );
+            })}
+          </section>
         );
       })}
     </div>
@@ -184,13 +259,14 @@ function QuizzesView({ contents }: { contents: GeneratedContent[] }) {
 
   return (
     <div className="grid gap-5">
-      {contents.map((content) => {
+      {sortModuleQuizzes(contents).map((content) => {
         const quiz = (content.content_json as ModuleQuizContent | null)?.module_quiz;
         if (!quiz) return null;
 
         return (
           <article key={content.id} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
             <p className="text-xs font-medium text-gold-400">Modulo {quiz.module_number}</p>
+            <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
             <h3 className="mt-2 text-xl font-semibold text-slate-50">{quiz.module_title}</h3>
             <div className="mt-5 grid gap-4">
               {(quiz.questions || []).map((question) => (
@@ -224,13 +300,14 @@ function MaterialsView({ contents }: { contents: GeneratedContent[] }) {
 
   return (
     <div className="grid gap-5">
-      {contents.map((content) => {
+      {sortByCreatedAt(contents).map((content) => {
         const material = (content.content_json as ComplementaryMaterialContent | null)?.complementary_material;
         if (!material) return null;
 
         return (
           <article key={content.id} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
             <p className="text-xs font-medium text-gold-400">{material.material_type}</p>
+            <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
             <h3 className="mt-2 text-xl font-semibold text-slate-50">{material.material_title}</h3>
             <p className="mt-3 leading-7 text-slate-400">{material.overview}</p>
             <div className="mt-5 grid gap-5 md:grid-cols-2">

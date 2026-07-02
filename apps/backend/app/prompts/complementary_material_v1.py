@@ -13,12 +13,33 @@ Nao crie bibliografia falsa nem cite fontes externas inexistentes.
 """
 
 
+def build_language_instruction(generation_language: str) -> str:
+    if generation_language == "en-US":
+        return """
+Language rule:
+- Respond 100% in English.
+- Do not write Portuguese in titles, questions, options, explanations, materials, calls to action or texts.
+- Even if the original document is in Portuguese, translate and adapt the output to English.
+"""
+    return """
+Regra de idioma:
+- Responda 100% em portugues do Brasil.
+- Nao use ingles nos titulos, perguntas, alternativas, explicacoes, materiais, chamadas ou textos.
+- Mesmo que o documento original esteja em ingles, traduza e adapte a saida para portugues do Brasil.
+- Mantenha termos tecnicos em ingles apenas quando forem nomes proprios, siglas ou expressoes consagradas, explicando em portugues quando necessario.
+"""
+
+
 def build_complementary_material_prompt(
     project: Project,
     document_analysis: dict[str, Any],
     course_structure: dict[str, Any],
+    generation_language: str = "pt-BR",
 ) -> tuple[str, str]:
+    language_instruction = build_language_instruction(generation_language)
     user_prompt = f"""
+{language_instruction}
+
 Gere um material complementar para o curso inteiro.
 
 Projeto:
@@ -51,4 +72,4 @@ Retorne somente JSON valido exatamente neste formato:
   }}
 }}
 """
-    return SYSTEM_PROMPT.strip(), user_prompt.strip()
+    return f"{SYSTEM_PROMPT.strip()}\n\n{language_instruction.strip()}", user_prompt.strip()

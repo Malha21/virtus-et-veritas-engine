@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ApiError, apiFetch, generateEducationalContent as generateEducationalContentRequest } from "@/lib/api";
+import type { GenerationLanguage } from "@/lib/api";
 import type {
   CourseStructureContent,
   DocumentAnalysisContent,
@@ -23,6 +24,7 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [generatingEducationalContent, setGeneratingEducationalContent] = useState(false);
+  const [generationLanguage, setGenerationLanguage] = useState<GenerationLanguage>("pt-BR");
 
   useEffect(() => {
     apiFetch<GeneratedContentListResponse>(`/projects/${params.id}/contents`)
@@ -44,7 +46,7 @@ export default function ReviewPage() {
     setGeneratingEducationalContent(true);
     setError("");
     try {
-      await generateEducationalContentRequest(params.id);
+      await generateEducationalContentRequest(params.id, generationLanguage);
       router.push(`/projects/${params.id}/educational-content`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -67,14 +69,27 @@ export default function ReviewPage() {
             Voltar ao projeto
           </Link>
           {courseStructure ? (
-            <button
-              type="button"
-              onClick={generateEducationalContent}
-              disabled={generatingEducationalContent}
-              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {generatingEducationalContent ? "Gerando roteiros, quizzes e materiais..." : "Gerar conteudos educacionais"}
-            </button>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="grid gap-2 text-sm text-slate-300">
+                Idioma dos conteúdos
+                <select
+                  value={generationLanguage}
+                  onChange={(event) => setGenerationLanguage(event.target.value as GenerationLanguage)}
+                  className="rounded-md border border-white/10 bg-navy-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                >
+                  <option value="pt-BR">Português do Brasil</option>
+                  <option value="en-US">English</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={generateEducationalContent}
+                disabled={generatingEducationalContent}
+                className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {generatingEducationalContent ? "Gerando roteiros, quizzes e materiais..." : "Gerar conteúdos educacionais"}
+              </button>
+            </div>
           ) : null}
         </div>
 

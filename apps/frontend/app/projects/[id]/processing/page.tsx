@@ -6,8 +6,8 @@ import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { apiFetch } from "@/lib/api";
-import type { GenerateStructureResponse } from "@/types/ai";
+import { ApiError, apiFetch, generateStructure as generateStructureRequest } from "@/lib/api";
+import type { GenerationLanguage } from "@/lib/api";
 import type { ProcessingLog, ProcessingStatus } from "@/types/processing";
 
 const steps = ["Recebendo arquivo", "Extraindo texto", "Texto extraido", "Estrutura com IA"];
@@ -20,6 +20,7 @@ export default function ProcessingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [generationLanguage, setGenerationLanguage] = useState<GenerationLanguage>("pt-BR");
 
   useEffect(() => {
     Promise.all([
@@ -38,12 +39,16 @@ export default function ProcessingPage() {
     setGenerating(true);
     setError("");
     try {
-      await apiFetch<GenerateStructureResponse>(`/projects/${params.id}/generate-structure`, {
-        method: "POST",
-      });
+      await generateStructureRequest(params.id, generationLanguage);
       router.push(`/projects/${params.id}/review`);
-    } catch {
-      setError("Nao foi possivel gerar a estrutura com IA.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Nao foi possivel gerar a estrutura com IA.");
+      }
     } finally {
       setGenerating(false);
     }
@@ -125,14 +130,27 @@ export default function ProcessingPage() {
                   Revisar estrutura
                 </Link>
               ) : (
-                <button
-                  type="button"
-                  onClick={generateStructure}
-                  disabled={status.processing_status !== "text_extracted" || generating}
-                  className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {generating ? "Gerando estrutura..." : "Gerar estrutura com IA"}
-                </button>
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    Idioma da estrutura
+                    <select
+                      value={generationLanguage}
+                      onChange={(event) => setGenerationLanguage(event.target.value as GenerationLanguage)}
+                      className="rounded-md border border-white/10 bg-navy-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                    >
+                      <option value="pt-BR">Português do Brasil</option>
+                      <option value="en-US">English</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={generateStructure}
+                    disabled={status.processing_status !== "text_extracted" || generating}
+                    className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {generating ? "Gerando estrutura..." : "Gerar estrutura com IA"}
+                  </button>
+                </div>
               )}
             </div>
           </div>

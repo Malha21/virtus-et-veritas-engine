@@ -115,6 +115,7 @@ def register_ai_request(
     prompt_version: str,
     response: AIProviderResponse,
     model_name: str,
+    generation_language: str | None = None,
 ) -> AIRequest:
     usage = response.usage or {}
     ai_request = AIRequest(
@@ -123,7 +124,7 @@ def register_ai_request(
         provider_id=provider_id,
         request_type=request_type,
         model_name=model_name,
-        prompt_version=prompt_version,
+        prompt_version=f"{prompt_version}:{generation_language}" if generation_language else prompt_version,
         input_tokens=usage.get("input_tokens"),
         output_tokens=usage.get("output_tokens"),
         status="success" if response.success else "failed",
@@ -141,14 +142,19 @@ def save_generated_content(
     content_type: str,
     title: str,
     content_json: dict[str, Any],
+    generation_language: str = "pt-BR",
 ) -> GeneratedContent:
+    content_json = {
+        **content_json,
+        "generation_language": generation_language,
+    }
     content = GeneratedContent(
         project_id=project.id,
         organization_id=project.organization_id,
         content_type=content_type,
         title=title,
         version=1,
-        language="pt-BR",
+        language=generation_language,
         content_json=content_json,
         status="generated",
         created_by_ai_provider_id=provider_id,
@@ -158,7 +164,12 @@ def save_generated_content(
     return content
 
 
-def generate_project_structure(db: Session, current_user: User, project_id: UUID) -> dict[str, Any]:
+def generate_project_structure(
+    db: Session,
+    current_user: User,
+    project_id: UUID,
+    generation_language: str = "pt-BR",
+) -> dict[str, Any]:
     settings = get_settings()
     project = get_project_by_id(db, current_user.organization_id, project_id)
     project_file = get_latest_extracted_text_file(db, project)
@@ -193,7 +204,7 @@ def generate_project_structure(db: Session, current_user: User, project_id: UUID
         )
         db.flush()
 
-        system_prompt, user_prompt = build_document_analysis_prompt(project, extracted_text)
+        system_prompt, user_prompt = build_document_analysis_prompt(project, extracted_text, generation_language)
         analysis_response = ai_provider.generate_text(
             AIProviderRequest(
                 system_prompt=system_prompt,
@@ -210,6 +221,7 @@ def generate_project_structure(db: Session, current_user: User, project_id: UUID
             prompt_version=DOCUMENT_ANALYSIS_PROMPT_VERSION,
             response=analysis_response,
             model_name=settings.openai_default_model,
+            generation_language=generation_language,
         )
         if not analysis_response.success:
             raise RuntimeError(analysis_response.error or "Falha ao analisar documento com IA.")
@@ -222,9 +234,15 @@ def generate_project_structure(db: Session, current_user: User, project_id: UUID
             content_type="document_analysis",
             title="Analise do documento",
             content_json=document_analysis,
+            generation_language=generation_language,
         )
 
-        system_prompt, user_prompt = build_course_structure_prompt(project, document_analysis, extracted_text)
+        system_prompt, user_prompt = build_course_structure_prompt(
+            project,
+            document_analysis,
+            extracted_text,
+            generation_language,
+        )
         structure_response = ai_provider.generate_text(
             AIProviderRequest(
                 system_prompt=system_prompt,
@@ -241,6 +259,7 @@ def generate_project_structure(db: Session, current_user: User, project_id: UUID
             prompt_version=COURSE_STRUCTURE_PROMPT_VERSION,
             response=structure_response,
             model_name=settings.openai_default_model,
+            generation_language=generation_language,
         )
         if not structure_response.success:
             raise RuntimeError(structure_response.error or "Falha ao gerar estrutura do curso com IA.")
@@ -253,6 +272,7 @@ def generate_project_structure(db: Session, current_user: User, project_id: UUID
             content_type="course_structure",
             title=course_structure.get("course", {}).get("title") or "Estrutura inicial do curso",
             content_json=course_structure,
+            generation_language=generation_language,
         )
 
         project.processing_status = "ai_structure_generated"

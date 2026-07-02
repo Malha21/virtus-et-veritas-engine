@@ -6,9 +6,12 @@ import { useParams, useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { apiFetch } from "@/lib/api";
-import type { GenerateStructureResponse } from "@/types/ai";
-import type { GenerateEducationalContentResponse } from "@/types/educational-content";
+import {
+  ApiError,
+  apiFetch,
+  generateEducationalContent as generateEducationalContentRequest,
+  generateStructure as generateStructureRequest,
+} from "@/lib/api";
 import type { ProjectFile } from "@/types/file";
 import type { StartProcessingResponse } from "@/types/processing";
 import type { Project } from "@/types/project";
@@ -56,12 +59,16 @@ export default function ProjectDetailPage() {
     setGenerating(true);
     setError("");
     try {
-      await apiFetch<GenerateStructureResponse>(`/projects/${projectId}/generate-structure`, {
-        method: "POST",
-      });
+      await generateStructureRequest(projectId);
       router.push(`/projects/${projectId}/review`);
-    } catch {
-      setError("Nao foi possivel gerar a estrutura com IA.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Nao foi possivel gerar a estrutura com IA.");
+      }
     } finally {
       setGenerating(false);
     }
@@ -71,12 +78,16 @@ export default function ProjectDetailPage() {
     setGeneratingEducationalContent(true);
     setError("");
     try {
-      await apiFetch<GenerateEducationalContentResponse>(`/projects/${projectId}/generate-educational-content`, {
-        method: "POST",
-      });
+      await generateEducationalContentRequest(projectId);
       router.push(`/projects/${projectId}/educational-content`);
-    } catch {
-      setError("Nao foi possivel gerar os conteudos educacionais.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Nao foi possivel gerar os conteudos educacionais.");
+      }
     } finally {
       setGeneratingEducationalContent(false);
     }
