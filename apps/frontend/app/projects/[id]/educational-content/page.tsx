@@ -446,6 +446,11 @@ function PresentationView({
   const slides = Array.isArray(deck.slides) ? deck.slides : [];
 
   function startEditing() {
+    if (!deck) {
+      setSaveError("Apresentacao ainda nao encontrada para edicao.");
+      return;
+    }
+
     setDraft(deckToDraft(deck));
     setSaveError("");
     setIsEditing(true);
