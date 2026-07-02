@@ -29,6 +29,9 @@ class Settings(BaseSettings):
         alias="SEED_ADMIN_PASSWORD",
     )
     openai_provider_name: str = Field(default="OpenAI", alias="OPENAI_PROVIDER_NAME")
+    storage_driver: str = Field(default="local", alias="STORAGE_DRIVER")
+    storage_path: str = Field(default="/app/storage", alias="STORAGE_PATH")
+    max_upload_size_mb: int = Field(default=100, alias="MAX_UPLOAD_SIZE_MB")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

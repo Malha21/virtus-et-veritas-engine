@@ -61,13 +61,12 @@ export default function ProjectDetailPage() {
               </p>
             </div>
 
-            <button
-              type="button"
-              disabled
-              className="mt-8 rounded-md border border-white/10 px-4 py-2 text-sm text-slate-500"
+            <Link
+              href={`/projects/${project.id}/upload`}
+              className="mt-8 inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
             >
-              Enviar PDF — disponível na próxima fase
-            </button>
+              Enviar PDF
+            </Link>
           </section>
         ) : null}
       </div>

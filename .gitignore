@@ -30,3 +30,6 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+
+# Local uploaded files
+storage/

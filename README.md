@@ -6,24 +6,23 @@ O primeiro uso será interno na Virtus et Veritas Academy, com foco em transform
 
 ## Status
 
-Fase 4: dashboard e projetos.
+Fase 5: upload de PDF e storage local.
 
 Esta fase entrega:
 
 - frontend Next.js inicial;
 - login no frontend;
-- persistência de token JWT em `localStorage`;
-- consulta `/api/v1/auth/me`;
-- layout autenticado;
-- dashboard;
-- lista de projetos;
-- criação de projeto;
-- detalhe de projeto;
+- dashboard e projetos;
+- detalhe do projeto;
+- upload de PDF vinculado ao projeto;
+- listagem de arquivos enviados;
 - backend FastAPI com CRUD inicial de projetos;
+- tabela `project_files`;
+- storage local persistido via volume Docker;
 - PostgreSQL via Docker Compose;
 - migrations Alembic.
 
-Ainda não há upload de PDF, processamento, IA, Redis, MinIO, worker, exportação, Nginx ou SSL.
+Ainda não há extração de texto, processamento, IA, Redis, MinIO, worker, exportação, Nginx ou SSL.
 
 ## Estrutura
 
@@ -33,6 +32,7 @@ infra/
 apps/
   frontend/
   backend/
+storage/
 docker-compose.yml
 .env.example
 ```
@@ -64,7 +64,9 @@ Edite o `.env` antes de usar em VPS:
 - troque `SEED_ADMIN_EMAIL`;
 - troque `SEED_ADMIN_PASSWORD`;
 - ajuste `NEXT_PUBLIC_API_URL` para o IP ou domínio da VPS;
-- ajuste `CORS_ORIGINS` para o IP ou domínio do frontend.
+- ajuste `CORS_ORIGINS` para o IP ou domínio do frontend;
+- mantenha `STORAGE_DRIVER=local`;
+- mantenha `STORAGE_PATH=/app/storage`.
 
 ## Subir na VPS com Docker Compose
 
@@ -94,11 +96,14 @@ docker compose exec backend alembic upgrade head
 docker compose exec backend python -m app.scripts.seed
 ```
 
-O seed cria, de forma idempotente:
+## Testar Pelo Frontend
 
-- organização `Virtus et Veritas Academy`;
-- usuário administrador;
-- provedor `OpenAI`.
+1. Acesse `http://IP_DA_VPS:3000`.
+2. Faça login com o administrador.
+3. Crie ou abra um projeto.
+4. Clique em `Enviar PDF`.
+5. Envie um arquivo PDF.
+6. Confira a listagem de arquivos enviados.
 
 ## Verificar Containers
 
@@ -113,22 +118,6 @@ docker compose logs -f backend
 docker compose logs -f frontend
 docker compose logs -f postgres
 ```
-
-## Acessar Frontend
-
-Com os valores padrão:
-
-```text
-http://IP_DA_VPS:3000
-```
-
-Depois de acessar:
-
-1. entre com o usuário administrador definido no `.env`;
-2. abra o dashboard;
-3. crie um projeto;
-4. confira a lista de projetos;
-5. abra o detalhe do projeto.
 
 ## Testar Backend
 
@@ -146,8 +135,6 @@ curl http://IP_DA_VPS:8000/api/v1/health
 
 ## Testar Login
 
-Use o e-mail e a senha definidos em `.env`:
-
 ```bash
 curl -X POST http://IP_DA_VPS:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
@@ -156,12 +143,20 @@ curl -X POST http://IP_DA_VPS:8000/api/v1/auth/login \
 
 A resposta retorna um `access_token`.
 
-## Testar Usuário Atual
+## Testar Upload de PDF
 
-Substitua `TOKEN_AQUI` pelo token retornado no login:
+Substitua `TOKEN_AQUI`, `PROJECT_ID` e o caminho do arquivo:
 
 ```bash
-curl http://IP_DA_VPS:8000/api/v1/auth/me \
+curl -X POST http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/files \
+  -H "Authorization: Bearer TOKEN_AQUI" \
+  -F "file=@/caminho/para/arquivo.pdf;type=application/pdf"
+```
+
+## Listar Arquivos do Projeto
+
+```bash
+curl http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID/files \
   -H "Authorization: Bearer TOKEN_AQUI"
 ```
 
@@ -173,14 +168,7 @@ Criar projeto:
 curl -X POST http://IP_DA_VPS:8000/api/v1/projects \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer TOKEN_AQUI" \
-  -d '{
-    "title": "Curso de Liderança Filosófica",
-    "product_type": "course",
-    "target_audience": "Líderes e empreendedores",
-    "tone_of_voice": "inspirador e didático",
-    "desired_duration": "6 horas",
-    "description": "Curso sobre liderança baseada em virtudes."
-  }'
+  -d '{"title":"Curso de Liderança Filosófica","product_type":"course"}'
 ```
 
 Listar projetos:
@@ -189,37 +177,6 @@ Listar projetos:
 curl http://IP_DA_VPS:8000/api/v1/projects \
   -H "Authorization: Bearer TOKEN_AQUI"
 ```
-
-Buscar projeto:
-
-```bash
-curl http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID \
-  -H "Authorization: Bearer TOKEN_AQUI"
-```
-
-Atualizar projeto:
-
-```bash
-curl -X PATCH http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer TOKEN_AQUI" \
-  -d '{"title":"Novo título"}'
-```
-
-Arquivar projeto:
-
-```bash
-curl -X DELETE http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID \
-  -H "Authorization: Bearer TOKEN_AQUI"
-```
-
-## Logout
-
-```bash
-curl -X POST http://IP_DA_VPS:8000/api/v1/auth/logout
-```
-
-Na V1, o logout apenas retorna sucesso porque o token JWT é stateless.
 
 ## Parar Containers
 
@@ -235,4 +192,4 @@ docker compose down -v
 
 ## Próximas Fases
 
-A próxima fase técnica deve implementar upload de PDF e storage, conforme `docs/10-roadmap.md`.
+A próxima fase técnica deve implementar extração de texto e jobs, conforme `docs/10-roadmap.md`.
