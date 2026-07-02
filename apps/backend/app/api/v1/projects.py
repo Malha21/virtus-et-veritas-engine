@@ -98,4 +98,4 @@ def delete_project(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, object]:
     archive_project(db, current_user.organization_id, project_id)
-    return {"success": True, "data": {"message": "Projeto arquivado com sucesso"}}
+    return {"success": True, "data": {"message": "Projeto arquivado com sucesso."}}

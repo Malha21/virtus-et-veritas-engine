@@ -77,11 +77,10 @@ def list_projects(
         Project.organization_id == organization_id,
         Project.archived_at.is_(None),
         Project.deleted_at.is_(None),
+        Project.status.not_in(HIDDEN_PROJECT_STATUSES),
     ]
     if status_filter:
         filters.append(Project.status == status_filter)
-    else:
-        filters.append(Project.status.not_in(HIDDEN_PROJECT_STATUSES))
     if product_type:
         filters.append(Project.product_type == product_type)
     if processing_status:

@@ -110,7 +110,7 @@ export default function ProjectsPage() {
                           <button
                             type="button"
                             onClick={() => handleDeleteProject(project.id)}
-                            className="text-red-300 transition hover:text-red-200"
+                            className="rounded-md border border-red-400/30 px-3 py-1.5 text-red-300 transition hover:border-red-300/60 hover:bg-red-950/30 hover:text-red-200"
                           >
                             Excluir
                           </button>
