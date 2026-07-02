@@ -1,6 +1,6 @@
 """create processing jobs and logs
 
-Revision ID: 0004_create_processing_jobs_and_logs
+Revision ID: 0004_processing
 Revises: 0003_create_project_files
 Create Date: 2026-07-02
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0004_create_processing_jobs_and_logs"
+revision: str = "0004_processing"
 down_revision: str | None = "0003_create_project_files"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
