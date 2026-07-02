@@ -7,14 +7,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, generateEducationalContent as generateEducationalContentRequest } from "@/lib/api";
 import type {
   CourseStructureContent,
   DocumentAnalysisContent,
   GeneratedContent,
   GeneratedContentListResponse,
 } from "@/types/content";
-import type { GenerateEducationalContentResponse } from "@/types/educational-content";
 
 export default function ReviewPage() {
   const params = useParams<{ id: string }>();
@@ -45,12 +44,16 @@ export default function ReviewPage() {
     setGeneratingEducationalContent(true);
     setError("");
     try {
-      await apiFetch<GenerateEducationalContentResponse>(`/projects/${params.id}/generate-educational-content`, {
-        method: "POST",
-      });
+      await generateEducationalContentRequest(params.id);
       router.push(`/projects/${params.id}/educational-content`);
-    } catch {
-      setError("Nao foi possivel gerar os conteudos educacionais.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Nao foi possivel gerar os conteudos educacionais.");
+      }
     } finally {
       setGeneratingEducationalContent(false);
     }
