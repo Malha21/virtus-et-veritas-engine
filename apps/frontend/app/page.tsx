@@ -1,11 +1,23 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+
+import { hasToken } from "@/lib/auth";
+
 const capabilities = [
   "Cursos",
   "Roteiros",
   "Materiais",
-  "Experiencias educacionais",
+  "Experiências educacionais",
 ];
 
 export default function Home() {
+  const router = useRouter();
+
+  function handleStart() {
+    router.push(hasToken() ? "/dashboard" : "/login");
+  }
+
   return (
     <main className="min-h-screen overflow-hidden bg-navy-950 text-white">
       <section className="relative flex min-h-screen items-center px-6 py-10 sm:px-10 lg:px-16">
@@ -30,15 +42,14 @@ export default function Home() {
             </p>
 
             <div className="mt-10 flex flex-wrap items-center gap-4">
-              <a
-                href="#"
+              <button
+                type="button"
+                onClick={handleStart}
                 className="inline-flex h-12 items-center justify-center rounded-md bg-gold-500 px-6 text-sm font-semibold text-navy-950 shadow-premium transition hover:bg-gold-400 focus:outline-none focus:ring-2 focus:ring-gold-400 focus:ring-offset-2 focus:ring-offset-navy-950"
               >
                 Iniciar Projeto
-              </a>
-              <span className="text-sm text-slate-400">
-                Fundação técnica inicial
-              </span>
+              </button>
+              <span className="text-sm text-slate-400">Área autenticada inicial</span>
             </div>
           </div>
 
@@ -51,7 +62,7 @@ export default function Home() {
                 </p>
               </div>
               <span className="rounded-full bg-gold-500/12 px-3 py-1 text-xs font-medium text-gold-400">
-                Fase 2
+                Fase 4
               </span>
             </div>
 

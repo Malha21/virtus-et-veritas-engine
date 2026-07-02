@@ -6,21 +6,24 @@ O primeiro uso será interno na Virtus et Veritas Academy, com foco em transform
 
 ## Status
 
-Fase 3: banco de dados e autenticação básica.
+Fase 4: dashboard e projetos.
 
 Esta fase entrega:
 
 - frontend Next.js inicial;
-- backend FastAPI;
+- login no frontend;
+- persistência de token JWT em `localStorage`;
+- consulta `/api/v1/auth/me`;
+- layout autenticado;
+- dashboard;
+- lista de projetos;
+- criação de projeto;
+- detalhe de projeto;
+- backend FastAPI com CRUD inicial de projetos;
 - PostgreSQL via Docker Compose;
-- SQLAlchemy;
-- Alembic;
-- seed inicial;
-- autenticação com e-mail, senha, Argon2 e JWT;
-- endpoints públicos de health check;
-- endpoints `/api/v1/auth/login`, `/api/v1/auth/me` e `/api/v1/auth/logout`.
+- migrations Alembic.
 
-Ainda não há upload de PDF, IA, Redis, MinIO, worker, exportação, Nginx ou SSL.
+Ainda não há upload de PDF, processamento, IA, Redis, MinIO, worker, exportação, Nginx ou SSL.
 
 ## Estrutura
 
@@ -69,12 +72,15 @@ Na raiz do repositório:
 
 ```bash
 git pull
-cp .env.example .env
-nano .env
 docker compose up -d --build
 ```
 
-Se o arquivo `.env` já existir, não sobrescreva: apenas revise os valores.
+Se o arquivo `.env` ainda não existir:
+
+```bash
+cp .env.example .env
+nano .env
+```
 
 ## Rodar Migrations
 
@@ -116,7 +122,13 @@ Com os valores padrão:
 http://IP_DA_VPS:3000
 ```
 
-Se houver domínio configurado, use o domínio apontando para a VPS.
+Depois de acessar:
+
+1. entre com o usuário administrador definido no `.env`;
+2. abra o dashboard;
+3. crie um projeto;
+4. confira a lista de projetos;
+5. abra o detalhe do projeto.
 
 ## Testar Backend
 
@@ -126,32 +138,10 @@ Health check público:
 curl http://IP_DA_VPS:8000/health
 ```
 
-Resposta esperada:
-
-```json
-{
-  "status": "ok",
-  "service": "vve-engine"
-}
-```
-
 Health check versionado:
 
 ```bash
 curl http://IP_DA_VPS:8000/api/v1/health
-```
-
-Resposta esperada:
-
-```json
-{
-  "success": true,
-  "data": {
-    "status": "ok",
-    "service": "vve-engine",
-    "version": "0.1.0"
-  }
-}
 ```
 
 ## Testar Login
@@ -172,6 +162,54 @@ Substitua `TOKEN_AQUI` pelo token retornado no login:
 
 ```bash
 curl http://IP_DA_VPS:8000/api/v1/auth/me \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
+## Testar Projetos
+
+Criar projeto:
+
+```bash
+curl -X POST http://IP_DA_VPS:8000/api/v1/projects \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TOKEN_AQUI" \
+  -d '{
+    "title": "Curso de Liderança Filosófica",
+    "product_type": "course",
+    "target_audience": "Líderes e empreendedores",
+    "tone_of_voice": "inspirador e didático",
+    "desired_duration": "6 horas",
+    "description": "Curso sobre liderança baseada em virtudes."
+  }'
+```
+
+Listar projetos:
+
+```bash
+curl http://IP_DA_VPS:8000/api/v1/projects \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
+Buscar projeto:
+
+```bash
+curl http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
+Atualizar projeto:
+
+```bash
+curl -X PATCH http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TOKEN_AQUI" \
+  -d '{"title":"Novo título"}'
+```
+
+Arquivar projeto:
+
+```bash
+curl -X DELETE http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID \
   -H "Authorization: Bearer TOKEN_AQUI"
 ```
 
@@ -197,4 +235,4 @@ docker compose down -v
 
 ## Próximas Fases
 
-A próxima fase técnica deve implementar dashboard e projetos, conforme `docs/10-roadmap.md`.
+A próxima fase técnica deve implementar upload de PDF e storage, conforme `docs/10-roadmap.md`.
