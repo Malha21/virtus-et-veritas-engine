@@ -266,6 +266,25 @@ curl http://IP_DA_VPS:8000/api/v1/projects \
   -H "Authorization: Bearer TOKEN_AQUI"
 ```
 
+Arquivar projeto:
+
+```bash
+curl -X DELETE http://IP_DA_VPS:8000/api/v1/projects/PROJECT_ID \
+  -H "Authorization: Bearer TOKEN_AQUI"
+```
+
+## Limpeza de Projetos Expirados
+
+Projetos novos recebem uma janela inicial de retencao de 10 dias. O botao comum de exclusao apenas arquiva o projeto; ele nao remove arquivos fisicos imediatamente.
+
+Comando manual de limpeza:
+
+```bash
+docker compose exec backend python -m app.scripts.cleanup_expired_projects
+```
+
+Sugestao futura de cron: rodar o comando uma vez por dia.
+
 ## Fluxo de Atualizacao da Fase 8 na VPS
 
 ```bash

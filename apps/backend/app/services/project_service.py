@@ -1,5 +1,6 @@
 import re
 import unicodedata
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -9,6 +10,9 @@ from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
+
+PROJECT_RETENTION_DAYS = 10
+HIDDEN_PROJECT_STATUSES = {"archived", "expired", "deleted"}
 
 
 def slugify(value: str) -> str:
@@ -48,6 +52,7 @@ def create_project(db: Session, current_user: User, payload: ProjectCreate) -> P
         description=payload.description,
         status="active",
         processing_status="draft",
+        expires_at=datetime.now(UTC) + timedelta(days=PROJECT_RETENTION_DAYS),
     )
     db.add(project)
     db.commit()
@@ -68,11 +73,15 @@ def list_projects(
     page = max(page, 1)
     page_size = min(max(page_size, 1), 100)
 
-    filters = [Project.organization_id == organization_id]
+    filters = [
+        Project.organization_id == organization_id,
+        Project.archived_at.is_(None),
+        Project.deleted_at.is_(None),
+    ]
     if status_filter:
         filters.append(Project.status == status_filter)
     else:
-        filters.append(Project.status != "archived")
+        filters.append(Project.status.not_in(HIDDEN_PROJECT_STATUSES))
     if product_type:
         filters.append(Project.product_type == product_type)
     if processing_status:
@@ -102,6 +111,9 @@ def get_project_by_id(db: Session, organization_id: UUID, project_id: UUID) -> P
         select(Project).where(
             Project.id == project_id,
             Project.organization_id == organization_id,
+            Project.status.not_in(HIDDEN_PROJECT_STATUSES),
+            Project.archived_at.is_(None),
+            Project.deleted_at.is_(None),
         )
     ).scalar_one_or_none()
 
@@ -136,7 +148,21 @@ def update_project(
 
 
 def archive_project(db: Session, organization_id: UUID, project_id: UUID) -> None:
-    project = get_project_by_id(db, organization_id, project_id)
+    project = db.execute(
+        select(Project).where(
+            Project.id == project_id,
+            Project.organization_id == organization_id,
+            Project.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Projeto nÃ£o encontrado.",
+        )
+
     project.status = "archived"
+    project.archived_at = datetime.now(UTC)
     db.add(project)
     db.commit()
