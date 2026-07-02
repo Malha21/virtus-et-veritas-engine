@@ -20,6 +20,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Python cache
+__pycache__/
+*.py[cod]
+
 # OS and editor files
 .DS_Store
 Thumbs.db
@@ -32,4 +36,4 @@ temp/
 *.tmp
 
 # Local uploaded files
-storage/
+/storage/
