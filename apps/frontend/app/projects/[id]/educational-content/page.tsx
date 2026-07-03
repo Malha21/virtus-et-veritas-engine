@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -30,7 +30,7 @@ import type {
   PresentationDeckContent,
 } from "@/types/educational-content";
 
-type Tab = "summary" | "scripts" | "quizzes" | "materials" | "presentation";
+type Tab = "summary" | "scripts" | "quizzes" | "materials" | "presentation" | "teleprompter";
 
 type PresentationSlideDraft = {
   slide_number: number;
@@ -288,6 +288,9 @@ export default function EducationalContentPage() {
             <TabButton active={activeTab === "presentation"} onClick={() => setActiveTab("presentation")}>
               Apresentacao
             </TabButton>
+            <TabButton active={activeTab === "teleprompter"} onClick={() => setActiveTab("teleprompter")}>
+              Teleprompter
+            </TabButton>
           </div>
 
           {loading ? (
@@ -464,6 +467,7 @@ export default function EducationalContentPage() {
                   }}
                 />
               ) : null}
+              {activeTab === "teleprompter" ? <TeleprompterView contents={data.lesson_scripts} /> : null}
             </div>
           ) : null}
         </section>
@@ -515,6 +519,211 @@ function SummaryView({ contents }: { contents: GeneratedContent[] }) {
       <InfoBlock label="Copy de vendas" value={item.suggested_sales_copy} />
       <InfoBlock label="Legenda Instagram" value={item.suggested_instagram_caption} />
       <InfoBlock label="Mensagem WhatsApp" value={item.suggested_whatsapp_message} />
+    </div>
+  );
+}
+
+function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
+  const sortedContents = sortLessonScripts(contents);
+  const [selectedId, setSelectedId] = useState(sortedContents[0]?.id || "");
+  const [isRunning, setIsRunning] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [fontSize, setFontSize] = useState<"small" | "medium" | "large" | "xlarge">("large");
+  const [copyMessage, setCopyMessage] = useState("");
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!sortedContents.length) {
+      setSelectedId("");
+      return;
+    }
+    const selectedStillExists = sortedContents.some((content) => content.id === selectedId);
+    if (!selectedStillExists) {
+      setSelectedId(sortedContents[0]?.id || "");
+    }
+  }, [selectedId, sortedContents]);
+
+  const selectedContent = sortedContents.find((content) => content.id === selectedId) || sortedContents[0];
+  const selectedScript = (selectedContent?.content_json as LessonScriptContent | null)?.lesson_script;
+  const teleprompterText = selectedScript ? buildTeleprompterText(selectedScript) : "";
+  const estimatedTime = getEstimatedSpeechTime(teleprompterText);
+
+  useEffect(() => {
+    if (!isRunning) {
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      return;
+    }
+
+    let lastTimestamp = 0;
+    const step = (timestamp: number) => {
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const delta = timestamp - lastTimestamp;
+      lastTimestamp = timestamp;
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop += (delta / 16) * speed * 0.45;
+      }
+      frameRef.current = requestAnimationFrame(step);
+    };
+
+    frameRef.current = requestAnimationFrame(step);
+    return () => {
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, [isRunning, speed]);
+
+  if (!sortedContents.length) {
+    return <EmptyState text="Gere ou edite os roteiros de aula antes de usar o teleprompter." />;
+  }
+
+  function resetTeleprompter() {
+    setIsRunning(false);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }
+
+  async function copyText() {
+    setCopyMessage("");
+    try {
+      await navigator.clipboard.writeText(teleprompterText);
+      setCopyMessage("Texto copiado");
+    } catch {
+      setCopyMessage("Nao foi possivel copiar o texto.");
+    }
+  }
+
+  function enterFullscreen() {
+    if (scrollRef.current?.requestFullscreen) {
+      scrollRef.current.requestFullscreen().catch(() => undefined);
+    }
+  }
+
+  const fontClass = {
+    small: "text-xl leading-9",
+    medium: "text-2xl leading-10",
+    large: "text-3xl leading-[1.55]",
+    xlarge: "text-4xl leading-[1.55]",
+  }[fontSize];
+
+  return (
+    <div className="grid gap-5">
+      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <label className="grid min-w-[260px] flex-1 gap-2 text-sm text-slate-300">
+            Aula para gravacao
+            <select
+              value={selectedContent?.id || ""}
+              onChange={(event) => {
+                setSelectedId(event.target.value);
+                resetTeleprompter();
+              }}
+              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              {sortedContents.map((content) => {
+                const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
+                return (
+                  <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
+                    {getLessonScriptLabel(script, content)}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setIsRunning(true)}
+              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
+            >
+              Iniciar
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsRunning(false)}
+              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+            >
+              Pausar
+            </button>
+            <button
+              type="button"
+              onClick={resetTeleprompter}
+              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+            >
+              Reiniciar
+            </button>
+            <button
+              type="button"
+              onClick={copyText}
+              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+            >
+              Copiar texto
+            </button>
+            <button
+              type="button"
+              onClick={enterFullscreen}
+              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+            >
+              Tela cheia
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          <label className="grid gap-2 text-sm text-slate-300">
+            Velocidade
+            <select
+              value={speed}
+              onChange={(event) => setSpeed(Number(event.target.value))}
+              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value={0.5} className="bg-navy-950">0.5x</option>
+              <option value={1} className="bg-navy-950">1x</option>
+              <option value={1.5} className="bg-navy-950">1.5x</option>
+              <option value={2} className="bg-navy-950">2x</option>
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm text-slate-300">
+            Tamanho da fonte
+            <select
+              value={fontSize}
+              onChange={(event) => setFontSize(event.target.value as "small" | "medium" | "large" | "xlarge")}
+              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="small" className="bg-navy-950">Pequeno</option>
+              <option value="medium" className="bg-navy-950">Medio</option>
+              <option value="large" className="bg-navy-950">Grande</option>
+              <option value="xlarge" className="bg-navy-950">Extra grande</option>
+            </select>
+          </label>
+          <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
+            <p className="text-sm text-slate-400">Tempo estimado</p>
+            <p className="mt-1 text-lg font-semibold text-gold-300">{estimatedTime}</p>
+          </div>
+        </div>
+        {copyMessage ? <p className="mt-4 text-sm text-gold-300">{copyMessage}</p> : null}
+      </section>
+
+      <section className="rounded-lg border border-white/10 bg-black/40 p-4">
+        <div className="mb-4">
+          <p className="text-xs font-medium text-gold-400">Modo teleprompter</p>
+          <h2 className="mt-1 text-2xl font-semibold text-slate-50">{getLessonScriptLabel(selectedScript, selectedContent)}</h2>
+        </div>
+        <div
+          ref={scrollRef}
+          className="h-[620px] overflow-y-auto rounded-md border border-white/10 bg-navy-950 px-8 py-10 text-slate-50 outline-none"
+        >
+          <div className={`${fontClass} mx-auto max-w-4xl whitespace-pre-wrap`}>
+            {teleprompterText || "Nao foi possivel montar o texto deste roteiro."}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
@@ -1709,6 +1918,77 @@ function safeText(value: unknown): string {
   }
 
   return String(value);
+}
+
+function getLessonScriptLabel(script: LessonScriptContent["lesson_script"] | undefined, content?: GeneratedContent): string {
+  if (!script) return content?.title || "Roteiro de aula";
+  const moduleNumber = safeText(script.module_number);
+  const lessonNumber = safeText(script.lesson_number);
+  const lessonTitle = safeText(script.lesson_title || content?.title || "Roteiro de aula");
+  const moduleLabel = moduleNumber === "Nao informado" ? "Modulo" : `Modulo ${moduleNumber}`;
+  const lessonLabel = lessonNumber === "Nao informado" ? "Aula" : `Aula ${lessonNumber}`;
+  return `${moduleLabel} - ${lessonLabel}: ${lessonTitle}`;
+}
+
+function appendTeleprompterSection(parts: string[], title: string, value: unknown) {
+  const text = editText(value).trim();
+  if (!text) return;
+  parts.push(`${title}\n${text}`);
+}
+
+function buildBlockText(block: unknown, index: number): string {
+  const record = typeof block === "object" && block !== null ? (block as Record<string, unknown>) : null;
+  if (!record) return editText(block);
+  const parts: string[] = [];
+  const title = editText(record.section_title ?? record.title ?? record.name);
+  if (title) parts.push(title);
+  const narration = editText(record.narration ?? record.script_text ?? record.content ?? record.text ?? record.description);
+  if (narration) parts.push(narration);
+  const example = editText(record.example ?? record.practical_example);
+  if (example) parts.push(example);
+  const note = editText(record.instructor_notes ?? record.teaching_notes);
+  if (note) parts.push(`Nota para o instrutor: ${note}`);
+  const visual = editText(record.visual_suggestion);
+  if (visual) parts.push(`Sugestao visual: ${visual}`);
+  return parts.join("\n") || `Bloco ${index + 1}`;
+}
+
+function buildTeleprompterText(script: NonNullable<LessonScriptContent["lesson_script"]>): string {
+  const parts: string[] = [];
+
+  appendTeleprompterSection(parts, "Abertura", script.opening);
+  appendTeleprompterSection(parts, "Introducao", (script as Record<string, unknown>).introduction);
+  appendTeleprompterSection(parts, "Objetivo da aula", script.learning_objective);
+  appendTeleprompterSection(parts, "Texto de narracao", (script as Record<string, unknown>).narration_text);
+  appendTeleprompterSection(parts, "Roteiro principal", (script as Record<string, unknown>).script_text);
+  appendTeleprompterSection(parts, "Narracao", (script as Record<string, unknown>).narration);
+  appendTeleprompterSection(parts, "Desenvolvimento", (script as Record<string, unknown>).development);
+
+  const blocks =
+    toArray(script.main_script).length > 0
+      ? toArray(script.main_script)
+      : toArray((script as Record<string, unknown>).sections || (script as Record<string, unknown>).blocks);
+  const blockTexts = blocks.map((block, index) => buildBlockText(block, index)).filter(Boolean);
+  if (blockTexts.length) {
+    parts.push(["Blocos da aula", ...blockTexts].join("\n\n"));
+  }
+
+  appendTeleprompterSection(parts, "Exemplo pratico", script.practical_example ?? (script as Record<string, unknown>).examples);
+  appendTeleprompterSection(parts, "Atividade pratica", (script as Record<string, unknown>).practical_activity);
+  appendTeleprompterSection(parts, "Pergunta de reflexao", script.reflection_question);
+  appendTeleprompterSection(parts, "Conclusao", script.closing ?? (script as Record<string, unknown>).conclusion);
+  appendTeleprompterSection(parts, "Call to action", script.call_to_action);
+  appendTeleprompterSection(parts, "Notas do instrutor", (script as Record<string, unknown>).instructor_notes);
+
+  return parts.join("\n\n").trim();
+}
+
+function getEstimatedSpeechTime(text: string): string {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  if (!words) return "menos de 1 min";
+  const minutes = Math.round(words / 130);
+  if (minutes < 1) return "menos de 1 min";
+  return `Tempo estimado: ${minutes} min`;
 }
 
 function toArray(value: unknown): unknown[] {
