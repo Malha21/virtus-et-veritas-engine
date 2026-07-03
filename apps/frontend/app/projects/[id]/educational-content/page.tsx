@@ -9,6 +9,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import {
   ApiError,
   apiFetch,
+  downloadLessonScriptsPdf,
   downloadPresentationPdf,
   updateComplementaryMaterial,
   updateLessonScript,
@@ -155,6 +156,8 @@ export default function EducationalContentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [generationMessage, setGenerationMessage] = useState("");
+  const [exportingLessonScripts, setExportingLessonScripts] = useState(false);
+  const [lessonScriptsExportError, setLessonScriptsExportError] = useState("");
   const [exportingPresentation, setExportingPresentation] = useState(false);
   const [exportError, setExportError] = useState("");
 
@@ -239,6 +242,8 @@ export default function EducationalContentPage() {
                 <ScriptsView
                   contents={data.lesson_scripts}
                   projectId={params.id}
+                  exporting={exportingLessonScripts}
+                  exportError={lessonScriptsExportError}
                   onUpdated={(updatedContent) => {
                     setData((current) => {
                       if (!current) return current;
@@ -286,6 +291,23 @@ export default function EducationalContentPage() {
                         ]),
                       };
                     });
+                  }}
+                  onExport={async () => {
+                    setExportingLessonScripts(true);
+                    setLessonScriptsExportError("");
+                    try {
+                      await downloadLessonScriptsPdf(params.id);
+                    } catch (err) {
+                      if (err instanceof ApiError && err.status === 401) {
+                        setLessonScriptsExportError("Sua sessao expirou. Faca login novamente.");
+                      } else if (err instanceof Error && err.message) {
+                        setLessonScriptsExportError(err.message);
+                      } else {
+                        setLessonScriptsExportError("Nao foi possivel baixar os roteiros.");
+                      }
+                    } finally {
+                      setExportingLessonScripts(false);
+                    }
                   }}
                 />
               ) : null}
@@ -384,11 +406,17 @@ function SummaryView({ contents }: { contents: GeneratedContent[] }) {
 function ScriptsView({
   contents,
   projectId,
+  exporting,
+  exportError,
   onUpdated,
+  onExport,
 }: {
   contents: GeneratedContent[];
   projectId: string;
+  exporting: boolean;
+  exportError: string;
   onUpdated: (content: GeneratedContent) => void;
+  onExport: () => void;
 }) {
   if (!contents.length) {
     return <EmptyState text="Roteiros de aula ainda nao encontrados." />;
@@ -404,6 +432,21 @@ function ScriptsView({
 
   return (
     <div className="grid gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-navy-950/60 p-4">
+        <div>
+          <p className="text-sm font-medium text-slate-100">Roteiros de aula</p>
+          <p className="mt-1 text-xs text-slate-500">Exporte todos os roteiros editados deste projeto.</p>
+        </div>
+        <button
+          type="button"
+          onClick={onExport}
+          disabled={exporting}
+          className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {exporting ? "Gerando PDF..." : "Baixar roteiros em PDF"}
+        </button>
+        {exportError ? <p className="w-full text-sm text-red-300">{exportError}</p> : null}
+      </div>
       {Object.entries(grouped).map(([moduleKey, moduleContents]) => {
         const firstScript = (moduleContents[0]?.content_json as LessonScriptContent | null)?.lesson_script;
         return (

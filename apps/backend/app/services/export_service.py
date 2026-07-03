@@ -1,4 +1,5 @@
 from io import BytesIO
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 from xml.sax.saxutils import escape
@@ -90,6 +91,48 @@ def get_latest_presentation_deck(db: Session, project: Project) -> GeneratedCont
         )
 
     return content
+
+
+def get_content_number(content: GeneratedContent, field: str) -> int:
+    content_json = content.content_json or {}
+    script = content_json.get("lesson_script", {}) if isinstance(content_json.get("lesson_script"), dict) else {}
+    metadata = content_json.get("metadata", {}) if isinstance(content_json.get("metadata"), dict) else {}
+    for source in (script, metadata):
+        try:
+            return int(source.get(field) or 0)
+        except (TypeError, ValueError):
+            continue
+    return 0
+
+
+def get_lesson_scripts(db: Session, project: Project) -> list[GeneratedContent]:
+    contents = list(
+        db.execute(
+            select(GeneratedContent)
+            .where(
+                GeneratedContent.project_id == project.id,
+                GeneratedContent.organization_id == project.organization_id,
+                GeneratedContent.content_type.in_(["lesson_script", "lesson_scripts"]),
+            )
+            .order_by(GeneratedContent.created_at.asc())
+        ).scalars().all()
+    )
+
+    contents.sort(
+        key=lambda content: (
+            get_content_number(content, "module_number") or 9999,
+            get_content_number(content, "lesson_number") or 9999,
+            content.created_at,
+        )
+    )
+
+    if not contents:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nenhum roteiro de aula foi encontrado para este projeto.",
+        )
+
+    return contents
 
 
 def paragraph(text: Any, style: ParagraphStyle) -> Paragraph:
@@ -255,7 +298,165 @@ def build_presentation_pdf(project: Project, presentation: GeneratedContent) -> 
     return buffer.getvalue()
 
 
+def build_lesson_scripts_pdf(project: Project, lesson_scripts: list[GeneratedContent]) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.7 * cm,
+        leftMargin=1.7 * cm,
+        topMargin=1.6 * cm,
+        bottomMargin=1.6 * cm,
+        title=f"Roteiros de Aula - {project.title}",
+    )
+
+    base_styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "VveLessonTitle",
+        parent=base_styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=24,
+        leading=30,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#111827"),
+        spaceAfter=16,
+    )
+    subtitle_style = ParagraphStyle(
+        "VveLessonSubtitle",
+        parent=base_styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=12,
+        leading=17,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#4B5563"),
+        spaceAfter=10,
+    )
+    lesson_title_style = ParagraphStyle(
+        "VveLessonHeading",
+        parent=base_styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=23,
+        textColor=colors.HexColor("#111827"),
+        spaceAfter=8,
+    )
+    section_style = ParagraphStyle(
+        "VveLessonSection",
+        parent=base_styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=13,
+        leading=18,
+        textColor=colors.HexColor("#8A6A16"),
+        spaceBefore=9,
+        spaceAfter=5,
+    )
+    label_style = ParagraphStyle(
+        "VveLessonLabel",
+        parent=base_styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#8A6A16"),
+        spaceBefore=6,
+        spaceAfter=2,
+    )
+    body_style = ParagraphStyle(
+        "VveLessonBody",
+        parent=base_styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=15,
+        textColor=colors.HexColor("#1F2937"),
+        spaceAfter=4,
+    )
+
+    generated_at = datetime.now(UTC).strftime("%d/%m/%Y")
+    story: list[Any] = [
+        Spacer(1, 2.4 * cm),
+        paragraph(project.title, subtitle_style),
+        paragraph("Roteiros de Aula", title_style),
+        paragraph(f"Gerado em {generated_at}", subtitle_style),
+        paragraph("Documento exportado pelo Virtus et Veritas Engine", subtitle_style),
+        PageBreak(),
+    ]
+
+    section_keys = [
+        ("Objetivo da aula", ["learning_objective", "lesson_objective", "objective"]),
+        ("Abertura", ["opening", "hook"]),
+        ("Introducao", ["introduction", "intro"]),
+        ("Desenvolvimento", ["development", "lesson_development"]),
+        ("Exemplo pratico", ["practical_example", "examples", "example"]),
+        ("Atividade pratica", ["practical_activity", "activity", "exercise"]),
+        ("Pergunta de reflexao", ["reflection_question"]),
+        ("Conclusao", ["conclusion", "closing"]),
+        ("Call to action", ["call_to_action", "cta"]),
+        ("Notas do instrutor", ["instructor_notes", "teaching_notes"]),
+        ("Texto de narracao", ["narration", "voiceover"]),
+        ("Sugestao visual", ["visual_suggestion"]),
+    ]
+
+    for index, content in enumerate(lesson_scripts):
+        content_json = content.content_json or {}
+        script = content_json.get("lesson_script", {}) if isinstance(content_json.get("lesson_script"), dict) else {}
+        module_number = safe_text(script.get("module_number") or get_content_number(content, "module_number"), "")
+        lesson_number = safe_text(script.get("lesson_number") or get_content_number(content, "lesson_number"), "")
+        lesson_title = script.get("lesson_title") or content.title or f"Aula {lesson_number or index + 1}"
+
+        story.append(paragraph(f"Modulo {module_number or '-'} | Aula {lesson_number or index + 1}", section_style))
+        story.append(paragraph(lesson_title, lesson_title_style))
+        story.extend(labeled_paragraph("Titulo do curso", script.get("course_title") or project.title, label_style, body_style))
+        story.extend(labeled_paragraph("Modulo", script.get("module_title"), label_style, body_style))
+
+        for label, keys in section_keys:
+            value = next((script.get(key) for key in keys if script.get(key) not in (None, "", [])), None)
+            if value not in (None, "", []):
+                story.extend(labeled_paragraph(label, value, label_style, body_style))
+
+        blocks = (
+            as_list(script.get("main_script"))
+            or as_list(script.get("sections"))
+            or as_list(script.get("blocks"))
+            or as_list(script.get("content_blocks"))
+        )
+        if blocks:
+            story.append(Paragraph("Blocos da aula", section_style))
+            for block_index, block in enumerate(blocks, start=1):
+                block_data = block if isinstance(block, dict) else {"content": block}
+                block_title = (
+                    block_data.get("section_title")
+                    or block_data.get("title")
+                    or block_data.get("name")
+                    or f"Bloco {block_index}"
+                )
+                story.append(Paragraph(escape(safe_text(block_title)), label_style))
+                block_fields = [
+                    block_data.get("narration"),
+                    block_data.get("content"),
+                    block_data.get("text"),
+                    block_data.get("description"),
+                ]
+                block_text = next((value for value in block_fields if value not in (None, "", [])), "")
+                story.append(paragraph(block_text, body_style))
+                if block_data.get("teaching_notes"):
+                    story.extend(labeled_paragraph("Notas de ensino", block_data.get("teaching_notes"), label_style, body_style))
+                if block_data.get("visual_suggestion"):
+                    story.extend(labeled_paragraph("Sugestao visual", block_data.get("visual_suggestion"), label_style, body_style))
+                story.append(Spacer(1, 0.12 * cm))
+
+        if index < len(lesson_scripts) - 1:
+            story.append(PageBreak())
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buffer.getvalue()
+
+
 def export_presentation_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
     project = get_project_by_id(db, current_user.organization_id, project_id)
     presentation = get_latest_presentation_deck(db, project)
     return project, build_presentation_pdf(project, presentation)
+
+
+def export_lesson_scripts_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
+    project = get_project_by_id(db, current_user.organization_id, project_id)
+    lesson_scripts = get_lesson_scripts(db, project)
+    return project, build_lesson_scripts_pdf(project, lesson_scripts)

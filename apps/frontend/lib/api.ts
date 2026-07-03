@@ -161,6 +161,10 @@ export function getPresentationExportUrl(projectId: string): string {
   return `${baseURL}/projects/${projectId}/exports/presentation.pdf`;
 }
 
+export function getLessonScriptsExportUrl(projectId: string): string {
+  return `${baseURL}/projects/${projectId}/exports/lesson-scripts.pdf`;
+}
+
 export async function downloadPresentationPdf(projectId: string): Promise<void> {
   const token = getToken();
   if (!token) {
@@ -182,6 +186,37 @@ export async function downloadPresentationPdf(projectId: string): Promise<void> 
   const disposition = response.headers.get("Content-Disposition") || "";
   const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
   const filename = filenameMatch?.[1] || `presentation-${projectId}.pdf`;
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+export async function downloadLessonScriptsPdf(projectId: string): Promise<void> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃƒÂ£o expirou. FaÃƒÂ§a login novamente.", 401);
+  }
+
+  const response = await fetch(getLessonScriptsExportUrl(projectId), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+    throw new ApiError(getApiErrorMessage(payload), response.status);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
+  const filename = filenameMatch?.[1] || `lesson-scripts-${projectId}.pdf`;
   const objectUrl = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = objectUrl;
