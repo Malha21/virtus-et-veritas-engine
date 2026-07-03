@@ -55,9 +55,21 @@ def validate_asset_type(asset_type: str) -> str:
 
 
 def asset_to_response(asset: InstructorAsset) -> dict[str, object]:
-    data = InstructorAssetResponse.model_validate(asset).model_dump(mode="json")
-    data["download_url"] = f"/api/v1/instructor-assets/{asset.id}/download"
-    return data
+    return InstructorAssetResponse(
+        id=asset.id,
+        user_id=asset.user_id,
+        instructor_profile_id=asset.instructor_profile_id,
+        asset_type=asset.asset_type,
+        original_filename=asset.original_filename,
+        stored_filename=asset.stored_filename,
+        mime_type=asset.mime_type,
+        size_bytes=asset.size_bytes,
+        description=asset.description,
+        consent_confirmed=asset.consent_confirmed,
+        created_at=asset.created_at,
+        updated_at=asset.updated_at,
+        download_url=f"/api/v1/instructor-assets/{asset.id}/download",
+    ).model_dump(mode="json")
 
 
 def get_profile_for_upload(db: Session, current_user: User) -> InstructorProfile:
