@@ -38,10 +38,14 @@ def safe_text(value: Any, fallback: str = "Nao informado") -> str:
             or value.get("subtitle")
             or value.get("concept")
             or value.get("question")
+            or value.get("pergunta")
             or value.get("answer")
+            or value.get("resposta")
         )
         description = (
             value.get("explanation")
+            or value.get("feedback")
+            or value.get("comment")
             or value.get("description")
             or value.get("content")
             or value.get("text")
@@ -96,8 +100,9 @@ def get_latest_presentation_deck(db: Session, project: Project) -> GeneratedCont
 def get_content_number(content: GeneratedContent, field: str) -> int:
     content_json = content.content_json or {}
     script = content_json.get("lesson_script", {}) if isinstance(content_json.get("lesson_script"), dict) else {}
+    quiz = content_json.get("module_quiz", {}) if isinstance(content_json.get("module_quiz"), dict) else {}
     metadata = content_json.get("metadata", {}) if isinstance(content_json.get("metadata"), dict) else {}
-    for source in (script, metadata):
+    for source in (script, quiz, metadata):
         try:
             return int(source.get(field) or 0)
         except (TypeError, ValueError):
@@ -130,6 +135,30 @@ def get_lesson_scripts(db: Session, project: Project) -> list[GeneratedContent]:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Nenhum roteiro de aula foi encontrado para este projeto.",
+        )
+
+    return contents
+
+
+def get_module_quizzes(db: Session, project: Project) -> list[GeneratedContent]:
+    contents = list(
+        db.execute(
+            select(GeneratedContent)
+            .where(
+                GeneratedContent.project_id == project.id,
+                GeneratedContent.organization_id == project.organization_id,
+                GeneratedContent.content_type.in_(["module_quiz", "module_quizzes"]),
+            )
+            .order_by(GeneratedContent.created_at.asc())
+        ).scalars().all()
+    )
+
+    contents.sort(key=lambda content: (get_content_number(content, "module_number") or 9999, content.created_at))
+
+    if not contents:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nenhum quiz foi encontrado para este projeto.",
         )
 
     return contents
@@ -450,6 +479,181 @@ def build_lesson_scripts_pdf(project: Project, lesson_scripts: list[GeneratedCon
     return buffer.getvalue()
 
 
+def first_quiz_value(source: dict[str, Any], keys: list[str]) -> Any:
+    for key in keys:
+        value = source.get(key)
+        if value not in (None, "", []):
+            return value
+    return None
+
+
+def build_quizzes_pdf(project: Project, quizzes: list[GeneratedContent]) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.7 * cm,
+        leftMargin=1.7 * cm,
+        topMargin=1.6 * cm,
+        bottomMargin=1.6 * cm,
+        title=f"Quizzes do Curso - {project.title}",
+    )
+
+    base_styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "VveQuizTitle",
+        parent=base_styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=24,
+        leading=30,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#111827"),
+        spaceAfter=16,
+    )
+    subtitle_style = ParagraphStyle(
+        "VveQuizSubtitle",
+        parent=base_styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=12,
+        leading=17,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#4B5563"),
+        spaceAfter=10,
+    )
+    quiz_title_style = ParagraphStyle(
+        "VveQuizHeading",
+        parent=base_styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=23,
+        textColor=colors.HexColor("#111827"),
+        spaceAfter=8,
+    )
+    section_style = ParagraphStyle(
+        "VveQuizSection",
+        parent=base_styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=13,
+        leading=18,
+        textColor=colors.HexColor("#8A6A16"),
+        spaceBefore=9,
+        spaceAfter=5,
+    )
+    label_style = ParagraphStyle(
+        "VveQuizLabel",
+        parent=base_styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#8A6A16"),
+        spaceBefore=6,
+        spaceAfter=2,
+    )
+    body_style = ParagraphStyle(
+        "VveQuizBody",
+        parent=base_styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=15,
+        textColor=colors.HexColor("#1F2937"),
+        spaceAfter=4,
+    )
+    option_style = ParagraphStyle(
+        "VveQuizOption",
+        parent=body_style,
+        leftIndent=12,
+        firstLineIndent=0,
+        spaceAfter=3,
+    )
+
+    generated_at = datetime.now(UTC).strftime("%d/%m/%Y")
+    story: list[Any] = [
+        Spacer(1, 2.4 * cm),
+        paragraph(project.title, subtitle_style),
+        paragraph("Quizzes do Curso", title_style),
+        paragraph(f"Gerado em {generated_at}", subtitle_style),
+        paragraph("Documento exportado pelo Virtus et Veritas Engine", subtitle_style),
+        PageBreak(),
+    ]
+
+    for quiz_index, content in enumerate(quizzes):
+        content_json = content.content_json or {}
+        quiz = content_json.get("module_quiz", {}) if isinstance(content_json.get("module_quiz"), dict) else {}
+        module_number = safe_text(quiz.get("module_number") or get_content_number(content, "module_number"), "")
+        module_title = quiz.get("module_title") or content.title or "Quiz"
+        quiz_title = quiz.get("quiz_title") or quiz.get("title") or f"Quiz - Modulo {module_number or quiz_index + 1}"
+
+        story.append(paragraph(quiz_title, quiz_title_style))
+        story.extend(labeled_paragraph("Modulo", module_number or "Nao informado", label_style, body_style))
+        story.extend(labeled_paragraph("Titulo do modulo", module_title, label_style, body_style))
+        if quiz.get("instructions"):
+            story.extend(labeled_paragraph("Instrucoes", quiz.get("instructions"), label_style, body_style))
+
+        questions = (
+            as_list(quiz.get("questions"))
+            or as_list(quiz.get("perguntas"))
+            or as_list(quiz.get("items"))
+        )
+        if questions:
+            story.append(Paragraph("Perguntas", section_style))
+
+        for question_index, question in enumerate(questions, start=1):
+            question_data = question if isinstance(question, dict) else {"question": question}
+            question_text = first_quiz_value(question_data, ["question", "pergunta", "title", "text", "content"])
+            story.append(Paragraph(escape(f"Pergunta {question_index}"), label_style))
+            story.append(paragraph(question_text, body_style))
+
+            options = (
+                as_list(question_data.get("options"))
+                or as_list(question_data.get("alternatives"))
+                or as_list(question_data.get("alternativas"))
+                or as_list(question_data.get("answers"))
+            )
+            if options:
+                story.append(Paragraph("Alternativas", label_style))
+                story.append(
+                    ListFlowable(
+                        [
+                            ListItem(
+                                paragraph(
+                                    f"{safe_text(option.get('letter') or chr(65 + option_index), '')}. "
+                                    f"{safe_text(option.get('text') or option.get('content') or option.get('value'), '')}"
+                                    if isinstance(option, dict)
+                                    else f"{chr(65 + option_index)}. {safe_text(option, '')}",
+                                    option_style,
+                                ),
+                                leftIndent=10,
+                            )
+                            for option_index, option in enumerate(options)
+                        ],
+                        bulletType="bullet",
+                        start="circle",
+                        leftIndent=16,
+                    )
+                )
+                story.append(Spacer(1, 0.12 * cm))
+
+            correct_answer = first_quiz_value(
+                question_data,
+                ["correct_answer", "answer", "resposta_correta", "correct_option", "resposta"],
+            )
+            explanation = first_quiz_value(
+                question_data,
+                ["explanation", "feedback", "comment", "comentario", "explicacao"],
+            )
+            if correct_answer not in (None, "", []):
+                story.extend(labeled_paragraph("Resposta correta", correct_answer, label_style, body_style))
+            if explanation not in (None, "", []):
+                story.extend(labeled_paragraph("Explicacao", explanation, label_style, body_style))
+            story.append(Spacer(1, 0.2 * cm))
+
+        if quiz_index < len(quizzes) - 1:
+            story.append(PageBreak())
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buffer.getvalue()
+
+
 def export_presentation_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
     project = get_project_by_id(db, current_user.organization_id, project_id)
     presentation = get_latest_presentation_deck(db, project)
@@ -460,3 +664,9 @@ def export_lesson_scripts_pdf(db: Session, current_user: User, project_id: UUID)
     project = get_project_by_id(db, current_user.organization_id, project_id)
     lesson_scripts = get_lesson_scripts(db, project)
     return project, build_lesson_scripts_pdf(project, lesson_scripts)
+
+
+def export_quizzes_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
+    project = get_project_by_id(db, current_user.organization_id, project_id)
+    quizzes = get_module_quizzes(db, project)
+    return project, build_quizzes_pdf(project, quizzes)
