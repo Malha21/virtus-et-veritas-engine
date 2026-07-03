@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
-from app.services.export_service import export_lesson_scripts_pdf, export_presentation_pdf, export_quizzes_pdf
+from app.services.export_service import (
+    export_complementary_materials_pdf,
+    export_lesson_scripts_pdf,
+    export_presentation_pdf,
+    export_quizzes_pdf,
+)
 
 router = APIRouter(prefix="/projects/{project_id}/exports", tags=["exports"])
 
@@ -60,5 +65,17 @@ def get_quizzes_pdf(
 ) -> StreamingResponse:
     project, pdf_bytes = export_quizzes_pdf(db, current_user, project_id)
     filename = f"quizzes-{safe_filename(project.slug or project.id)}.pdf"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
+
+
+@router.get("/complementary-materials.pdf")
+def get_complementary_materials_pdf(
+    project_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StreamingResponse:
+    project, pdf_bytes = export_complementary_materials_pdf(db, current_user, project_id)
+    filename = f"complementary-materials-{safe_filename(project.slug or project.id)}.pdf"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)

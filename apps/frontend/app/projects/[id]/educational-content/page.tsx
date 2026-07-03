@@ -9,6 +9,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import {
   ApiError,
   apiFetch,
+  downloadComplementaryMaterialsPdf,
   downloadLessonScriptsPdf,
   downloadPresentationPdf,
   downloadQuizzesPdf,
@@ -161,6 +162,8 @@ export default function EducationalContentPage() {
   const [lessonScriptsExportError, setLessonScriptsExportError] = useState("");
   const [exportingQuizzes, setExportingQuizzes] = useState(false);
   const [quizzesExportError, setQuizzesExportError] = useState("");
+  const [exportingMaterials, setExportingMaterials] = useState(false);
+  const [materialsExportError, setMaterialsExportError] = useState("");
   const [exportingPresentation, setExportingPresentation] = useState(false);
   const [exportError, setExportError] = useState("");
 
@@ -247,24 +250,6 @@ export default function EducationalContentPage() {
                   projectId={params.id}
                   exporting={exportingLessonScripts}
                   exportError={lessonScriptsExportError}
-                  onExport={async () => {
-                    setExportingLessonScripts(true);
-                    setLessonScriptsExportError("");
-                    try {
-                      await downloadLessonScriptsPdf(params.id);
-                    } catch (err) {
-                      if (err instanceof ApiError && err.status === 401) {
-                        setLessonScriptsExportError("Sua sessao expirou. Faca login novamente.");
-                      } else if (err instanceof Error && err.message) {
-                        setLessonScriptsExportError(err.message);
-                      } else {
-                        setLessonScriptsExportError("Nao foi possivel baixar os roteiros em PDF.");
-                      }
-                    } finally {
-                      setExportingLessonScripts(false);
-                    }
-                  }}
-
                   onUpdated={(updatedContent) => {
                     setData((current) => {
                       if (!current) return current;
@@ -337,6 +322,8 @@ export default function EducationalContentPage() {
                 <MaterialsView
                   contents={data.complementary_materials}
                   projectId={params.id}
+                  exporting={exportingMaterials}
+                  exportError={materialsExportError}
                   onUpdated={(updatedContent) => {
                     setData((current) => {
                       if (!current) return current;
@@ -348,6 +335,23 @@ export default function EducationalContentPage() {
                         ]),
                       };
                     });
+                  }}
+                  onExport={async () => {
+                    setExportingMaterials(true);
+                    setMaterialsExportError("");
+                    try {
+                      await downloadComplementaryMaterialsPdf(params.id);
+                    } catch (err) {
+                      if (err instanceof ApiError && err.status === 401) {
+                        setMaterialsExportError("Sua sessao expirou. Faca login novamente.");
+                      } else if (err instanceof Error && err.message) {
+                        setMaterialsExportError(err.message);
+                      } else {
+                        setMaterialsExportError("Nao foi possivel baixar os materiais.");
+                      }
+                    } finally {
+                      setExportingMaterials(false);
+                    }
                   }}
                 />
               ) : null}
@@ -799,11 +803,17 @@ function ModuleQuizCard({
 function MaterialsView({
   contents,
   projectId,
+  exporting,
+  exportError,
   onUpdated,
+  onExport,
 }: {
   contents: GeneratedContent[];
   projectId: string;
+  exporting: boolean;
+  exportError: string;
   onUpdated: (content: GeneratedContent) => void;
+  onExport: () => void;
 }) {
   if (!contents.length) {
     return <EmptyState text="Materiais complementares ainda nao encontrados." />;
@@ -811,6 +821,21 @@ function MaterialsView({
 
   return (
     <div className="grid gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-navy-950/60 p-4">
+        <div>
+          <p className="text-sm font-medium text-slate-100">Materiais complementares</p>
+          <p className="mt-1 text-xs text-slate-500">Exporte todos os materiais editados deste projeto.</p>
+        </div>
+        <button
+          type="button"
+          onClick={onExport}
+          disabled={exporting}
+          className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {exporting ? "Gerando PDF..." : "Baixar materiais em PDF"}
+        </button>
+        {exportError ? <p className="w-full text-sm text-red-300">{exportError}</p> : null}
+      </div>
       {sortByCreatedAt(contents).map((content) => (
         <MaterialCard key={content.id} content={content} projectId={projectId} onUpdated={onUpdated} />
       ))}

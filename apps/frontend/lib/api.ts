@@ -169,6 +169,10 @@ export function getQuizzesExportUrl(projectId: string): string {
   return `${baseURL}/projects/${projectId}/exports/quizzes.pdf`;
 }
 
+export function getComplementaryMaterialsExportUrl(projectId: string): string {
+  return `${baseURL}/projects/${projectId}/exports/complementary-materials.pdf`;
+}
+
 export async function downloadPresentationPdf(projectId: string): Promise<void> {
   const token = getToken();
   if (!token) {
@@ -252,6 +256,37 @@ export async function downloadQuizzesPdf(projectId: string): Promise<void> {
   const disposition = response.headers.get("Content-Disposition") || "";
   const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
   const filename = filenameMatch?.[1] || `quizzes-${projectId}.pdf`;
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+export async function downloadComplementaryMaterialsPdf(projectId: string): Promise<void> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃƒÂ£o expirou. FaÃƒÂ§a login novamente.", 401);
+  }
+
+  const response = await fetch(getComplementaryMaterialsExportUrl(projectId), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+    throw new ApiError(getApiErrorMessage(payload), response.status);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
+  const filename = filenameMatch?.[1] || `complementary-materials-${projectId}.pdf`;
   const objectUrl = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = objectUrl;

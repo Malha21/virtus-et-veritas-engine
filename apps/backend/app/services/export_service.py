@@ -164,6 +164,40 @@ def get_module_quizzes(db: Session, project: Project) -> list[GeneratedContent]:
     return contents
 
 
+def get_complementary_materials(db: Session, project: Project) -> list[GeneratedContent]:
+    contents = list(
+        db.execute(
+            select(GeneratedContent)
+            .where(
+                GeneratedContent.project_id == project.id,
+                GeneratedContent.organization_id == project.organization_id,
+                GeneratedContent.content_type.in_(["complementary_material", "complementary_materials"]),
+            )
+            .order_by(GeneratedContent.created_at.asc())
+        ).scalars().all()
+    )
+
+    contents.sort(
+        key=lambda content: (
+            safe_text(
+                (content.content_json or {}).get("complementary_material", {}).get("material_title")
+                if isinstance((content.content_json or {}).get("complementary_material"), dict)
+                else content.title,
+                "",
+            ).lower(),
+            content.created_at,
+        )
+    )
+
+    if not contents:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nenhum material complementar foi encontrado para este projeto.",
+        )
+
+    return contents
+
+
 def paragraph(text: Any, style: ParagraphStyle) -> Paragraph:
     return Paragraph(escape(safe_text(text)), style)
 
@@ -654,6 +688,157 @@ def build_quizzes_pdf(project: Project, quizzes: list[GeneratedContent]) -> byte
     return buffer.getvalue()
 
 
+def build_complementary_materials_pdf(project: Project, materials: list[GeneratedContent]) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.7 * cm,
+        leftMargin=1.7 * cm,
+        topMargin=1.6 * cm,
+        bottomMargin=1.6 * cm,
+        title=f"Materiais Complementares - {project.title}",
+    )
+
+    base_styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "VveMaterialTitle",
+        parent=base_styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=24,
+        leading=30,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#111827"),
+        spaceAfter=16,
+    )
+    subtitle_style = ParagraphStyle(
+        "VveMaterialSubtitle",
+        parent=base_styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=12,
+        leading=17,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#4B5563"),
+        spaceAfter=10,
+    )
+    material_title_style = ParagraphStyle(
+        "VveMaterialHeading",
+        parent=base_styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=23,
+        textColor=colors.HexColor("#111827"),
+        spaceAfter=8,
+    )
+    section_style = ParagraphStyle(
+        "VveMaterialSection",
+        parent=base_styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=13,
+        leading=18,
+        textColor=colors.HexColor("#8A6A16"),
+        spaceBefore=9,
+        spaceAfter=5,
+    )
+    label_style = ParagraphStyle(
+        "VveMaterialLabel",
+        parent=base_styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#8A6A16"),
+        spaceBefore=6,
+        spaceAfter=2,
+    )
+    body_style = ParagraphStyle(
+        "VveMaterialBody",
+        parent=base_styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=15,
+        textColor=colors.HexColor("#1F2937"),
+        spaceAfter=4,
+    )
+
+    generated_at = datetime.now(UTC).strftime("%d/%m/%Y")
+    story: list[Any] = [
+        Spacer(1, 2.4 * cm),
+        paragraph(project.title, subtitle_style),
+        paragraph("Materiais Complementares", title_style),
+        paragraph(f"Gerado em {generated_at}", subtitle_style),
+        paragraph("Documento exportado pelo Virtus et Veritas Engine", subtitle_style),
+        PageBreak(),
+    ]
+
+    list_sections = [
+        ("Aplicacoes praticas", ["practical_applications", "applications", "aplicacoes"]),
+        ("Exercicios reflexivos", ["reflection_exercises", "exercises", "perguntas_reflexivas"]),
+        ("Proximos passos", ["recommended_next_steps", "next_steps", "proximos_passos"]),
+    ]
+    extra_fields = [
+        ("Resumo", ["summary"]),
+        ("Detalhes", ["details"]),
+        ("Conteudo", ["content", "text", "description"]),
+    ]
+
+    for index, content in enumerate(materials):
+        content_json = content.content_json or {}
+        material = (
+            content_json.get("complementary_material", {})
+            if isinstance(content_json.get("complementary_material"), dict)
+            else {}
+        )
+        material_title = material.get("material_title") or material.get("title") or content.title or f"Material {index + 1}"
+        material_type = material.get("material_type") or material.get("type") or "Material complementar"
+
+        story.append(paragraph(material_title, material_title_style))
+        story.extend(labeled_paragraph("Tipo do material", material_type, label_style, body_style))
+        if material.get("overview"):
+            story.extend(labeled_paragraph("Visao geral", material.get("overview"), label_style, body_style))
+
+        concepts = as_list(material.get("key_concepts") or material.get("concepts") or material.get("conceitos_chave"))
+        if concepts:
+            story.append(Paragraph("Conceitos-chave", section_style))
+            for concept_index, concept in enumerate(concepts, start=1):
+                concept_data = concept if isinstance(concept, dict) else {"concept": concept}
+                concept_title = (
+                    concept_data.get("concept")
+                    or concept_data.get("title")
+                    or concept_data.get("name")
+                    or f"Conceito {concept_index}"
+                )
+                concept_explanation = (
+                    concept_data.get("explanation")
+                    or concept_data.get("description")
+                    or concept_data.get("text")
+                    or concept_data.get("content")
+                )
+                story.append(Paragraph(escape(safe_text(concept_title)), label_style))
+                if concept_explanation not in (None, "", []):
+                    story.append(paragraph(concept_explanation, body_style))
+                story.append(Spacer(1, 0.12 * cm))
+
+        for label, keys in list_sections:
+            value = next((material.get(key) for key in keys if material.get(key) not in (None, "", [])), None)
+            items = as_list(value)
+            if items:
+                story.append(Paragraph(label, section_style))
+                for item in items:
+                    story.append(paragraph(item, body_style))
+                story.append(Spacer(1, 0.12 * cm))
+
+        for label, keys in extra_fields:
+            value = next((material.get(key) for key in keys if material.get(key) not in (None, "", [])), None)
+            if value not in (None, "", []):
+                story.extend(labeled_paragraph(label, value, label_style, body_style))
+
+        if index < len(materials) - 1:
+            story.append(PageBreak())
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buffer.getvalue()
+
+
 def export_presentation_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
     project = get_project_by_id(db, current_user.organization_id, project_id)
     presentation = get_latest_presentation_deck(db, project)
@@ -670,3 +855,9 @@ def export_quizzes_pdf(db: Session, current_user: User, project_id: UUID) -> tup
     project = get_project_by_id(db, current_user.organization_id, project_id)
     quizzes = get_module_quizzes(db, project)
     return project, build_quizzes_pdf(project, quizzes)
+
+
+def export_complementary_materials_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
+    project = get_project_by_id(db, current_user.organization_id, project_id)
+    materials = get_complementary_materials(db, project)
+    return project, build_complementary_materials_pdf(project, materials)
