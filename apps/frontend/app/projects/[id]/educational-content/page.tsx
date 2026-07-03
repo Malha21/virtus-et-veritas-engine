@@ -457,6 +457,11 @@ function LessonScriptCard({
   if (!script) return null;
 
   function startEditing() {
+    if (!script) {
+      setSaveError("Roteiro ainda nao encontrado para edicao.");
+      return;
+    }
+
     setDraft(lessonScriptToDraft(script));
     setSaveError("");
     setIsEditing(true);
