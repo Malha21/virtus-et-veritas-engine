@@ -1,6 +1,7 @@
 import { getToken } from "./auth";
 import type { GenerateStructureResponse } from "@/types/ai";
 import type {
+  ComplementaryMaterialContent,
   GenerateEducationalContentResponse,
   LessonScriptContent,
   ModuleQuizContent,
@@ -238,6 +239,23 @@ export async function updateModuleQuiz(
     method: "PUT",
     token,
     body: JSON.stringify(moduleQuiz),
+  });
+}
+
+export async function updateComplementaryMaterial(
+  projectId: string,
+  contentId: string,
+  complementaryMaterial: ComplementaryMaterialContent,
+): Promise<GeneratedContent> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃƒÂ£o expirou. FaÃƒÂ§a login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedContent>(`/projects/${projectId}/educational-content/complementary-materials/${contentId}`, {
+    method: "PUT",
+    token,
+    body: JSON.stringify(complementaryMaterial),
   });
 }
 

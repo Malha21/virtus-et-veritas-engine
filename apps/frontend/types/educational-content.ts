@@ -71,13 +71,16 @@ export type ComplementaryMaterialContent = {
     material_title?: string;
     material_type?: string;
     overview?: string;
-    key_concepts?: Array<{
-      concept?: string;
-      explanation?: string;
-    }>;
-    practical_applications?: string[];
-    reflection_exercises?: string[];
-    recommended_next_steps?: string[];
+    key_concepts?: Array<
+      | string
+      | {
+          concept?: string;
+          explanation?: string;
+        }
+    >;
+    practical_applications?: unknown[];
+    reflection_exercises?: unknown[];
+    recommended_next_steps?: unknown[];
   };
 };
 

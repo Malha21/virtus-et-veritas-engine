@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.schemas.content import GeneratedContentResponse
 from app.schemas.educational_content import (
+    ComplementaryMaterialUpdateRequest,
     EducationalContentSummaryResponse,
     GenerateEducationalContentRequest,
     GenerateEducationalContentResponse,
@@ -19,6 +20,7 @@ from app.schemas.educational_content import (
 from app.services.educational_content_service import (
     generate_educational_content,
     list_educational_content,
+    update_complementary_material,
     update_lesson_script,
     update_module_quiz,
     update_presentation_deck,
@@ -104,6 +106,25 @@ def put_project_module_quiz(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, object]:
     content = update_module_quiz(
+        db,
+        current_user,
+        project_id,
+        content_id,
+        payload.model_dump(mode="json"),
+    )
+    data = GeneratedContentResponse.model_validate(content)
+    return {"success": True, "data": data.model_dump(mode="json")}
+
+
+@router.put("/educational-content/complementary-materials/{content_id}")
+def put_project_complementary_material(
+    project_id: UUID,
+    content_id: UUID,
+    payload: ComplementaryMaterialUpdateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, object]:
+    content = update_complementary_material(
         db,
         current_user,
         project_id,

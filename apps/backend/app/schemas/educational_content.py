@@ -76,3 +76,9 @@ class ModuleQuizUpdateRequest(BaseModel):
     module_quiz: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="allow")
+
+
+class ComplementaryMaterialUpdateRequest(BaseModel):
+    complementary_material: dict[str, Any] | None = None
+
+    model_config = ConfigDict(extra="allow")

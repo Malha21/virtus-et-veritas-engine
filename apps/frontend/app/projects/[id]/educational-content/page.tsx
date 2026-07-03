@@ -10,6 +10,7 @@ import {
   ApiError,
   apiFetch,
   downloadPresentationPdf,
+  updateComplementaryMaterial,
   updateLessonScript,
   updateModuleQuiz,
   updatePresentationDeck,
@@ -83,6 +84,22 @@ type ModuleQuizDraft = {
   module_title: string;
   instructions: string;
   questions: QuizQuestionDraft[];
+};
+
+type MaterialConceptDraft = {
+  concept: string;
+  explanation: string;
+};
+
+type ComplementaryMaterialDraft = {
+  course_title: string;
+  material_title: string;
+  material_type: string;
+  overview: string;
+  key_concepts: MaterialConceptDraft[];
+  practicalApplicationsText: string;
+  reflectionExercisesText: string;
+  recommendedNextStepsText: string;
 };
 
 function getGenerationLanguage(content?: GeneratedContent): string | undefined {
@@ -254,7 +271,24 @@ export default function EducationalContentPage() {
                   }}
                 />
               ) : null}
-              {activeTab === "materials" ? <MaterialsView contents={data.complementary_materials} /> : null}
+              {activeTab === "materials" ? (
+                <MaterialsView
+                  contents={data.complementary_materials}
+                  projectId={params.id}
+                  onUpdated={(updatedContent) => {
+                    setData((current) => {
+                      if (!current) return current;
+                      return {
+                        ...current,
+                        complementary_materials: sortByCreatedAt([
+                          updatedContent,
+                          ...current.complementary_materials.filter((item) => item.id !== updatedContent.id),
+                        ]),
+                      };
+                    });
+                  }}
+                />
+              ) : null}
               {activeTab === "presentation" ? (
                 <PresentationView
                   contents={data.presentation_decks}
@@ -658,46 +692,258 @@ function ModuleQuizCard({
   );
 }
 
-function MaterialsView({ contents }: { contents: GeneratedContent[] }) {
+function MaterialsView({
+  contents,
+  projectId,
+  onUpdated,
+}: {
+  contents: GeneratedContent[];
+  projectId: string;
+  onUpdated: (content: GeneratedContent) => void;
+}) {
   if (!contents.length) {
     return <EmptyState text="Materiais complementares ainda nao encontrados." />;
   }
 
   return (
     <div className="grid gap-5">
-      {sortByCreatedAt(contents).map((content) => {
-        const raw = content.content_json || {};
-        const material = (raw as ComplementaryMaterialContent | null)?.complementary_material;
-
-        if (!material) {
-          return (
-            <article key={content.id} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
-              <p className="text-xs font-medium text-gold-400">Material complementar</p>
-              <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-              <pre className="mt-5 max-h-[720px] overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-4 text-sm leading-6 text-slate-200">
-                {JSON.stringify(raw, null, 2)}
-              </pre>
-            </article>
-          );
-        }
-
-        return (
-          <article key={content.id} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
-            <p className="text-xs font-medium text-gold-400">{safeText(material.material_type || "Material complementar")}</p>
-            <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-50">{safeText(material.material_title || "Material complementar")}</h3>
-            <p className="mt-3 whitespace-pre-wrap leading-7 text-slate-400">{safeText(material.overview)}</p>
-
-            <div className="mt-5 grid gap-5 md:grid-cols-2">
-              <ConceptBlock items={Array.isArray(material.key_concepts) ? material.key_concepts : []} />
-              <ListBlock title="Aplicacoes praticas" items={Array.isArray(material.practical_applications) ? material.practical_applications : []} />
-              <ListBlock title="Exercicios reflexivos" items={Array.isArray(material.reflection_exercises) ? material.reflection_exercises : []} />
-              <ListBlock title="Proximos passos" items={Array.isArray(material.recommended_next_steps) ? material.recommended_next_steps : []} />
-            </div>
-          </article>
-        );
-      })}
+      {sortByCreatedAt(contents).map((content) => (
+        <MaterialCard key={content.id} content={content} projectId={projectId} onUpdated={onUpdated} />
+      ))}
     </div>
+  );
+}
+
+function MaterialCard({
+  content,
+  projectId,
+  onUpdated,
+}: {
+  content: GeneratedContent;
+  projectId: string;
+  onUpdated: (content: GeneratedContent) => void;
+}) {
+  const raw = content.content_json || {};
+  const material = (raw as ComplementaryMaterialContent | null)?.complementary_material;
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState<ComplementaryMaterialDraft | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  if (!material) {
+    return (
+      <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+        <p className="text-xs font-medium text-gold-400">Material complementar</p>
+        <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+        <pre className="mt-5 max-h-[720px] overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-4 text-sm leading-6 text-slate-200">
+          {JSON.stringify(raw, null, 2)}
+        </pre>
+      </article>
+    );
+  }
+
+  function startEditing() {
+    if (!material) {
+      setSaveError("Material complementar ainda nao encontrado para edicao.");
+      return;
+    }
+
+    setDraft(materialToDraft(material));
+    setSaveError("");
+    setIsEditing(true);
+  }
+
+  function updateDraftField(field: keyof Omit<ComplementaryMaterialDraft, "key_concepts">, value: string) {
+    setDraft((current) => (current ? { ...current, [field]: value } : current));
+  }
+
+  function updateConcept(index: number, field: keyof MaterialConceptDraft, value: string) {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        key_concepts: current.key_concepts.map((concept, conceptIndex) =>
+          conceptIndex === index ? { ...concept, [field]: value } : concept,
+        ),
+      };
+    });
+  }
+
+  function addConcept() {
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            key_concepts: [...current.key_concepts, { concept: "", explanation: "" }],
+          }
+        : current,
+    );
+  }
+
+  function removeConcept(index: number) {
+    const confirmed = window.confirm("Tem certeza que deseja remover este conceito?");
+    if (!confirmed) return;
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            key_concepts: current.key_concepts.filter((_, conceptIndex) => conceptIndex !== index),
+          }
+        : current,
+    );
+  }
+
+  async function saveMaterial() {
+    if (!draft) return;
+
+    setSaving(true);
+    setSaveError("");
+    try {
+      const updated = await updateComplementaryMaterial(projectId, content.id, draftToMaterialPayload(draft));
+      onUpdated(updated);
+      setIsEditing(false);
+      setDraft(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setSaveError("Sua sessao expirou. Faca login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setSaveError(err.message);
+      } else {
+        setSaveError("Nao foi possivel salvar o material complementar.");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isEditing && draft) {
+    return (
+      <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium text-gold-400">Editor de material complementar</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-50">{draft.material_title || "Material complementar"}</h3>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={saveMaterial}
+              disabled={saving}
+              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Salvando..." : "Salvar alteracoes"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditing(false);
+                setDraft(null);
+                setSaveError("");
+              }}
+              disabled={saving}
+              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+        {saveError ? <p className="mt-4 text-sm text-red-300">{saveError}</p> : null}
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <InputField label="Titulo do material" value={draft.material_title} onChange={(value) => updateDraftField("material_title", value)} />
+          <InputField label="Tipo do material" value={draft.material_type} onChange={(value) => updateDraftField("material_type", value)} />
+          <InputField label="Titulo do curso" value={draft.course_title} onChange={(value) => updateDraftField("course_title", value)} />
+          <TextAreaField label="Visao geral" value={draft.overview} rows={5} onChange={(value) => updateDraftField("overview", value)} />
+        </div>
+
+        <section className="mt-6 rounded-md border border-white/10 bg-black/20 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-gold-400">Conceitos-chave</p>
+            <button
+              type="button"
+              onClick={addConcept}
+              disabled={saving}
+              className="rounded-md border border-gold-500/30 px-3 py-1.5 text-sm text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Adicionar conceito
+            </button>
+          </div>
+          <div className="mt-4 grid gap-4">
+            {draft.key_concepts.map((concept, index) => (
+              <div key={`${index}-${concept.concept}`} className="rounded-md border border-white/10 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <p className="text-sm text-slate-300">Conceito {index + 1}</p>
+                  <button
+                    type="button"
+                    onClick={() => removeConcept(index)}
+                    disabled={saving}
+                    className="rounded-md border border-red-400/30 px-3 py-1.5 text-sm text-red-300 transition hover:border-red-300/60 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Remover conceito
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <InputField label="Conceito" value={concept.concept} onChange={(value) => updateConcept(index, "concept", value)} />
+                  <TextAreaField
+                    label="Explicacao"
+                    value={concept.explanation}
+                    onChange={(value) => updateConcept(index, "explanation", value)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          <TextAreaField
+            label="Aplicacoes praticas - uma por linha"
+            value={draft.practicalApplicationsText}
+            rows={6}
+            onChange={(value) => updateDraftField("practicalApplicationsText", value)}
+          />
+          <TextAreaField
+            label="Exercicios reflexivos - um por linha"
+            value={draft.reflectionExercisesText}
+            rows={6}
+            onChange={(value) => updateDraftField("reflectionExercisesText", value)}
+          />
+          <TextAreaField
+            label="Proximos passos - um por linha"
+            value={draft.recommendedNextStepsText}
+            rows={6}
+            onChange={(value) => updateDraftField("recommendedNextStepsText", value)}
+          />
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium text-gold-400">{safeText(material.material_type || "Material complementar")}</p>
+          <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-50">{safeText(material.material_title || "Material complementar")}</h3>
+        </div>
+        <button
+          type="button"
+          onClick={startEditing}
+          className="rounded-md border border-white/10 px-3 py-1.5 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+        >
+          Editar material
+        </button>
+      </div>
+      <p className="mt-3 whitespace-pre-wrap leading-7 text-slate-400">{safeText(material.overview)}</p>
+
+      <div className="mt-5 grid gap-5 md:grid-cols-2">
+        <ConceptBlock items={Array.isArray(material.key_concepts) ? material.key_concepts : []} />
+        <ListBlock title="Aplicacoes praticas" items={Array.isArray(material.practical_applications) ? material.practical_applications : []} />
+        <ListBlock title="Exercicios reflexivos" items={Array.isArray(material.reflection_exercises) ? material.reflection_exercises : []} />
+        <ListBlock title="Proximos passos" items={Array.isArray(material.recommended_next_steps) ? material.recommended_next_steps : []} />
+      </div>
+    </article>
   );
 }
 
@@ -1368,6 +1614,49 @@ function draftToModuleQuizPayload(draft: ModuleQuizDraft): ModuleQuizContent {
         correct_answer: question.correct_answer,
         explanation: question.explanation,
       })),
+    },
+  };
+}
+
+function linesToList(value: string): string[] {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function materialToDraft(
+  material: NonNullable<ComplementaryMaterialContent["complementary_material"]>,
+): ComplementaryMaterialDraft {
+  return {
+    course_title: editText(material.course_title),
+    material_title: editText(material.material_title),
+    material_type: editText(material.material_type),
+    overview: editText(material.overview),
+    key_concepts: toArray(material.key_concepts).map((concept) => {
+      const record = typeof concept === "object" && concept !== null ? (concept as Record<string, unknown>) : null;
+      return {
+        concept: editText(record?.concept ?? record?.title ?? record?.name ?? concept),
+        explanation: editText(record?.explanation ?? record?.description ?? record?.text),
+      };
+    }),
+    practicalApplicationsText: toArray(material.practical_applications).map((item) => editText(item)).filter(Boolean).join("\n"),
+    reflectionExercisesText: toArray(material.reflection_exercises).map((item) => editText(item)).filter(Boolean).join("\n"),
+    recommendedNextStepsText: toArray(material.recommended_next_steps).map((item) => editText(item)).filter(Boolean).join("\n"),
+  };
+}
+
+function draftToMaterialPayload(draft: ComplementaryMaterialDraft): ComplementaryMaterialContent {
+  return {
+    complementary_material: {
+      course_title: draft.course_title,
+      material_title: draft.material_title,
+      material_type: draft.material_type,
+      overview: draft.overview,
+      key_concepts: draft.key_concepts.filter((concept) => concept.concept.trim() || concept.explanation.trim()),
+      practical_applications: linesToList(draft.practicalApplicationsText),
+      reflection_exercises: linesToList(draft.reflectionExercisesText),
+      recommended_next_steps: linesToList(draft.recommendedNextStepsText),
     },
   };
 }

@@ -43,6 +43,7 @@ MAX_PRESENTATION_CONTEXT_ITEMS = 8
 MAX_PRESENTATION_UPDATE_BYTES = 250_000
 MAX_LESSON_SCRIPT_UPDATE_BYTES = 250_000
 MAX_MODULE_QUIZ_UPDATE_BYTES = 250_000
+MAX_COMPLEMENTARY_MATERIAL_UPDATE_BYTES = 250_000
 
 
 def get_content_metadata_number(content: GeneratedContent, field: str) -> int:
@@ -407,6 +408,133 @@ def update_module_quiz(
     if isinstance(module_quiz, dict):
         module_number = module_quiz.get("module_number") or ""
         content.title = f"Quiz - Modulo {module_number}".strip()
+    content.updated_at = datetime.now(UTC)
+    db.add(content)
+    db.commit()
+    db.refresh(content)
+    return content
+
+
+def normalize_material_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else [value]
+    return [normalize_presentation_text(item).strip() for item in items if normalize_presentation_text(item).strip()]
+
+
+def normalize_key_concept(item: Any) -> dict[str, str]:
+    if isinstance(item, dict):
+        return {
+            "concept": normalize_presentation_text(
+                item.get("concept") or item.get("title") or item.get("name") or item.get("term")
+            ),
+            "explanation": normalize_presentation_text(
+                item.get("explanation") or item.get("description") or item.get("text") or item.get("content")
+            ),
+        }
+    return {
+        "concept": normalize_presentation_text(item),
+        "explanation": "",
+    }
+
+
+def normalize_key_concepts(value: Any) -> list[dict[str, str]]:
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else [value]
+    concepts = [normalize_key_concept(item) for item in items]
+    return [concept for concept in concepts if concept["concept"] or concept["explanation"]]
+
+
+def normalize_complementary_material_payload(payload: dict[str, Any], current_json: dict[str, Any]) -> dict[str, Any]:
+    payload_size = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+    if payload_size > MAX_COMPLEMENTARY_MATERIAL_UPDATE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="O material complementar enviado e grande demais para salvar.",
+        )
+
+    incoming_material = (
+        payload.get("complementary_material")
+        if isinstance(payload.get("complementary_material"), dict)
+        else payload
+    )
+    current_material = (
+        current_json.get("complementary_material", {})
+        if isinstance(current_json.get("complementary_material"), dict)
+        else {}
+    )
+    material = {**current_material, **incoming_material}
+
+    normalized_material = {
+        key: normalize_presentation_text(value)
+        for key, value in material.items()
+        if key
+        not in {
+            "key_concepts",
+            "practical_applications",
+            "reflection_exercises",
+            "recommended_next_steps",
+        }
+    }
+    normalized_material.update(
+        {
+            "course_title": normalize_presentation_text(material.get("course_title")),
+            "material_title": normalize_presentation_text(material.get("material_title")),
+            "material_type": normalize_presentation_text(material.get("material_type")),
+            "overview": normalize_presentation_text(material.get("overview")),
+            "key_concepts": normalize_key_concepts(material.get("key_concepts")),
+            "practical_applications": normalize_material_list(material.get("practical_applications")),
+            "reflection_exercises": normalize_material_list(material.get("reflection_exercises")),
+            "recommended_next_steps": normalize_material_list(material.get("recommended_next_steps")),
+        }
+    )
+
+    metadata = {
+        "material_title": normalized_material["material_title"],
+        "material_type": normalized_material["material_type"],
+    }
+
+    return {
+        **{key: value for key, value in current_json.items() if key not in {"complementary_material", "metadata"}},
+        "complementary_material": normalized_material,
+        "metadata": metadata,
+    }
+
+
+def update_complementary_material(
+    db: Session,
+    current_user: User,
+    project_id: UUID,
+    content_id: UUID,
+    payload: dict[str, Any],
+) -> GeneratedContent:
+    project = get_project_by_id(db, current_user.organization_id, project_id)
+    content = db.execute(
+        select(GeneratedContent).where(
+            GeneratedContent.id == content_id,
+            GeneratedContent.project_id == project.id,
+            GeneratedContent.organization_id == current_user.organization_id,
+            GeneratedContent.content_type.in_(["complementary_material", "complementary_materials"]),
+        )
+    ).scalar_one_or_none()
+
+    if content is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Material complementar nao encontrado.",
+        )
+
+    current_json = content.content_json or {}
+    normalized = normalize_complementary_material_payload(payload, current_json)
+    generation_language = current_json.get("generation_language") or content.language
+    content.content_json = {
+        **normalized,
+        "generation_language": generation_language,
+    }
+    material = content.content_json.get("complementary_material", {})
+    if isinstance(material, dict):
+        content.title = material.get("material_title") or "Material complementar"
     content.updated_at = datetime.now(UTC)
     db.add(content)
     db.commit()
