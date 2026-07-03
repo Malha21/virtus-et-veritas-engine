@@ -20,9 +20,12 @@ class GeneratedAudioResponse(BaseModel):
     generated_content_id: UUID | None
     block_index: int
     title: str | None
+    voice_provider: str | None
     voice: str | None
     model: str | None
     format: str
+    personalized_voice_used: bool
+    voice_notice: str | None
     duration_seconds: float | None
     status: str
     created_at: datetime

@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.models.generated_audio import GeneratedAudio
 from app.models.generated_content import GeneratedContent
+from app.models.instructor_profile import InstructorProfile
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.audio import AudioGenerateRequest
@@ -24,6 +26,16 @@ MEDIA_TYPES = {
     "opus": "audio/ogg",
     "pcm": "application/octet-stream",
 }
+SUPPORTED_VOICE_PROVIDERS = {"openai"}
+
+
+@dataclass(frozen=True)
+class VoiceSettings:
+    provider: str
+    voice: str
+    model: str
+    personalized_voice_used: bool
+    notice: str | None = None
 
 
 def get_audio_storage_dir(settings: Settings | None = None) -> Path:
@@ -100,9 +112,12 @@ def audio_to_response_data(audio: GeneratedAudio) -> dict[str, object]:
         "generated_content_id": audio.generated_content_id,
         "block_index": audio.block_index,
         "title": audio.title,
+        "voice_provider": audio.voice_provider,
         "voice": audio.voice,
         "model": audio.model,
         "format": audio.format,
+        "personalized_voice_used": audio.personalized_voice_used,
+        "voice_notice": audio.voice_notice,
         "duration_seconds": audio.duration_seconds,
         "status": audio.status,
         "created_at": audio.created_at,
@@ -124,6 +139,72 @@ def read_tts_response_bytes(response: object) -> bytes:
         return response
 
     raise RuntimeError("Resposta de áudio inválida retornada pelo provedor.")
+
+
+def get_instructor_profile_for_user(db: Session, current_user: User) -> InstructorProfile | None:
+    return db.execute(
+        select(InstructorProfile).where(InstructorProfile.user_id == current_user.id)
+    ).scalar_one_or_none()
+
+
+def resolve_voice_settings(
+    db: Session,
+    current_user: User,
+    payload: AudioGenerateRequest,
+    settings: Settings,
+) -> VoiceSettings:
+    default_voice = settings.openai_tts_voice
+    model = payload.model or settings.openai_tts_model
+    profile = get_instructor_profile_for_user(db, current_user)
+
+    if profile is None:
+        return VoiceSettings(
+            provider="OpenAI",
+            voice=default_voice,
+            model=model,
+            personalized_voice_used=False,
+            notice="Nenhum perfil de instrutor configurado. Foi usada a voz padrão do sistema.",
+        )
+
+    if not profile.consent_voice_clone:
+        return VoiceSettings(
+            provider="OpenAI",
+            voice=default_voice,
+            model=model,
+            personalized_voice_used=False,
+            notice="A voz personalizada não foi usada porque o consentimento não está ativo.",
+        )
+
+    provider = (profile.voice_provider or "").strip()
+    if not provider:
+        return VoiceSettings(
+            provider="OpenAI",
+            voice=default_voice,
+            model=model,
+            personalized_voice_used=False,
+            notice="Perfil do instrutor sem provider de voz. Foi usada a voz padrão do sistema.",
+        )
+
+    normalized_provider = provider.lower()
+    if normalized_provider not in SUPPORTED_VOICE_PROVIDERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="O provider de voz cadastrado ainda não está integrado nesta versão.",
+        )
+
+    voice = (profile.voice_id or profile.voice_name or default_voice).strip()
+    personalized_voice_used = bool(profile.voice_id or profile.voice_name)
+    notice = None
+    if not personalized_voice_used:
+        notice = "Perfil OpenAI sem voice_id ou voice_name. Foi usada a voz padrão do sistema."
+
+    return VoiceSettings(
+        provider="OpenAI",
+        voice=voice,
+        model=model,
+        personalized_voice_used=personalized_voice_used,
+        notice=notice,
+    )
 
 
 def generate_tts_audio(
@@ -148,12 +229,6 @@ def generate_tts_audio(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Texto do bloco excede o limite de {MAX_TTS_TEXT_LENGTH} caracteres.",
         )
-    if not active_settings.openai_api_key or active_settings.openai_api_key == "change_me_openai_api_key":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OPENAI_API_KEY não configurada para geração de áudio.",
-        )
-
     audio_format = (payload.format or active_settings.openai_tts_format or "mp3").lower()
     if audio_format not in ALLOWED_AUDIO_FORMATS:
         raise HTTPException(
@@ -161,8 +236,13 @@ def generate_tts_audio(
             detail="Formato de áudio inválido.",
         )
 
-    model = payload.model or active_settings.openai_tts_model
-    voice = payload.voice or active_settings.openai_tts_voice
+    voice_settings = resolve_voice_settings(db, current_user, payload, active_settings)
+    if not active_settings.openai_api_key or active_settings.openai_api_key == "change_me_openai_api_key":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Chave OpenAI não configurada no servidor.",
+        )
+
     audio_dir = get_audio_storage_dir(active_settings)
     filename = f"{project.id}-{payload.block_index}-{uuid.uuid4().hex}.{audio_format}"
     file_path = audio_dir / filename
@@ -170,8 +250,8 @@ def generate_tts_audio(
     try:
         client = OpenAI(api_key=active_settings.openai_api_key)
         response = client.audio.speech.create(
-            model=model,
-            voice=voice,
+            model=voice_settings.model,
+            voice=voice_settings.voice,
             input=text,
             response_format=audio_format,
         )
@@ -182,7 +262,7 @@ def generate_tts_audio(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Não foi possível gerar o áudio agora: {exc}",
+            detail="Não foi possível gerar o áudio agora. Verifique a voz configurada e tente novamente.",
         ) from exc
 
     audio = GeneratedAudio(
@@ -191,10 +271,13 @@ def generate_tts_audio(
         block_index=payload.block_index,
         title=payload.title,
         source_text=text,
-        voice=voice,
-        model=model,
+        voice_provider=voice_settings.provider,
+        voice=voice_settings.voice,
+        model=voice_settings.model,
         format=audio_format,
         file_path=str(file_path),
+        personalized_voice_used=voice_settings.personalized_voice_used,
+        voice_notice=voice_settings.notice,
         status="completed",
     )
     db.add(audio)

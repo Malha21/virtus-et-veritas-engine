@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,11 +31,14 @@ class GeneratedAudio(Base):
     block_index: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_text: Mapped[str] = mapped_column(Text, nullable=False)
+    voice_provider: Mapped[str | None] = mapped_column(String(100), nullable=True)
     voice: Mapped[str | None] = mapped_column(String(100), nullable=True)
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     format: Mapped[str] = mapped_column(String(20), nullable=False, default="mp3", server_default="mp3")
     file_path: Mapped[str] = mapped_column(String(1000), nullable=False)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    personalized_voice_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    voice_notice: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(50),
         nullable=False,

@@ -28,9 +28,12 @@ export type GeneratedAudio = {
   generated_content_id: string | null;
   block_index: number;
   title: string | null;
+  voice_provider: string | null;
   voice: string | null;
   model: string | null;
   format: string;
+  personalized_voice_used: boolean;
+  voice_notice: string | null;
   duration_seconds: number | null;
   status: string;
   created_at: string;

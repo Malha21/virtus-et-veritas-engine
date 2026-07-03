@@ -19,8 +19,10 @@ import {
   downloadQuizzesPdf,
   fetchNarrationAudioBlob,
   generateNarrationAudio,
+  getInstructorProfile,
   listProjectAudios,
   type GeneratedAudio,
+  type InstructorProfile,
   updateComplementaryMaterial,
   updateLessonScript,
   updateModuleQuiz,
@@ -756,6 +758,9 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
   const [audios, setAudios] = useState<GeneratedAudio[]>([]);
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
   const [loadingAudioByBlock, setLoadingAudioByBlock] = useState<Record<number, boolean>>({});
+  const [instructorProfile, setInstructorProfile] = useState<InstructorProfile | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [profileError, setProfileError] = useState("");
   const [audioMessage, setAudioMessage] = useState("");
   const [audioError, setAudioError] = useState("");
 
@@ -769,6 +774,31 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
       setSelectedId(sortedContents[0]?.id || "");
     }
   }, [selectedId, sortedContents]);
+
+  useEffect(() => {
+    let isActive = true;
+    setProfileError("");
+    getInstructorProfile()
+      .then((profile) => {
+        if (isActive) setInstructorProfile(profile);
+      })
+      .catch((err) => {
+        if (!isActive) return;
+        if (err instanceof ApiError && err.status === 401) {
+          setProfileError("Sua sessão expirou. Faça login novamente.");
+        } else if (err instanceof Error && err.message) {
+          setProfileError(err.message);
+        } else {
+          setProfileError("Não foi possível carregar o perfil do instrutor.");
+        }
+      })
+      .finally(() => {
+        if (isActive) setProfileLoaded(true);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -977,6 +1007,8 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
         {audioError ? <p className="mt-3 text-sm text-red-300">{audioError}</p> : null}
       </section>
 
+      <VoiceSettingsCard profile={instructorProfile} loaded={profileLoaded} error={profileError} />
+
       <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1038,6 +1070,11 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
                         <p className="mt-1 text-xs text-slate-500">
                           Voz {audio.voice || "padrão"} · {audio.format.toUpperCase()}
                         </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Provider {audio.voice_provider || "OpenAI"} ·{" "}
+                          {audio.personalized_voice_used ? "voz personalizada configurada" : "voz padrão do sistema"}
+                        </p>
+                        {audio.voice_notice ? <p className="mt-2 text-xs text-gold-300">{audio.voice_notice}</p> : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -1071,6 +1108,75 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
         )}
       </section>
     </div>
+  );
+}
+
+function VoiceSettingsCard({
+  profile,
+  loaded,
+  error,
+}: {
+  profile: InstructorProfile | null;
+  loaded: boolean;
+  error: string;
+}) {
+  const provider = profile?.voice_provider?.trim() || "OpenAI";
+  const voiceLabel = profile?.voice_id?.trim() || profile?.voice_name?.trim() || "voz padrão do sistema";
+  const hasUnsupportedProvider = Boolean(profile?.voice_provider && profile.voice_provider.toLowerCase() !== "openai");
+
+  return (
+    <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-gold-400">Configuração de voz</p>
+          <h3 className="mt-1 text-xl font-semibold text-slate-50">Perfil do Instrutor</h3>
+        </div>
+        <Link
+          href="/instructor-profile"
+          className="rounded-md border border-gold-500/30 px-3 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200"
+        >
+          Configurar Perfil do Instrutor
+        </Link>
+      </div>
+
+      {!loaded ? <p className="mt-4 text-sm text-slate-400">Carregando configuração de voz...</p> : null}
+      {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
+      {loaded && !error && !profile ? (
+        <p className="mt-4 text-sm leading-6 text-slate-300">
+          Nenhum perfil de instrutor configurado. A geração usará a voz padrão do sistema.
+        </p>
+      ) : null}
+
+      {loaded && !error && profile ? (
+        <div className="mt-4 grid gap-3 text-sm text-slate-300 md:grid-cols-3">
+          <div className="rounded-md border border-white/10 bg-black/20 p-3">
+            <p className="text-xs text-slate-500">Provider de voz</p>
+            <p className="mt-1 font-medium text-slate-100">{provider}</p>
+          </div>
+          <div className="rounded-md border border-white/10 bg-black/20 p-3">
+            <p className="text-xs text-slate-500">Nome/ID da voz</p>
+            <p className="mt-1 font-medium text-slate-100">{voiceLabel}</p>
+          </div>
+          <div className="rounded-md border border-white/10 bg-black/20 p-3">
+            <p className="text-xs text-slate-500">Consentimento</p>
+            <p className="mt-1 font-medium text-slate-100">
+              {profile.consent_voice_clone ? "ativo" : "não ativo"}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {loaded && profile && !profile.consent_voice_clone ? (
+        <p className="mt-4 text-sm leading-6 text-gold-200">
+          A voz personalizada não será usada porque o consentimento ainda não está ativo.
+        </p>
+      ) : null}
+      {loaded && profile && hasUnsupportedProvider ? (
+        <p className="mt-4 text-sm leading-6 text-gold-200">
+          Este provider ainda será integrado em etapa futura.
+        </p>
+      ) : null}
+    </section>
   );
 }
 
