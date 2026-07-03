@@ -19,7 +19,17 @@ from app.schemas.instructor_asset import InstructorAssetResponse, InstructorAsse
 router = APIRouter(prefix="/instructor-assets", tags=["instructor-assets"])
 
 ASSET_TYPES = {"voice_sample", "avatar_image"}
-VOICE_MIME_TYPES = {"audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/mp4", "audio/m4a", "audio/webm"}
+VOICE_EXTENSIONS = {".mp3", ".wav", ".m4a", ".mp4", ".webm"}
+VOICE_MIME_TYPES = {
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/mp4",
+    "audio/m4a",
+    "audio/x-m4a",
+    "audio/webm",
+}
 AVATAR_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_VOICE_BYTES = 25 * 1024 * 1024
 MAX_AVATAR_BYTES = 10 * 1024 * 1024
@@ -30,6 +40,7 @@ EXTENSIONS_BY_MIME = {
     "audio/x-wav": ".wav",
     "audio/mp4": ".m4a",
     "audio/m4a": ".m4a",
+    "audio/x-m4a": ".m4a",
     "audio/webm": ".webm",
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -80,7 +91,13 @@ def get_assets_storage_dir(user_id: UUID, asset_type: str) -> Path:
     return path
 
 
-def validate_upload(asset_type: str, mime_type: str | None, content: bytes, consent_confirmed: bool) -> str:
+def validate_upload(
+    asset_type: str,
+    mime_type: str | None,
+    content: bytes,
+    consent_confirmed: bool,
+    original_filename: str | None,
+) -> str:
     if not consent_confirmed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -90,10 +107,16 @@ def validate_upload(asset_type: str, mime_type: str | None, content: bytes, cons
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Arquivo vazio não pode ser enviado.")
 
     if asset_type == "voice_sample":
-        if mime_type not in VOICE_MIME_TYPES:
+        original_extension = Path(original_filename or "").suffix.lower()
+        has_allowed_extension = original_extension in VOICE_EXTENSIONS
+        if mime_type == "application/octet-stream":
+            if not has_allowed_extension:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tipo de áudio inválido.")
+        elif mime_type not in VOICE_MIME_TYPES:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tipo de áudio inválido.")
         if len(content) > MAX_VOICE_BYTES:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amostra de voz excede 25 MB.")
+        return original_extension if has_allowed_extension else EXTENSIONS_BY_MIME.get(mime_type or "", ".bin")
     else:
         if mime_type not in AVATAR_MIME_TYPES:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tipo de imagem inválido.")
@@ -145,7 +168,7 @@ async def upload_instructor_asset(
     valid_asset_type = validate_asset_type(asset_type)
     profile = get_profile_for_upload(db, current_user)
     content = await file.read()
-    extension = validate_upload(valid_asset_type, file.content_type, content, consent_confirmed)
+    extension = validate_upload(valid_asset_type, file.content_type, content, consent_confirmed, file.filename)
     stored_filename = f"{uuid.uuid4().hex}{extension}"
     storage_dir = get_assets_storage_dir(current_user.id, valid_asset_type)
     file_path = storage_dir / stored_filename
