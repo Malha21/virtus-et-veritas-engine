@@ -5,6 +5,10 @@ from uuid import UUID
 from xml.sax.saxutils import escape
 
 from fastapi import HTTPException, status
+from pptx import Presentation
+from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Inches, Pt
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
@@ -384,6 +388,171 @@ def build_presentation_pdf(project: Project, presentation: GeneratedContent) -> 
         story.append(paragraph(deck.get("closing_message"), body_style))
 
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    return buffer.getvalue()
+
+
+def add_pptx_textbox(
+    slide: Any,
+    text: Any,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    font_size: int = 18,
+    bold: bool = False,
+    color: str = "1F2937",
+    align: Any = None,
+) -> None:
+    box = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
+    frame = box.text_frame
+    frame.clear()
+    frame.word_wrap = True
+    paragraph_item = frame.paragraphs[0]
+    if align is not None:
+        paragraph_item.alignment = align
+    run = paragraph_item.add_run()
+    run.text = safe_text(text, "")
+    run.font.size = Pt(font_size)
+    run.font.bold = bold
+    run.font.color.rgb = RGBColor.from_string(color)
+
+
+def add_pptx_bullets(
+    slide: Any,
+    bullets: list[Any],
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+    font_size: int = 20,
+    max_visible: int = 6,
+) -> list[Any]:
+    visible = bullets[:max_visible]
+    overflow = bullets[max_visible:]
+    box = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
+    frame = box.text_frame
+    frame.clear()
+    frame.word_wrap = True
+    for index, bullet in enumerate(visible):
+        paragraph_item = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
+        paragraph_item.text = safe_text(bullet, "")
+        paragraph_item.level = 0
+        paragraph_item.font.size = Pt(font_size)
+        paragraph_item.font.color.rgb = RGBColor.from_string("1F2937")
+    return overflow
+
+
+def add_pptx_footer(slide: Any) -> None:
+    add_pptx_textbox(slide, FOOTER_TEXT, 0.55, 7.0, 5.5, 0.25, font_size=9, color="6B7280")
+
+
+def add_pptx_note_box(slide: Any, title: str, value: Any, top: float) -> None:
+    if value in (None, "", []):
+        return
+    add_pptx_textbox(slide, title, 0.65, top, 2.4, 0.25, font_size=9, bold=True, color="8A6A16")
+    add_pptx_textbox(slide, value, 0.65, top + 0.25, 12.0, 0.55, font_size=10, color="4B5563")
+
+
+def build_presentation_pptx(project: Project, presentation: GeneratedContent) -> bytes:
+    deck = presentation.content_json or {}
+    slides = as_list(deck.get("slides"))
+    if not slides:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="A apresentacao ainda nao possui slides para exportar.",
+        )
+
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    blank_layout = prs.slide_layouts[6]
+
+    def add_slide_background(slide: Any) -> None:
+        background = slide.background
+        fill = background.fill
+        fill.solid()
+        fill.fore_color.rgb = RGBColor.from_string("F8FAFC")
+
+    cover = prs.slides.add_slide(blank_layout)
+    add_slide_background(cover)
+    add_pptx_textbox(
+        cover,
+        deck.get("presentation_title") or project.title,
+        0.85,
+        1.55,
+        11.6,
+        1.0,
+        font_size=34,
+        bold=True,
+        color="111827",
+        align=PP_ALIGN.CENTER,
+    )
+    add_pptx_textbox(cover, project.title, 1.7, 2.75, 10.0, 0.45, font_size=18, color="8A6A16", align=PP_ALIGN.CENTER)
+    if deck.get("estimated_duration"):
+        add_pptx_textbox(
+            cover,
+            f"Duracao estimada: {safe_text(deck.get('estimated_duration'), '')}",
+            2.4,
+            3.45,
+            8.5,
+            0.35,
+            font_size=14,
+            color="4B5563",
+            align=PP_ALIGN.CENTER,
+        )
+    add_pptx_footer(cover)
+
+    context = prs.slides.add_slide(blank_layout)
+    add_slide_background(context)
+    add_pptx_textbox(context, "Objetivo e contexto", 0.65, 0.55, 11.8, 0.6, font_size=28, bold=True, color="111827")
+    add_pptx_note_box(context, "Publico-alvo", deck.get("target_audience"), 1.55)
+    add_pptx_note_box(context, "Objetivo da apresentacao", deck.get("presentation_objective"), 2.65)
+    add_pptx_note_box(context, "Estilo visual sugerido", deck.get("visual_style"), 4.15)
+    add_pptx_footer(context)
+
+    for index, raw_slide in enumerate(slides, start=1):
+        slide_data = raw_slide if isinstance(raw_slide, dict) else {"title": raw_slide}
+        slide = prs.slides.add_slide(blank_layout)
+        add_slide_background(slide)
+        title = slide_data.get("title") or f"Slide {slide_data.get('slide_number') or index}"
+        add_pptx_textbox(slide, title, 0.65, 0.45, 12.0, 0.55, font_size=28, bold=True, color="111827")
+        if slide_data.get("subtitle"):
+            add_pptx_textbox(slide, slide_data.get("subtitle"), 0.7, 1.08, 11.8, 0.4, font_size=15, color="4B5563")
+        overflow = add_pptx_bullets(slide, as_list(slide_data.get("bullets")), 0.85, 1.65, 7.3, 3.6, font_size=20)
+        if slide_data.get("visual_suggestion"):
+            add_pptx_textbox(slide, "Sugestao visual", 8.45, 1.65, 3.8, 0.25, font_size=10, bold=True, color="8A6A16")
+            add_pptx_textbox(slide, slide_data.get("visual_suggestion"), 8.45, 1.95, 3.8, 1.25, font_size=12, color="4B5563")
+        if slide_data.get("interaction_question"):
+            add_pptx_textbox(slide, "Pergunta de interacao", 8.45, 3.55, 3.8, 0.25, font_size=10, bold=True, color="8A6A16")
+            add_pptx_textbox(slide, slide_data.get("interaction_question"), 8.45, 3.85, 3.8, 0.95, font_size=12, color="1F2937")
+        notes = []
+        if slide_data.get("speaker_notes"):
+            notes.append(f"Notas do apresentador: {safe_text(slide_data.get('speaker_notes'), '')}")
+        if overflow:
+            notes.append("Bullets adicionais: " + "; ".join(safe_text(item, "") for item in overflow))
+        if notes:
+            add_pptx_textbox(slide, "\n".join(notes), 0.8, 5.85, 11.75, 0.75, font_size=9, color="6B7280")
+        add_pptx_footer(slide)
+
+    closing = prs.slides.add_slide(blank_layout)
+    add_slide_background(closing)
+    add_pptx_textbox(closing, "Encerramento", 0.8, 1.35, 11.7, 0.65, font_size=30, bold=True, color="111827", align=PP_ALIGN.CENTER)
+    add_pptx_textbox(
+        closing,
+        deck.get("closing_message") or "Material gerado e organizado pelo Virtus et Veritas Engine.",
+        1.5,
+        2.45,
+        10.3,
+        1.2,
+        font_size=20,
+        color="1F2937",
+        align=PP_ALIGN.CENTER,
+    )
+    add_pptx_textbox(closing, "Material gerado e organizado pelo Virtus et Veritas Engine.", 1.9, 4.1, 9.5, 0.45, font_size=13, color="6B7280", align=PP_ALIGN.CENTER)
+    add_pptx_footer(closing)
+
+    buffer = BytesIO()
+    prs.save(buffer)
     return buffer.getvalue()
 
 
@@ -1129,6 +1298,12 @@ def export_presentation_pdf(db: Session, current_user: User, project_id: UUID) -
     project = get_project_by_id(db, current_user.organization_id, project_id)
     presentation = get_latest_presentation_deck(db, project)
     return project, build_presentation_pdf(project, presentation)
+
+
+def export_presentation_pptx(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
+    project = get_project_by_id(db, current_user.organization_id, project_id)
+    presentation = get_latest_presentation_deck(db, project)
+    return project, build_presentation_pptx(project, presentation)
 
 
 def export_lesson_scripts_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:

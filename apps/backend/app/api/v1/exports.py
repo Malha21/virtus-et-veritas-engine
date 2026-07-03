@@ -14,6 +14,7 @@ from app.services.export_service import (
     export_full_course_pdf,
     export_lesson_scripts_pdf,
     export_presentation_pdf,
+    export_presentation_pptx,
     export_quizzes_pdf,
 )
 
@@ -68,6 +69,19 @@ def get_quizzes_pdf(
     filename = f"quizzes-{safe_filename(project.slug or project.id)}.pdf"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
+
+
+@router.get("/presentation.pptx")
+def get_presentation_pptx(
+    project_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StreamingResponse:
+    project, pptx_bytes = export_presentation_pptx(db, current_user, project_id)
+    filename = f"presentation-{safe_filename(project.slug or project.id)}.pptx"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    return StreamingResponse(BytesIO(pptx_bytes), media_type=media_type, headers=headers)
 
 
 @router.get("/complementary-materials.pdf")

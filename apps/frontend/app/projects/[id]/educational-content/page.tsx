@@ -13,6 +13,7 @@ import {
   downloadFullCoursePdf,
   downloadLessonScriptsPdf,
   downloadPresentationPdf,
+  downloadPresentationPptx,
   downloadQuizzesPdf,
   updateComplementaryMaterial,
   updateLessonScript,
@@ -179,6 +180,8 @@ export default function EducationalContentPage() {
   const [fullCourseExportError, setFullCourseExportError] = useState("");
   const [exportingPresentation, setExportingPresentation] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [exportingPresentationPptx, setExportingPresentationPptx] = useState(false);
+  const [presentationPptxError, setPresentationPptxError] = useState("");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -411,6 +414,8 @@ export default function EducationalContentPage() {
                   projectId={params.id}
                   exporting={exportingPresentation}
                   exportError={exportError}
+                  exportingPptx={exportingPresentationPptx}
+                  pptxError={presentationPptxError}
                   onUpdated={(updatedContent) => {
                     setData((current) => {
                       if (!current) return current;
@@ -438,6 +443,23 @@ export default function EducationalContentPage() {
                       }
                     } finally {
                       setExportingPresentation(false);
+                    }
+                  }}
+                  onExportPptx={async () => {
+                    setExportingPresentationPptx(true);
+                    setPresentationPptxError("");
+                    try {
+                      await downloadPresentationPptx(params.id);
+                    } catch (err) {
+                      if (err instanceof ApiError && err.status === 401) {
+                        setPresentationPptxError("Sua sessao expirou. Faca login novamente.");
+                      } else if (err instanceof Error && err.message) {
+                        setPresentationPptxError(err.message);
+                      } else {
+                        setPresentationPptxError("Nao foi possivel baixar a apresentacao em PPTX.");
+                      }
+                    } finally {
+                      setExportingPresentationPptx(false);
                     }
                   }}
                 />
@@ -1367,15 +1389,21 @@ function PresentationView({
   projectId,
   exporting,
   exportError,
+  exportingPptx,
+  pptxError,
   onUpdated,
   onExport,
+  onExportPptx,
 }: {
   contents: GeneratedContent[];
   projectId: string;
   exporting: boolean;
   exportError: string;
+  exportingPptx: boolean;
+  pptxError: string;
   onUpdated: (content: GeneratedContent) => void;
   onExport: () => Promise<void>;
+  onExportPptx: () => Promise<void>;
 }) {
   const content = sortSummaries(contents)[0];
   const deck = content?.content_json as PresentationDeckContent | undefined;
@@ -1594,6 +1622,14 @@ function PresentationView({
           </button>
           <button
             type="button"
+            onClick={onExportPptx}
+            disabled={exportingPptx}
+            className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {exportingPptx ? "Gerando PPTX..." : "Baixar apresentacao em PPTX"}
+          </button>
+          <button
+            type="button"
             onClick={startEditing}
             className="rounded-md border border-white/10 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
           >
@@ -1601,6 +1637,7 @@ function PresentationView({
           </button>
         </div>
         {exportError ? <p className="mt-4 text-sm text-red-300">{exportError}</p> : null}
+        {pptxError ? <p className="mt-4 text-sm text-red-300">{pptxError}</p> : null}
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <InfoBlock label="Publico-alvo" value={deck.target_audience} />
           <InfoBlock label="Duracao estimada" value={deck.estimated_duration} />
