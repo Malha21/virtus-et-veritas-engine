@@ -175,6 +175,11 @@ export default function InstructorProfilePage() {
             </ProfileSection>
 
             <ProfileSection title="Voz" description="Referências para futura narração personalizada.">
+              <p className="rounded-md border border-gold-500/20 bg-gold-500/10 px-4 py-3 text-sm leading-6 text-gold-100 md:col-span-2">
+                Para usar ElevenLabs, preencha Provider de voz como ElevenLabs e informe o Voice ID da voz já criada
+                ou configurada na ElevenLabs. O VVE Engine ainda não cria nem clona a voz automaticamente nesta etapa;
+                o consentimento de voz precisa estar marcado.
+              </p>
               <TextInput
                 label="Provider de voz"
                 value={String(form.voice_provider || "")}

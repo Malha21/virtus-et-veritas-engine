@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
+import httpx
 from fastapi import HTTPException, status
 from openai import OpenAI
 from sqlalchemy import select
@@ -26,7 +27,8 @@ MEDIA_TYPES = {
     "opus": "audio/ogg",
     "pcm": "application/octet-stream",
 }
-SUPPORTED_VOICE_PROVIDERS = {"openai"}
+SUPPORTED_VOICE_PROVIDERS = {"openai", "elevenlabs"}
+ELEVENLABS_PROVIDER_ALIASES = {"elevenlabs", "eleven_labs", "eleven labs"}
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,7 @@ class VoiceSettings:
     provider: str
     voice: str
     model: str
+    output_format: str
     personalized_voice_used: bool
     notice: str | None = None
 
@@ -141,6 +144,13 @@ def read_tts_response_bytes(response: object) -> bytes:
     raise RuntimeError("Resposta de áudio inválida retornada pelo provedor.")
 
 
+def normalize_voice_provider(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized in ELEVENLABS_PROVIDER_ALIASES:
+        return "elevenlabs"
+    return normalized
+
+
 def get_instructor_profile_for_user(db: Session, current_user: User) -> InstructorProfile | None:
     return db.execute(
         select(InstructorProfile).where(InstructorProfile.user_id == current_user.id)
@@ -162,6 +172,7 @@ def resolve_voice_settings(
             provider="OpenAI",
             voice=default_voice,
             model=model,
+            output_format=settings.openai_tts_format,
             personalized_voice_used=False,
             notice="Nenhum perfil de instrutor configurado. Foi usada a voz padrão do sistema.",
         )
@@ -171,6 +182,7 @@ def resolve_voice_settings(
             provider="OpenAI",
             voice=default_voice,
             model=model,
+            output_format=settings.openai_tts_format,
             personalized_voice_used=False,
             notice="A voz personalizada não foi usada porque o consentimento não está ativo.",
         )
@@ -181,15 +193,31 @@ def resolve_voice_settings(
             provider="OpenAI",
             voice=default_voice,
             model=model,
+            output_format=settings.openai_tts_format,
             personalized_voice_used=False,
             notice="Perfil do instrutor sem provider de voz. Foi usada a voz padrão do sistema.",
         )
 
-    normalized_provider = provider.lower()
+    normalized_provider = normalize_voice_provider(provider)
     if normalized_provider not in SUPPORTED_VOICE_PROVIDERS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="O provider de voz cadastrado ainda não está integrado nesta versão.",
+        )
+
+    if normalized_provider == "elevenlabs":
+        if not profile.voice_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Voice ID da ElevenLabs não configurado no Perfil do Instrutor.",
+            )
+        return VoiceSettings(
+            provider="ElevenLabs",
+            voice=profile.voice_id.strip(),
+            model=settings.elevenlabs_tts_model,
+            output_format=settings.elevenlabs_output_format,
+            personalized_voice_used=True,
+            notice="Áudio gerado com a voz personalizada configurada no Perfil do Instrutor.",
         )
 
     voice = (profile.voice_id or profile.voice_name or default_voice).strip()
@@ -202,9 +230,72 @@ def resolve_voice_settings(
         provider="OpenAI",
         voice=voice,
         model=model,
+        output_format=settings.openai_tts_format,
         personalized_voice_used=personalized_voice_used,
         notice=notice,
     )
+
+
+def generate_openai_tts(text: str, voice_settings: VoiceSettings, audio_format: str, settings: Settings) -> bytes:
+    if not settings.openai_api_key or settings.openai_api_key == "change_me_openai_api_key":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Chave OpenAI não configurada no servidor.",
+        )
+
+    try:
+        client = OpenAI(api_key=settings.openai_api_key)
+        response = client.audio.speech.create(
+            model=voice_settings.model,
+            voice=voice_settings.voice,
+            input=text,
+            response_format=audio_format,
+        )
+        return read_tts_response_bytes(response)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Não foi possível gerar o áudio agora. Verifique a voz configurada e tente novamente.",
+        ) from exc
+
+
+def generate_elevenlabs_tts(text: str, voice_settings: VoiceSettings, settings: Settings) -> bytes:
+    if not settings.elevenlabs_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Chave ElevenLabs não configurada no servidor.",
+        )
+    if not voice_settings.voice:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Voice ID da ElevenLabs não configurado no Perfil do Instrutor.",
+        )
+
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_settings.voice}"
+    headers = {
+        "xi-api-key": settings.elevenlabs_api_key,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+    }
+    payload = {
+        "text": text,
+        "model_id": voice_settings.model,
+    }
+    params = {"output_format": voice_settings.output_format} if voice_settings.output_format else None
+
+    try:
+        response = httpx.post(url, headers=headers, json=payload, params=params, timeout=120)
+        response.raise_for_status()
+        return response.content
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Não foi possível gerar o áudio com a ElevenLabs. Verifique o Voice ID e a configuração da conta.",
+        ) from exc
 
 
 def generate_tts_audio(
@@ -237,33 +328,17 @@ def generate_tts_audio(
         )
 
     voice_settings = resolve_voice_settings(db, current_user, payload, active_settings)
-    if not active_settings.openai_api_key or active_settings.openai_api_key == "change_me_openai_api_key":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Chave OpenAI não configurada no servidor.",
-        )
+    stored_audio_format = "mp3" if voice_settings.provider == "ElevenLabs" else audio_format
 
     audio_dir = get_audio_storage_dir(active_settings)
-    filename = f"{project.id}-{payload.block_index}-{uuid.uuid4().hex}.{audio_format}"
+    filename = f"{project.id}-{payload.block_index}-{uuid.uuid4().hex}.{stored_audio_format}"
     file_path = audio_dir / filename
 
-    try:
-        client = OpenAI(api_key=active_settings.openai_api_key)
-        response = client.audio.speech.create(
-            model=voice_settings.model,
-            voice=voice_settings.voice,
-            input=text,
-            response_format=audio_format,
-        )
-        audio_bytes = read_tts_response_bytes(response)
-        file_path.write_bytes(audio_bytes)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Não foi possível gerar o áudio agora. Verifique a voz configurada e tente novamente.",
-        ) from exc
+    if voice_settings.provider == "ElevenLabs":
+        audio_bytes = generate_elevenlabs_tts(text, voice_settings, active_settings)
+    else:
+        audio_bytes = generate_openai_tts(text, voice_settings, audio_format, active_settings)
+    file_path.write_bytes(audio_bytes)
 
     audio = GeneratedAudio(
         project_id=project.id,
@@ -274,7 +349,7 @@ def generate_tts_audio(
         voice_provider=voice_settings.provider,
         voice=voice_settings.voice,
         model=voice_settings.model,
-        format=audio_format,
+        format=stored_audio_format,
         file_path=str(file_path),
         personalized_voice_used=voice_settings.personalized_voice_used,
         voice_notice=voice_settings.notice,

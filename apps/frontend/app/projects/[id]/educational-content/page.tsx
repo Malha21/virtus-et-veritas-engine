@@ -1072,6 +1072,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
                           Provider {audio.voice_provider || "OpenAI"} ·{" "}
+                          Modelo {audio.model || "padrão"} ·{" "}
                           {audio.personalized_voice_used ? "voz personalizada configurada" : "voz padrão do sistema"}
                         </p>
                         {audio.voice_notice ? <p className="mt-2 text-xs text-gold-300">{audio.voice_notice}</p> : null}
@@ -1122,7 +1123,11 @@ function VoiceSettingsCard({
 }) {
   const provider = profile?.voice_provider?.trim() || "OpenAI";
   const voiceLabel = profile?.voice_id?.trim() || profile?.voice_name?.trim() || "voz padrão do sistema";
-  const hasUnsupportedProvider = Boolean(profile?.voice_provider && profile.voice_provider.toLowerCase() !== "openai");
+  const normalizedProvider = provider.toLowerCase().replace(/[\s_]/g, "");
+  const isElevenLabsProvider = normalizedProvider === "elevenlabs";
+  const hasUnsupportedProvider = Boolean(
+    profile?.voice_provider && normalizedProvider !== "openai" && !isElevenLabsProvider,
+  );
 
   return (
     <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
@@ -1169,6 +1174,12 @@ function VoiceSettingsCard({
       {loaded && profile && !profile.consent_voice_clone ? (
         <p className="mt-4 text-sm leading-6 text-gold-200">
           A voz personalizada não será usada porque o consentimento ainda não está ativo.
+        </p>
+      ) : null}
+      {loaded && profile && profile.consent_voice_clone && isElevenLabsProvider ? (
+        <p className="mt-4 text-sm leading-6 text-gold-200">
+          Provider: ElevenLabs. Voice ID: {profile.voice_id || "não informado"}. A voz será usada se a chave
+          ElevenLabs estiver configurada no servidor.
         </p>
       ) : null}
       {loaded && profile && hasUnsupportedProvider ? (
