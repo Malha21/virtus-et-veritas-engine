@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { ApiError, apiFetch, downloadPresentationPdf, updatePresentationDeck } from "@/lib/api";
+import { ApiError, apiFetch, downloadPresentationPdf, updateLessonScript, updatePresentationDeck } from "@/lib/api";
 import type { GeneratedContent } from "@/types/content";
 import type {
   ComplementaryMaterialContent,
@@ -37,6 +37,29 @@ type PresentationDeckDraft = {
   presentation_objective: string;
   slides: PresentationSlideDraft[];
   closing_message: string;
+};
+
+type LessonSectionDraft = {
+  section_title: string;
+  narration: string;
+  teaching_notes: string;
+  visual_suggestion: string;
+};
+
+type LessonScriptDraft = {
+  course_title: string;
+  module_number: string;
+  module_title: string;
+  lesson_number: string;
+  lesson_title: string;
+  estimated_duration_minutes: string;
+  opening: string;
+  learning_objective: string;
+  main_script: LessonSectionDraft[];
+  practical_example: string;
+  reflection_question: string;
+  closing: string;
+  call_to_action: string;
 };
 
 function getGenerationLanguage(content?: GeneratedContent): string | undefined {
@@ -172,7 +195,24 @@ export default function EducationalContentPage() {
           ) : data ? (
             <div className="mt-8">
               {activeTab === "summary" ? <SummaryView contents={data.course_summaries} /> : null}
-              {activeTab === "scripts" ? <ScriptsView contents={data.lesson_scripts} /> : null}
+              {activeTab === "scripts" ? (
+                <ScriptsView
+                  contents={data.lesson_scripts}
+                  projectId={params.id}
+                  onUpdated={(updatedContent) => {
+                    setData((current) => {
+                      if (!current) return current;
+                      return {
+                        ...current,
+                        lesson_scripts: sortLessonScripts([
+                          updatedContent,
+                          ...current.lesson_scripts.filter((item) => item.id !== updatedContent.id),
+                        ]),
+                      };
+                    });
+                  }}
+                />
+              ) : null}
               {activeTab === "quizzes" ? <QuizzesView contents={data.module_quizzes} /> : null}
               {activeTab === "materials" ? <MaterialsView contents={data.complementary_materials} /> : null}
               {activeTab === "presentation" ? (
@@ -267,7 +307,15 @@ function SummaryView({ contents }: { contents: GeneratedContent[] }) {
   );
 }
 
-function ScriptsView({ contents }: { contents: GeneratedContent[] }) {
+function ScriptsView({
+  contents,
+  projectId,
+  onUpdated,
+}: {
+  contents: GeneratedContent[];
+  projectId: string;
+  onUpdated: (content: GeneratedContent) => void;
+}) {
   if (!contents.length) {
     return <EmptyState text="Roteiros de aula ainda nao encontrados." />;
   }
@@ -291,37 +339,13 @@ function ScriptsView({ contents }: { contents: GeneratedContent[] }) {
               <h3 className="mt-1 text-xl font-semibold text-slate-50">{firstScript?.module_title || "Modulo"}</h3>
             </div>
             {moduleContents.map((content) => {
-              const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
-              if (!script) return null;
-
               return (
-                <article key={content.id} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-medium text-gold-400">
-                  Modulo {script.module_number} - Aula {script.lesson_number}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-50">{script.lesson_title}</h3>
-              </div>
-              <span className="text-xs text-gold-400">{script.estimated_duration_minutes || 10} min</span>
-            </div>
-            <InfoBlock label="Abertura" value={script.opening} />
-            <InfoBlock label="Objetivo" value={script.learning_objective} />
-            <div className="mt-4 grid gap-3">
-              {(script.main_script || []).map((section) => (
-                <div key={`${content.id}-${section.section_title}`} className="rounded-md border border-white/10 bg-black/20 p-4">
-                  <h4 className="font-semibold text-slate-100">{section.section_title}</h4>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{section.narration}</p>
-                  <p className="mt-3 text-xs text-slate-500">{section.teaching_notes}</p>
-                  <p className="mt-2 text-xs text-gold-400">{section.visual_suggestion}</p>
-                </div>
-              ))}
-            </div>
-            <InfoBlock label="Exemplo pratico" value={script.practical_example} />
-            <InfoBlock label="Pergunta reflexiva" value={script.reflection_question} />
-            <InfoBlock label="Fechamento" value={script.closing} />
-                </article>
+                <LessonScriptCard
+                  key={content.id}
+                  content={content}
+                  projectId={projectId}
+                  onUpdated={onUpdated}
+                />
               );
             })}
           </section>
@@ -412,6 +436,237 @@ function MaterialsView({ contents }: { contents: GeneratedContent[] }) {
         );
       })}
     </div>
+  );
+}
+
+function LessonScriptCard({
+  content,
+  projectId,
+  onUpdated,
+}: {
+  content: GeneratedContent;
+  projectId: string;
+  onUpdated: (content: GeneratedContent) => void;
+}) {
+  const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState<LessonScriptDraft | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  if (!script) return null;
+
+  function startEditing() {
+    setDraft(lessonScriptToDraft(script));
+    setSaveError("");
+    setIsEditing(true);
+  }
+
+  function updateDraftField(field: keyof Omit<LessonScriptDraft, "main_script">, value: string) {
+    setDraft((current) => (current ? { ...current, [field]: value } : current));
+  }
+
+  function updateSection(index: number, field: keyof LessonSectionDraft, value: string) {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        main_script: current.main_script.map((section, sectionIndex) =>
+          sectionIndex === index ? { ...section, [field]: value } : section,
+        ),
+      };
+    });
+  }
+
+  function removeSection(index: number) {
+    const confirmed = window.confirm("Tem certeza que deseja remover esta secao do roteiro?");
+    if (!confirmed) return;
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            main_script: current.main_script.filter((_, sectionIndex) => sectionIndex !== index),
+          }
+        : current,
+    );
+  }
+
+  async function saveLessonScript() {
+    if (!draft) return;
+
+    setSaving(true);
+    setSaveError("");
+    try {
+      const updated = await updateLessonScript(projectId, content.id, draftToLessonScriptPayload(draft));
+      onUpdated(updated);
+      setIsEditing(false);
+      setDraft(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setSaveError("Sua sessao expirou. Faca login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setSaveError(err.message);
+      } else {
+        setSaveError("Nao foi possivel salvar o roteiro.");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isEditing && draft) {
+    return (
+      <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium text-gold-400">Editor de roteiro</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-50">{draft.lesson_title || "Roteiro de aula"}</h3>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={saveLessonScript}
+              disabled={saving}
+              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Salvando..." : "Salvar alteracoes"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditing(false);
+                setDraft(null);
+                setSaveError("");
+              }}
+              disabled={saving}
+              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+        {saveError ? <p className="mt-4 text-sm text-red-300">{saveError}</p> : null}
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <InputField label="Titulo da aula" value={draft.lesson_title} onChange={(value) => updateDraftField("lesson_title", value)} />
+          <InputField label="Modulo" value={draft.module_title} onChange={(value) => updateDraftField("module_title", value)} />
+          <InputField label="Numero do modulo" value={draft.module_number} onChange={(value) => updateDraftField("module_number", value)} />
+          <InputField label="Numero da aula" value={draft.lesson_number} onChange={(value) => updateDraftField("lesson_number", value)} />
+          <InputField
+            label="Duracao estimada em minutos"
+            value={draft.estimated_duration_minutes}
+            onChange={(value) => updateDraftField("estimated_duration_minutes", value)}
+          />
+          <InputField label="Titulo do curso" value={draft.course_title} onChange={(value) => updateDraftField("course_title", value)} />
+          <TextAreaField label="Introducao / abertura" value={draft.opening} onChange={(value) => updateDraftField("opening", value)} />
+          <TextAreaField
+            label="Objetivo da aula"
+            value={draft.learning_objective}
+            onChange={(value) => updateDraftField("learning_objective", value)}
+          />
+          <TextAreaField
+            label="Exemplo pratico"
+            value={draft.practical_example}
+            onChange={(value) => updateDraftField("practical_example", value)}
+          />
+          <TextAreaField
+            label="Atividade / pergunta reflexiva"
+            value={draft.reflection_question}
+            onChange={(value) => updateDraftField("reflection_question", value)}
+          />
+          <TextAreaField label="Conclusao" value={draft.closing} onChange={(value) => updateDraftField("closing", value)} />
+          <TextAreaField
+            label="Call to action"
+            value={draft.call_to_action}
+            onChange={(value) => updateDraftField("call_to_action", value)}
+          />
+        </div>
+
+        <div className="mt-6 grid gap-4">
+          {draft.main_script.map((section, index) => (
+            <div key={`${index}-${section.section_title}`} className="rounded-md border border-white/10 bg-black/20 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-gold-400">Secao {index + 1}</p>
+                <button
+                  type="button"
+                  onClick={() => removeSection(index)}
+                  disabled={saving}
+                  className="rounded-md border border-red-400/30 px-3 py-1.5 text-sm text-red-300 transition hover:border-red-300/60 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Remover secao
+                </button>
+              </div>
+              <div className="mt-4 grid gap-4">
+                <InputField
+                  label="Titulo da secao"
+                  value={section.section_title}
+                  onChange={(value) => updateSection(index, "section_title", value)}
+                />
+                <TextAreaField
+                  label="Texto de narracao / desenvolvimento"
+                  value={section.narration}
+                  rows={7}
+                  onChange={(value) => updateSection(index, "narration", value)}
+                />
+                <TextAreaField
+                  label="Notas do instrutor"
+                  value={section.teaching_notes}
+                  onChange={(value) => updateSection(index, "teaching_notes", value)}
+                />
+                <TextAreaField
+                  label="Sugestao visual"
+                  value={section.visual_suggestion}
+                  onChange={(value) => updateSection(index, "visual_suggestion", value)}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium text-gold-400">
+            Modulo {safeText(script.module_number)} - Aula {safeText(script.lesson_number)}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-50">{safeText(script.lesson_title)}</h3>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs text-gold-400">{safeText(script.estimated_duration_minutes || 10)} min</span>
+          <button
+            type="button"
+            onClick={startEditing}
+            className="rounded-md border border-white/10 px-3 py-1.5 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+          >
+            Editar roteiro
+          </button>
+        </div>
+      </div>
+      <InfoBlock label="Abertura" value={script.opening} />
+      <InfoBlock label="Objetivo" value={script.learning_objective} />
+      <div className="mt-4 grid gap-3">
+        {toArray(script.main_script).map((section, index) => {
+          const record = typeof section === "object" && section !== null ? (section as Record<string, unknown>) : null;
+          return (
+            <div key={itemKey(section, index)} className="rounded-md border border-white/10 bg-black/20 p-4">
+              <h4 className="font-semibold text-slate-100">{safeText(record?.section_title ?? `Secao ${index + 1}`)}</h4>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{safeText(record?.narration ?? section)}</p>
+              <p className="mt-3 whitespace-pre-wrap text-xs text-slate-500">{safeText(record?.teaching_notes)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-xs text-gold-400">{safeText(record?.visual_suggestion)}</p>
+            </div>
+          );
+        })}
+      </div>
+      <InfoBlock label="Exemplo pratico" value={script.practical_example} />
+      <InfoBlock label="Pergunta reflexiva" value={script.reflection_question} />
+      <InfoBlock label="Fechamento" value={script.closing} />
+      <InfoBlock label="Call to action" value={script.call_to_action} />
+    </article>
   );
 }
 
@@ -739,6 +994,62 @@ function editText(value: unknown): string {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (Array.isArray(value)) return value.map((item) => editText(item)).filter(Boolean).join("\n");
   return safeText(value);
+}
+
+function lessonScriptToDraft(script: NonNullable<LessonScriptContent["lesson_script"]>): LessonScriptDraft {
+  return {
+    course_title: editText(script.course_title),
+    module_number: editText(script.module_number),
+    module_title: editText(script.module_title),
+    lesson_number: editText(script.lesson_number),
+    lesson_title: editText(script.lesson_title),
+    estimated_duration_minutes: editText(script.estimated_duration_minutes || 10),
+    opening: editText(script.opening),
+    learning_objective: editText(script.learning_objective),
+    practical_example: editText(script.practical_example),
+    reflection_question: editText(script.reflection_question),
+    closing: editText(script.closing),
+    call_to_action: editText(script.call_to_action),
+    main_script: toArray(script.main_script).map((section) => {
+      const record = typeof section === "object" && section !== null ? (section as Record<string, unknown>) : null;
+      return {
+        section_title: editText(record?.section_title),
+        narration: editText(record?.narration ?? section),
+        teaching_notes: editText(record?.teaching_notes),
+        visual_suggestion: editText(record?.visual_suggestion),
+      };
+    }),
+  };
+}
+
+function draftToLessonScriptPayload(draft: LessonScriptDraft): LessonScriptContent {
+  const toNumber = (value: string, fallback: number) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  return {
+    lesson_script: {
+      course_title: draft.course_title,
+      module_number: toNumber(draft.module_number, 1),
+      module_title: draft.module_title,
+      lesson_number: toNumber(draft.lesson_number, 1),
+      lesson_title: draft.lesson_title,
+      estimated_duration_minutes: toNumber(draft.estimated_duration_minutes, 10),
+      opening: draft.opening,
+      learning_objective: draft.learning_objective,
+      main_script: draft.main_script.map((section) => ({
+        section_title: section.section_title,
+        narration: section.narration,
+        teaching_notes: section.teaching_notes,
+        visual_suggestion: section.visual_suggestion,
+      })),
+      practical_example: draft.practical_example,
+      reflection_question: draft.reflection_question,
+      closing: draft.closing,
+      call_to_action: draft.call_to_action,
+    },
+  };
 }
 
 function deckToDraft(deck: PresentationDeckContent): PresentationDeckDraft {

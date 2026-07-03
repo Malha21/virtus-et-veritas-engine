@@ -41,6 +41,7 @@ MAX_MODULE_QUIZZES_PER_RUN = 2
 MAX_COMPLEMENTARY_MATERIALS_PER_RUN = 1
 MAX_PRESENTATION_CONTEXT_ITEMS = 8
 MAX_PRESENTATION_UPDATE_BYTES = 250_000
+MAX_LESSON_SCRIPT_UPDATE_BYTES = 250_000
 
 
 def get_content_metadata_number(content: GeneratedContent, field: str) -> int:
@@ -134,6 +135,136 @@ def normalize_presentation_text(value: Any) -> str:
                     return text
         return "\n".join(normalize_presentation_text(item) for item in value.values() if item is not None).strip()
     return str(value)
+
+
+def normalize_int(value: Any, fallback: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def normalize_lesson_section(section: Any) -> dict[str, Any]:
+    if not isinstance(section, dict):
+        return {
+            "section_title": "",
+            "narration": normalize_presentation_text(section),
+            "teaching_notes": "",
+            "visual_suggestion": "",
+        }
+
+    normalized = {
+        key: normalize_presentation_text(value)
+        for key, value in section.items()
+        if key not in {"section_title", "narration", "teaching_notes", "visual_suggestion"}
+    }
+    normalized.update(
+        {
+            "section_title": normalize_presentation_text(section.get("section_title")),
+            "narration": normalize_presentation_text(section.get("narration")),
+            "teaching_notes": normalize_presentation_text(section.get("teaching_notes")),
+            "visual_suggestion": normalize_presentation_text(section.get("visual_suggestion")),
+        }
+    )
+    return normalized
+
+
+def normalize_lesson_script_payload(payload: dict[str, Any], current_json: dict[str, Any]) -> dict[str, Any]:
+    payload_size = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+    if payload_size > MAX_LESSON_SCRIPT_UPDATE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="O roteiro enviado e grande demais para salvar.",
+        )
+
+    incoming_script = payload.get("lesson_script") if isinstance(payload.get("lesson_script"), dict) else payload
+    current_script = current_json.get("lesson_script", {}) if isinstance(current_json.get("lesson_script"), dict) else {}
+    script = {**current_script, **incoming_script}
+    main_script_payload = script.get("main_script") or []
+    if not isinstance(main_script_payload, list):
+        main_script_payload = [main_script_payload]
+
+    normalized_script = {
+        key: normalize_presentation_text(value)
+        for key, value in script.items()
+        if key
+        not in {
+            "module_number",
+            "lesson_number",
+            "estimated_duration_minutes",
+            "main_script",
+        }
+    }
+    normalized_script.update(
+        {
+            "course_title": normalize_presentation_text(script.get("course_title")),
+            "module_number": normalize_int(script.get("module_number"), normalize_int(current_script.get("module_number"), 1)),
+            "module_title": normalize_presentation_text(script.get("module_title")),
+            "lesson_number": normalize_int(script.get("lesson_number"), normalize_int(current_script.get("lesson_number"), 1)),
+            "lesson_title": normalize_presentation_text(script.get("lesson_title")),
+            "estimated_duration_minutes": normalize_int(script.get("estimated_duration_minutes"), 10),
+            "opening": normalize_presentation_text(script.get("opening")),
+            "learning_objective": normalize_presentation_text(script.get("learning_objective")),
+            "main_script": [normalize_lesson_section(section) for section in main_script_payload],
+            "practical_example": normalize_presentation_text(script.get("practical_example")),
+            "reflection_question": normalize_presentation_text(script.get("reflection_question")),
+            "closing": normalize_presentation_text(script.get("closing")),
+            "call_to_action": normalize_presentation_text(script.get("call_to_action")),
+        }
+    )
+
+    metadata = {
+        "module_number": normalized_script["module_number"],
+        "lesson_number": normalized_script["lesson_number"],
+        "module_title": normalized_script["module_title"],
+        "lesson_title": normalized_script["lesson_title"],
+    }
+
+    return {
+        **{key: value for key, value in current_json.items() if key not in {"lesson_script", "metadata"}},
+        "lesson_script": normalized_script,
+        "metadata": metadata,
+    }
+
+
+def update_lesson_script(
+    db: Session,
+    current_user: User,
+    project_id: UUID,
+    content_id: UUID,
+    payload: dict[str, Any],
+) -> GeneratedContent:
+    project = get_project_by_id(db, current_user.organization_id, project_id)
+    content = db.execute(
+        select(GeneratedContent).where(
+            GeneratedContent.id == content_id,
+            GeneratedContent.project_id == project.id,
+            GeneratedContent.organization_id == current_user.organization_id,
+            GeneratedContent.content_type == "lesson_script",
+        )
+    ).scalar_one_or_none()
+
+    if content is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Roteiro de aula nao encontrado.",
+        )
+
+    current_json = content.content_json or {}
+    normalized = normalize_lesson_script_payload(payload, current_json)
+    generation_language = current_json.get("generation_language") or content.language
+    content.content_json = {
+        **normalized,
+        "generation_language": generation_language,
+    }
+    lesson_script = content.content_json.get("lesson_script", {})
+    if isinstance(lesson_script, dict) and lesson_script.get("lesson_title"):
+        content.title = str(lesson_script["lesson_title"])
+    content.updated_at = datetime.now(UTC)
+    db.add(content)
+    db.commit()
+    db.refresh(content)
+    return content
 
 
 def normalize_presentation_deck(payload: dict[str, Any]) -> dict[str, Any]:

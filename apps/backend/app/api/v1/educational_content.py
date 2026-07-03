@@ -12,11 +12,13 @@ from app.schemas.educational_content import (
     EducationalContentSummaryResponse,
     GenerateEducationalContentRequest,
     GenerateEducationalContentResponse,
+    LessonScriptUpdateRequest,
     PresentationDeckUpdateRequest,
 )
 from app.services.educational_content_service import (
     generate_educational_content,
     list_educational_content,
+    update_lesson_script,
     update_presentation_deck,
 )
 
@@ -66,6 +68,25 @@ def put_project_presentation_deck(
         db,
         current_user,
         project_id,
+        payload.model_dump(mode="json"),
+    )
+    data = GeneratedContentResponse.model_validate(content)
+    return {"success": True, "data": data.model_dump(mode="json")}
+
+
+@router.put("/educational-content/lesson-scripts/{content_id}")
+def put_project_lesson_script(
+    project_id: UUID,
+    content_id: UUID,
+    payload: LessonScriptUpdateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, object]:
+    content = update_lesson_script(
+        db,
+        current_user,
+        project_id,
+        content_id,
         payload.model_dump(mode="json"),
     )
     data = GeneratedContentResponse.model_validate(content)

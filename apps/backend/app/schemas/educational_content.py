@@ -64,3 +64,9 @@ class PresentationDeckUpdateRequest(BaseModel):
     closing_message: str | None = None
 
     model_config = ConfigDict(extra="ignore")
+
+
+class LessonScriptUpdateRequest(BaseModel):
+    lesson_script: dict[str, Any] | None = None
+
+    model_config = ConfigDict(extra="allow")

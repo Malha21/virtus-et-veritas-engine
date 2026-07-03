@@ -1,6 +1,10 @@
 import { getToken } from "./auth";
 import type { GenerateStructureResponse } from "@/types/ai";
-import type { GenerateEducationalContentResponse, PresentationDeckContent } from "@/types/educational-content";
+import type {
+  GenerateEducationalContentResponse,
+  LessonScriptContent,
+  PresentationDeckContent,
+} from "@/types/educational-content";
 import type { GeneratedContent } from "@/types/content";
 import type { ProcessingJob, StartAIJobResponse } from "@/types/processing";
 
@@ -199,6 +203,23 @@ export async function updatePresentationDeck(
     method: "PUT",
     token,
     body: JSON.stringify(presentationDeck),
+  });
+}
+
+export async function updateLessonScript(
+  projectId: string,
+  contentId: string,
+  lessonScript: LessonScriptContent,
+): Promise<GeneratedContent> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedContent>(`/projects/${projectId}/educational-content/lesson-scripts/${contentId}`, {
+    method: "PUT",
+    token,
+    body: JSON.stringify(lessonScript),
   });
 }
 
