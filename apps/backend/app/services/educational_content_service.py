@@ -42,6 +42,7 @@ MAX_COMPLEMENTARY_MATERIALS_PER_RUN = 1
 MAX_PRESENTATION_CONTEXT_ITEMS = 8
 MAX_PRESENTATION_UPDATE_BYTES = 250_000
 MAX_LESSON_SCRIPT_UPDATE_BYTES = 250_000
+MAX_MODULE_QUIZ_UPDATE_BYTES = 250_000
 
 
 def get_content_metadata_number(content: GeneratedContent, field: str) -> int:
@@ -260,6 +261,152 @@ def update_lesson_script(
     lesson_script = content.content_json.get("lesson_script", {})
     if isinstance(lesson_script, dict) and lesson_script.get("lesson_title"):
         content.title = str(lesson_script["lesson_title"])
+    content.updated_at = datetime.now(UTC)
+    db.add(content)
+    db.commit()
+    db.refresh(content)
+    return content
+
+
+def normalize_quiz_option(option: Any, index: int) -> dict[str, str]:
+    letter = chr(65 + index)
+    if isinstance(option, dict):
+        return {
+            "letter": normalize_presentation_text(option.get("letter") or letter),
+            "text": normalize_presentation_text(option.get("text") or option.get("content") or option.get("value")),
+        }
+    return {
+        "letter": letter,
+        "text": normalize_presentation_text(option),
+    }
+
+
+def first_existing_value(source: dict[str, Any], keys: list[str]) -> Any:
+    for key in keys:
+        if key in source and source[key] is not None:
+            return source[key]
+    return None
+
+
+def normalize_quiz_question(question: Any, index: int) -> dict[str, Any]:
+    question_data = question if isinstance(question, dict) else {"question": question}
+    options_payload = (
+        question_data.get("options")
+        or question_data.get("alternatives")
+        or question_data.get("answers")
+        or []
+    )
+    if not isinstance(options_payload, list):
+        options_payload = [options_payload]
+
+    options = [normalize_quiz_option(option, option_index) for option_index, option in enumerate(options_payload)]
+    options = [option for option in options if option["text"]]
+
+    question_text = normalize_presentation_text(
+        question_data.get("question")
+        or question_data.get("text")
+        or question_data.get("title")
+        or question_data.get("content")
+    ).strip()
+    if not question_text:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"A pergunta {index} deve ter texto.",
+        )
+
+    return {
+        "question_number": index,
+        "question": question_text,
+        "options": options,
+        "correct_answer": normalize_presentation_text(first_existing_value(question_data, ["correct_answer", "correct_option", "answer"])),
+        "explanation": normalize_presentation_text(first_existing_value(question_data, ["explanation", "comment", "feedback"])),
+    }
+
+
+def normalize_module_quiz_payload(payload: dict[str, Any], current_json: dict[str, Any]) -> dict[str, Any]:
+    payload_size = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+    if payload_size > MAX_MODULE_QUIZ_UPDATE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="O quiz enviado e grande demais para salvar.",
+        )
+
+    incoming_quiz = payload.get("module_quiz") if isinstance(payload.get("module_quiz"), dict) else payload
+    current_quiz = current_json.get("module_quiz", {}) if isinstance(current_json.get("module_quiz"), dict) else {}
+    quiz = {**current_quiz, **incoming_quiz}
+    questions_payload = quiz.get("questions") or []
+    if not isinstance(questions_payload, list):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="As perguntas do quiz devem ser enviadas em lista.",
+        )
+
+    questions = [
+        normalize_quiz_question(question, index)
+        for index, question in enumerate(questions_payload, start=1)
+    ]
+
+    normalized_quiz = {
+        key: normalize_presentation_text(value)
+        for key, value in quiz.items()
+        if key not in {"module_number", "questions"}
+    }
+    normalized_quiz.update(
+        {
+            "course_title": normalize_presentation_text(quiz.get("course_title")),
+            "module_number": normalize_int(quiz.get("module_number"), normalize_int(current_quiz.get("module_number"), 1)),
+            "module_title": normalize_presentation_text(quiz.get("module_title")),
+            "instructions": normalize_presentation_text(quiz.get("instructions")),
+            "questions": questions,
+        }
+    )
+
+    metadata = {
+        "module_number": normalized_quiz["module_number"],
+        "module_title": normalized_quiz["module_title"],
+    }
+
+    return {
+        **{key: value for key, value in current_json.items() if key not in {"module_quiz", "metadata"}},
+        "module_quiz": normalized_quiz,
+        "metadata": metadata,
+    }
+
+
+def update_module_quiz(
+    db: Session,
+    current_user: User,
+    project_id: UUID,
+    content_id: UUID,
+    payload: dict[str, Any],
+) -> GeneratedContent:
+    project = get_project_by_id(db, current_user.organization_id, project_id)
+    content = db.execute(
+        select(GeneratedContent).where(
+            GeneratedContent.id == content_id,
+            GeneratedContent.project_id == project.id,
+            GeneratedContent.organization_id == current_user.organization_id,
+            GeneratedContent.content_type.in_(["module_quiz", "module_quizzes"]),
+        )
+    ).scalar_one_or_none()
+
+    if content is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Quiz nao encontrado.",
+        )
+
+    current_json = content.content_json or {}
+    normalized = normalize_module_quiz_payload(payload, current_json)
+    generation_language = current_json.get("generation_language") or content.language
+    content.content_json = {
+        **normalized,
+        "generation_language": generation_language,
+    }
+    module_quiz = content.content_json.get("module_quiz", {})
+    if isinstance(module_quiz, dict):
+        module_number = module_quiz.get("module_number") or ""
+        content.title = f"Quiz - Modulo {module_number}".strip()
     content.updated_at = datetime.now(UTC)
     db.add(content)
     db.commit()

@@ -3,6 +3,7 @@ import type { GenerateStructureResponse } from "@/types/ai";
 import type {
   GenerateEducationalContentResponse,
   LessonScriptContent,
+  ModuleQuizContent,
   PresentationDeckContent,
 } from "@/types/educational-content";
 import type { GeneratedContent } from "@/types/content";
@@ -220,6 +221,23 @@ export async function updateLessonScript(
     method: "PUT",
     token,
     body: JSON.stringify(lessonScript),
+  });
+}
+
+export async function updateModuleQuiz(
+  projectId: string,
+  contentId: string,
+  moduleQuiz: ModuleQuizContent,
+): Promise<GeneratedContent> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedContent>(`/projects/${projectId}/educational-content/module-quizzes/${contentId}`, {
+    method: "PUT",
+    token,
+    body: JSON.stringify(moduleQuiz),
   });
 }
 

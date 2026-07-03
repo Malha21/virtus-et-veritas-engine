@@ -6,7 +6,14 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { ApiError, apiFetch, downloadPresentationPdf, updateLessonScript, updatePresentationDeck } from "@/lib/api";
+import {
+  ApiError,
+  apiFetch,
+  downloadPresentationPdf,
+  updateLessonScript,
+  updateModuleQuiz,
+  updatePresentationDeck,
+} from "@/lib/api";
 import type { GeneratedContent } from "@/types/content";
 import type {
   ComplementaryMaterialContent,
@@ -60,6 +67,22 @@ type LessonScriptDraft = {
   reflection_question: string;
   closing: string;
   call_to_action: string;
+};
+
+type QuizQuestionDraft = {
+  question_number: number;
+  question: string;
+  optionsText: string;
+  correct_answer: string;
+  explanation: string;
+};
+
+type ModuleQuizDraft = {
+  course_title: string;
+  module_number: string;
+  module_title: string;
+  instructions: string;
+  questions: QuizQuestionDraft[];
 };
 
 function getGenerationLanguage(content?: GeneratedContent): string | undefined {
@@ -213,7 +236,24 @@ export default function EducationalContentPage() {
                   }}
                 />
               ) : null}
-              {activeTab === "quizzes" ? <QuizzesView contents={data.module_quizzes} /> : null}
+              {activeTab === "quizzes" ? (
+                <QuizzesView
+                  contents={data.module_quizzes}
+                  projectId={params.id}
+                  onUpdated={(updatedContent) => {
+                    setData((current) => {
+                      if (!current) return current;
+                      return {
+                        ...current,
+                        module_quizzes: sortModuleQuizzes([
+                          updatedContent,
+                          ...current.module_quizzes.filter((item) => item.id !== updatedContent.id),
+                        ]),
+                      };
+                    });
+                  }}
+                />
+              ) : null}
               {activeTab === "materials" ? <MaterialsView contents={data.complementary_materials} /> : null}
               {activeTab === "presentation" ? (
                 <PresentationView
@@ -355,44 +395,266 @@ function ScriptsView({
   );
 }
 
-function QuizzesView({ contents }: { contents: GeneratedContent[] }) {
+function QuizzesView({
+  contents,
+  projectId,
+  onUpdated,
+}: {
+  contents: GeneratedContent[];
+  projectId: string;
+  onUpdated: (content: GeneratedContent) => void;
+}) {
   if (!contents.length) {
     return <EmptyState text="Quizzes ainda nao encontrados." />;
   }
 
   return (
     <div className="grid gap-5">
-      {sortModuleQuizzes(contents).map((content) => {
-        const quiz = (content.content_json as ModuleQuizContent | null)?.module_quiz;
-        if (!quiz) return null;
-
-        return (
-          <article key={content.id} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
-            <p className="text-xs font-medium text-gold-400">Modulo {quiz.module_number}</p>
-            <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-50">{quiz.module_title}</h3>
-            <div className="mt-5 grid gap-4">
-              {(quiz.questions || []).map((question) => (
-                <div key={`${content.id}-${question.question_number}`} className="rounded-md border border-white/10 bg-black/20 p-4">
-                  <p className="font-semibold text-slate-100">
-                    {question.question_number}. {question.question}
-                  </p>
-                  <div className="mt-3 grid gap-2">
-                    {(question.options || []).map((option) => (
-                      <p key={`${question.question_number}-${option.letter}`} className="rounded border border-white/10 px-3 py-2 text-sm text-slate-300">
-                        {option.letter}. {option.text}
-                      </p>
-                    ))}
-                  </div>
-                  <p className="mt-3 text-sm text-gold-400">Resposta correta: {question.correct_answer}</p>
-                  <p className="mt-2 text-sm text-slate-400">{question.explanation}</p>
-                </div>
-              ))}
-            </div>
-          </article>
-        );
-      })}
+      {sortModuleQuizzes(contents).map((content) => (
+        <ModuleQuizCard key={content.id} content={content} projectId={projectId} onUpdated={onUpdated} />
+      ))}
     </div>
+  );
+}
+
+function ModuleQuizCard({
+  content,
+  projectId,
+  onUpdated,
+}: {
+  content: GeneratedContent;
+  projectId: string;
+  onUpdated: (content: GeneratedContent) => void;
+}) {
+  const quiz = (content.content_json as ModuleQuizContent | null)?.module_quiz;
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState<ModuleQuizDraft | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  if (!quiz) return null;
+
+  function startEditing() {
+    if (!quiz) {
+      setSaveError("Quiz ainda nao encontrado para edicao.");
+      return;
+    }
+
+    setDraft(quizToDraft(quiz));
+    setSaveError("");
+    setIsEditing(true);
+  }
+
+  function updateDraftField(field: keyof Omit<ModuleQuizDraft, "questions">, value: string) {
+    setDraft((current) => (current ? { ...current, [field]: value } : current));
+  }
+
+  function updateQuestion(index: number, field: keyof Omit<QuizQuestionDraft, "question_number">, value: string) {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        questions: current.questions.map((question, questionIndex) =>
+          questionIndex === index ? { ...question, [field]: value } : question,
+        ),
+      };
+    });
+  }
+
+  function removeQuestion(index: number) {
+    const confirmed = window.confirm("Tem certeza que deseja remover esta pergunta?");
+    if (!confirmed) return;
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        questions: current.questions
+          .filter((_, questionIndex) => questionIndex !== index)
+          .map((question, questionIndex) => ({ ...question, question_number: questionIndex + 1 })),
+      };
+    });
+  }
+
+  function addQuestion() {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        questions: [
+          ...current.questions,
+          {
+            question_number: current.questions.length + 1,
+            question: "",
+            optionsText: "\n\n\n",
+            correct_answer: "",
+            explanation: "",
+          },
+        ],
+      };
+    });
+  }
+
+  async function saveQuiz() {
+    if (!draft) return;
+
+    setSaving(true);
+    setSaveError("");
+    try {
+      const updated = await updateModuleQuiz(projectId, content.id, draftToModuleQuizPayload(draft));
+      onUpdated(updated);
+      setIsEditing(false);
+      setDraft(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setSaveError("Sua sessao expirou. Faca login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setSaveError(err.message);
+      } else {
+        setSaveError("Nao foi possivel salvar o quiz.");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isEditing && draft) {
+    return (
+      <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium text-gold-400">Editor de quiz</p>
+            <h3 className="mt-2 text-xl font-semibold text-slate-50">{draft.module_title || "Quiz"}</h3>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={saveQuiz}
+              disabled={saving}
+              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Salvando..." : "Salvar alteracoes"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditing(false);
+                setDraft(null);
+                setSaveError("");
+              }}
+              disabled={saving}
+              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+        {saveError ? <p className="mt-4 text-sm text-red-300">{saveError}</p> : null}
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <InputField label="Titulo do quiz / modulo" value={draft.module_title} onChange={(value) => updateDraftField("module_title", value)} />
+          <InputField label="Numero do modulo" value={draft.module_number} onChange={(value) => updateDraftField("module_number", value)} />
+          <InputField label="Titulo do curso" value={draft.course_title} onChange={(value) => updateDraftField("course_title", value)} />
+          <TextAreaField label="Instrucoes" value={draft.instructions} onChange={(value) => updateDraftField("instructions", value)} />
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button
+            type="button"
+            onClick={addQuestion}
+            disabled={saving}
+            className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Adicionar pergunta
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-4">
+          {draft.questions.map((question, index) => (
+            <div key={`${question.question_number}-${index}`} className="rounded-md border border-white/10 bg-black/20 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <p className="text-sm font-semibold text-gold-400">Pergunta {index + 1}</p>
+                <button
+                  type="button"
+                  onClick={() => removeQuestion(index)}
+                  disabled={saving}
+                  className="rounded-md border border-red-400/30 px-3 py-1.5 text-sm text-red-300 transition hover:border-red-300/60 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Remover pergunta
+                </button>
+              </div>
+              <div className="mt-4 grid gap-4">
+                <TextAreaField
+                  label="Pergunta"
+                  value={question.question}
+                  rows={3}
+                  onChange={(value) => updateQuestion(index, "question", value)}
+                />
+                <TextAreaField
+                  label="Alternativas - uma por linha"
+                  value={question.optionsText}
+                  rows={5}
+                  onChange={(value) => updateQuestion(index, "optionsText", value)}
+                />
+                <InputField
+                  label="Resposta correta"
+                  value={question.correct_answer}
+                  onChange={(value) => updateQuestion(index, "correct_answer", value)}
+                />
+                <TextAreaField
+                  label="Explicacao / comentario da resposta"
+                  value={question.explanation}
+                  onChange={(value) => updateQuestion(index, "explanation", value)}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium text-gold-400">Modulo {safeText(quiz.module_number)}</p>
+          <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+          <h3 className="mt-2 text-xl font-semibold text-slate-50">{safeText(quiz.module_title)}</h3>
+          {quiz.instructions ? <p className="mt-2 text-sm text-slate-400">{safeText(quiz.instructions)}</p> : null}
+        </div>
+        <button
+          type="button"
+          onClick={startEditing}
+          className="rounded-md border border-white/10 px-3 py-1.5 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+        >
+          Editar quiz
+        </button>
+      </div>
+      <div className="mt-5 grid gap-4">
+        {toArray(quiz.questions).map((question, index) => {
+          const record = typeof question === "object" && question !== null ? (question as Record<string, unknown>) : null;
+          return (
+            <div key={itemKey(question, index)} className="rounded-md border border-white/10 bg-black/20 p-4">
+              <p className="font-semibold text-slate-100">
+                {safeText(record?.question_number ?? index + 1)}. {safeText(record?.question ?? question)}
+              </p>
+              <div className="mt-3 grid gap-2">
+                {toArray(record?.options).map((option, optionIndex) => {
+                  const optionRecord = typeof option === "object" && option !== null ? (option as Record<string, unknown>) : null;
+                  return (
+                    <p key={itemKey(option, optionIndex)} className="rounded border border-white/10 px-3 py-2 text-sm text-slate-300">
+                      {safeText(optionRecord?.letter ?? String.fromCharCode(65 + optionIndex))}. {safeText(optionRecord?.text ?? option)}
+                    </p>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-sm text-gold-400">Resposta correta: {safeText(record?.correct_answer)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-400">{safeText(record?.explanation)}</p>
+            </div>
+          );
+        })}
+      </div>
+    </article>
   );
 }
 
@@ -1053,6 +1315,59 @@ function draftToLessonScriptPayload(draft: LessonScriptDraft): LessonScriptConte
       reflection_question: draft.reflection_question,
       closing: draft.closing,
       call_to_action: draft.call_to_action,
+    },
+  };
+}
+
+function quizToDraft(quiz: NonNullable<ModuleQuizContent["module_quiz"]>): ModuleQuizDraft {
+  return {
+    course_title: editText(quiz.course_title),
+    module_number: editText(quiz.module_number),
+    module_title: editText(quiz.module_title),
+    instructions: editText(quiz.instructions),
+    questions: toArray(quiz.questions).map((question, index) => {
+      const record = typeof question === "object" && question !== null ? (question as Record<string, unknown>) : null;
+      return {
+        question_number: index + 1,
+        question: editText(record?.question ?? question),
+        optionsText: toArray(record?.options)
+          .map((option) => {
+            const optionRecord = typeof option === "object" && option !== null ? (option as Record<string, unknown>) : null;
+            return editText(optionRecord?.text ?? option);
+          })
+          .filter(Boolean)
+          .join("\n"),
+        correct_answer: editText(record?.correct_answer),
+        explanation: editText(record?.explanation),
+      };
+    }),
+  };
+}
+
+function draftToModuleQuizPayload(draft: ModuleQuizDraft): ModuleQuizContent {
+  const parsedModuleNumber = Number(draft.module_number);
+  const moduleNumber = Number.isFinite(parsedModuleNumber) ? parsedModuleNumber : 1;
+
+  return {
+    module_quiz: {
+      course_title: draft.course_title,
+      module_number: moduleNumber,
+      module_title: draft.module_title,
+      instructions: draft.instructions,
+      questions: draft.questions.map((question, questionIndex) => ({
+        question_number: questionIndex + 1,
+        question: question.question,
+        options: question.optionsText
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line, optionIndex) => ({
+            letter: String.fromCharCode(65 + optionIndex),
+            text: line,
+          })),
+        correct_answer: question.correct_answer,
+        explanation: question.explanation,
+      })),
     },
   };
 }

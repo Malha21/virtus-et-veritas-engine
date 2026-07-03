@@ -51,6 +51,7 @@ export type ModuleQuizContent = {
     course_title?: string;
     module_number?: number;
     module_title?: string;
+    instructions?: string;
     questions?: Array<{
       question_number?: number;
       question?: string;
