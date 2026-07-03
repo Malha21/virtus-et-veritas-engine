@@ -244,6 +244,24 @@ export default function EducationalContentPage() {
                   projectId={params.id}
                   exporting={exportingLessonScripts}
                   exportError={lessonScriptsExportError}
+                  onExport={async () => {
+                    setExportingLessonScripts(true);
+                    setLessonScriptsExportError("");
+                    try {
+                      await downloadLessonScriptsPdf(params.id);
+                    } catch (err) {
+                      if (err instanceof ApiError && err.status === 401) {
+                        setLessonScriptsExportError("Sua sessao expirou. Faca login novamente.");
+                      } else if (err instanceof Error && err.message) {
+                        setLessonScriptsExportError(err.message);
+                      } else {
+                        setLessonScriptsExportError("Nao foi possivel baixar os roteiros em PDF.");
+                      }
+                    } finally {
+                      setExportingLessonScripts(false);
+                    }
+                  }}
+
                   onUpdated={(updatedContent) => {
                     setData((current) => {
                       if (!current) return current;
@@ -291,23 +309,6 @@ export default function EducationalContentPage() {
                         ]),
                       };
                     });
-                  }}
-                  onExport={async () => {
-                    setExportingLessonScripts(true);
-                    setLessonScriptsExportError("");
-                    try {
-                      await downloadLessonScriptsPdf(params.id);
-                    } catch (err) {
-                      if (err instanceof ApiError && err.status === 401) {
-                        setLessonScriptsExportError("Sua sessao expirou. Faca login novamente.");
-                      } else if (err instanceof Error && err.message) {
-                        setLessonScriptsExportError(err.message);
-                      } else {
-                        setLessonScriptsExportError("Nao foi possivel baixar os roteiros.");
-                      }
-                    } finally {
-                      setExportingLessonScripts(false);
-                    }
                   }}
                 />
               ) : null}
