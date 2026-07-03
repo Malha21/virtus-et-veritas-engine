@@ -9,12 +9,18 @@ import { AppShell } from "@/components/layout/AppShell";
 import {
   ApiError,
   apiFetch,
+  deleteProjectAudio,
   downloadComplementaryMaterialsPdf,
   downloadFullCoursePdf,
   downloadLessonScriptsPdf,
+  downloadNarrationAudio,
   downloadPresentationPdf,
   downloadPresentationPptx,
   downloadQuizzesPdf,
+  fetchNarrationAudioBlob,
+  generateNarrationAudio,
+  listProjectAudios,
+  type GeneratedAudio,
   updateComplementaryMaterial,
   updateLessonScript,
   updateModuleQuiz,
@@ -471,7 +477,7 @@ export default function EducationalContentPage() {
                 />
               ) : null}
               {activeTab === "teleprompter" ? <TeleprompterView contents={data.lesson_scripts} /> : null}
-              {activeTab === "narration" ? <NarrationView contents={data.lesson_scripts} /> : null}
+              {activeTab === "narration" ? <NarrationView contents={data.lesson_scripts} projectId={params.id} /> : null}
             </div>
           ) : null}
         </section>
@@ -743,10 +749,15 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
   );
 }
 
-function NarrationView({ contents }: { contents: GeneratedContent[] }) {
+function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; projectId: string }) {
   const sortedContents = sortLessonScripts(contents);
   const [selectedId, setSelectedId] = useState(sortedContents[0]?.id || "");
   const [copiedKey, setCopiedKey] = useState("");
+  const [audios, setAudios] = useState<GeneratedAudio[]>([]);
+  const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
+  const [loadingAudioByBlock, setLoadingAudioByBlock] = useState<Record<number, boolean>>({});
+  const [audioMessage, setAudioMessage] = useState("");
+  const [audioError, setAudioError] = useState("");
 
   useEffect(() => {
     if (!sortedContents.length) {
@@ -758,6 +769,58 @@ function NarrationView({ contents }: { contents: GeneratedContent[] }) {
       setSelectedId(sortedContents[0]?.id || "");
     }
   }, [selectedId, sortedContents]);
+
+  useEffect(() => {
+    let isActive = true;
+    setAudioError("");
+    listProjectAudios(projectId)
+      .then((items) => {
+        if (isActive) setAudios(items);
+      })
+      .catch((err) => {
+        if (!isActive) return;
+        if (err instanceof ApiError && err.status === 401) {
+          setAudioError("Sua sessão expirou. Faça login novamente.");
+        } else if (err instanceof Error && err.message) {
+          setAudioError(err.message);
+        } else {
+          setAudioError("Não foi possível carregar os áudios gerados.");
+        }
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    let isActive = true;
+    const objectUrls: string[] = [];
+
+    async function loadAudioUrls() {
+      const entries = await Promise.all(
+        audios.map(async (audio) => {
+          try {
+            const blob = await fetchNarrationAudioBlob(projectId, audio.id);
+            const objectUrl = URL.createObjectURL(blob);
+            objectUrls.push(objectUrl);
+            return [audio.id, objectUrl] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      if (!isActive) return;
+      setAudioUrls(Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => entry !== null)));
+    }
+
+    loadAudioUrls();
+
+    return () => {
+      isActive = false;
+      objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
+    };
+  }, [audios, projectId]);
 
   if (!sortedContents.length) {
     return <EmptyState text="Gere ou edite os roteiros de aula antes de preparar a narração." />;
@@ -776,6 +839,70 @@ function NarrationView({ contents }: { contents: GeneratedContent[] }) {
       setCopiedKey(key);
     } else {
       setCopiedKey("error");
+    }
+  }
+
+  async function handleGenerateBlockAudio(blockIndex: number, block: string) {
+    setAudioError("");
+    setAudioMessage("");
+    setLoadingAudioByBlock((current) => ({ ...current, [blockIndex]: true }));
+    try {
+      const audio = await generateNarrationAudio(projectId, {
+        generated_content_id: selectedContent?.id || null,
+        block_index: blockIndex,
+        title: `Bloco ${blockIndex}`,
+        text: block,
+        format: "mp3",
+      });
+      setAudios((current) => [audio, ...current.filter((item) => item.id !== audio.id)]);
+      setAudioMessage("Áudio gerado com sucesso.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setAudioError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setAudioError(err.message);
+      } else {
+        setAudioError("Não foi possível gerar o áudio agora.");
+      }
+    } finally {
+      setLoadingAudioByBlock((current) => ({ ...current, [blockIndex]: false }));
+    }
+  }
+
+  async function handleDownloadAudio(audio: GeneratedAudio) {
+    setAudioError("");
+    setAudioMessage("");
+    try {
+      await downloadNarrationAudio(projectId, audio);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setAudioError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setAudioError(err.message);
+      } else {
+        setAudioError("Não foi possível baixar o áudio.");
+      }
+    }
+  }
+
+  async function handleDeleteAudio(audio: GeneratedAudio) {
+    const confirmed = window.confirm("Tem certeza que deseja excluir este áudio?");
+    if (!confirmed) return;
+
+    setAudioError("");
+    setAudioMessage("");
+    try {
+      await deleteProjectAudio(projectId, audio.id);
+      setAudios((current) => current.filter((item) => item.id !== audio.id));
+      setAudioMessage("Áudio excluído com sucesso.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setAudioError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setAudioError(err.message);
+      } else {
+        setAudioError("Não foi possível excluir o áudio.");
+      }
     }
   }
 
@@ -846,6 +973,8 @@ function NarrationView({ contents }: { contents: GeneratedContent[] }) {
               : "Copiado"}
           </p>
         ) : null}
+        {audioMessage ? <p className="mt-3 text-sm text-gold-300">{audioMessage}</p> : null}
+        {audioError ? <p className="mt-3 text-sm text-red-300">{audioError}</p> : null}
       </section>
 
       <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
@@ -870,23 +999,70 @@ function NarrationView({ contents }: { contents: GeneratedContent[] }) {
         {narrationBlocks.length ? (
           narrationBlocks.map((block, index) => {
             const blockKey = `block-${index}`;
+            const blockIndex = index + 1;
+            const audio = findAudioForBlock(audios, blockIndex);
+            const audioUrl = audio ? audioUrls[audio.id] : "";
+            const isGeneratingAudio = Boolean(loadingAudioByBlock[blockIndex]);
             return (
               <article key={blockKey} className="rounded-lg border border-white/10 bg-navy-950/50 p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-50">Bloco {index + 1}</h3>
+                    <h3 className="text-lg font-semibold text-slate-50">Bloco {blockIndex}</h3>
                     <p className="mt-1 text-xs text-slate-500">Tempo estimado: {formatSpeechTime(block)}</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => copyNarration(blockKey, block)}
-                    className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
-                  >
-                    Copiar bloco
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => copyNarration(blockKey, block)}
+                      className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                    >
+                      Copiar bloco
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateBlockAudio(blockIndex, block)}
+                      disabled={isGeneratingAudio}
+                      className="rounded-md border border-gold-500/30 px-3 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isGeneratingAudio ? "Gerando áudio..." : "Gerar áudio"}
+                    </button>
+                  </div>
                 </div>
                 <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-300">{block}</p>
                 {copiedKey === blockKey ? <p className="mt-3 text-sm text-gold-300">Copiado</p> : null}
+                {audio ? (
+                  <div className="mt-5 rounded-md border border-white/10 bg-black/20 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-slate-100">{audio.title || `Áudio do bloco ${blockIndex}`}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Voz {audio.voice || "padrão"} · {audio.format.toUpperCase()}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadAudio(audio)}
+                          className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                        >
+                          Baixar áudio
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAudio(audio)}
+                          className="rounded-md border border-red-400/40 px-3 py-2 text-sm text-red-300 transition hover:border-red-300 hover:text-red-200"
+                        >
+                          Excluir áudio
+                        </button>
+                      </div>
+                    </div>
+                    {audioUrl ? (
+                      <audio controls src={audioUrl} className="mt-4 w-full" />
+                    ) : (
+                      <p className="mt-4 text-sm text-slate-400">Carregando player de áudio...</p>
+                    )}
+                  </div>
+                ) : null}
               </article>
             );
           })
@@ -2311,6 +2487,16 @@ function splitNarrationBlocks(text: string): string[] {
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function findAudioForBlock(audios: GeneratedAudio[], blockIndex: number): GeneratedAudio | null {
+  const matchingAudios = audios.filter((audio) => audio.block_index === blockIndex);
+  if (!matchingAudios.length) return null;
+  return matchingAudios.sort((first, second) => {
+    const firstTime = new Date(first.created_at).getTime();
+    const secondTime = new Date(second.created_at).getTime();
+    return secondTime - firstTime;
+  })[0] ?? null;
 }
 
 function formatSpeechTime(text: string): string {

@@ -12,6 +12,31 @@ import type { ProcessingJob, StartAIJobResponse } from "@/types/processing";
 
 export type GenerationLanguage = "pt-BR" | "en-US";
 
+export type GenerateNarrationAudioPayload = {
+  generated_content_id?: string | null;
+  block_index: number;
+  title?: string | null;
+  text: string;
+  voice?: string | null;
+  model?: string | null;
+  format?: string;
+};
+
+export type GeneratedAudio = {
+  id: string;
+  project_id: string;
+  generated_content_id: string | null;
+  block_index: number;
+  title: string | null;
+  voice: string | null;
+  model: string | null;
+  format: string;
+  duration_seconds: number | null;
+  status: string;
+  created_at: string;
+  download_url: string;
+};
+
 type ApiEnvelope<T> = {
   success: boolean;
   data?: T;
@@ -179,6 +204,80 @@ export function getComplementaryMaterialsExportUrl(projectId: string): string {
 
 export function getFullCourseExportUrl(projectId: string): string {
   return `${baseURL}/projects/${projectId}/exports/full-course.pdf`;
+}
+
+export function getAudioDownloadUrl(projectId: string, audioId: string): string {
+  return `${baseURL}/projects/${projectId}/audio/${audioId}/download`;
+}
+
+export async function generateNarrationAudio(
+  projectId: string,
+  payload: GenerateNarrationAudioPayload,
+): Promise<GeneratedAudio> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedAudio>(`/projects/${projectId}/audio/generate`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listProjectAudios(projectId: string): Promise<GeneratedAudio[]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedAudio[]>(`/projects/${projectId}/audio`, { token });
+}
+
+export async function deleteProjectAudio(projectId: string, audioId: string): Promise<{ message: string }> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<{ message: string }>(`/projects/${projectId}/audio/${audioId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export async function fetchNarrationAudioBlob(projectId: string, audioId: string): Promise<Blob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  const response = await fetch(getAudioDownloadUrl(projectId, audioId), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+    throw new ApiError(getApiErrorMessage(payload), response.status);
+  }
+
+  return response.blob();
+}
+
+export async function downloadNarrationAudio(projectId: string, audio: GeneratedAudio): Promise<void> {
+  const blob = await fetchNarrationAudioBlob(projectId, audio.id);
+  const filename = `${audio.title || "narration-audio"}-${audio.id}.${audio.format || "mp3"}`;
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
 }
 
 export async function downloadPresentationPdf(projectId: string): Promise<void> {

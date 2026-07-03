@@ -8,6 +8,7 @@ from app.core.database import Base
 from app.models import (  # noqa: F401
     AIProvider,
     AIRequest,
+    GeneratedAudio,
     GeneratedContent,
     Organization,
     ProcessingJob,

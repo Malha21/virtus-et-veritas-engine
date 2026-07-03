@@ -37,3 +37,9 @@ temp/
 
 # Local uploaded files
 /storage/
+apps/backend/storage/
+*.mp3
+*.wav
+*.aac
+*.flac
+*.opus
