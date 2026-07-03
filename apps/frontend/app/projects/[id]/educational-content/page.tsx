@@ -30,7 +30,7 @@ import type {
   PresentationDeckContent,
 } from "@/types/educational-content";
 
-type Tab = "summary" | "scripts" | "quizzes" | "materials" | "presentation" | "teleprompter";
+type Tab = "summary" | "scripts" | "quizzes" | "materials" | "presentation" | "teleprompter" | "narration";
 
 type PresentationSlideDraft = {
   slide_number: number;
@@ -291,6 +291,9 @@ export default function EducationalContentPage() {
             <TabButton active={activeTab === "teleprompter"} onClick={() => setActiveTab("teleprompter")}>
               Teleprompter
             </TabButton>
+            <TabButton active={activeTab === "narration"} onClick={() => setActiveTab("narration")}>
+              Narração
+            </TabButton>
           </div>
 
           {loading ? (
@@ -468,6 +471,7 @@ export default function EducationalContentPage() {
                 />
               ) : null}
               {activeTab === "teleprompter" ? <TeleprompterView contents={data.lesson_scripts} /> : null}
+              {activeTab === "narration" ? <NarrationView contents={data.lesson_scripts} /> : null}
             </div>
           ) : null}
         </section>
@@ -734,6 +738,159 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
             {teleprompterText || "Nao foi possivel montar o texto deste roteiro."}
           </div>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function NarrationView({ contents }: { contents: GeneratedContent[] }) {
+  const sortedContents = sortLessonScripts(contents);
+  const [selectedId, setSelectedId] = useState(sortedContents[0]?.id || "");
+  const [copiedKey, setCopiedKey] = useState("");
+
+  useEffect(() => {
+    if (!sortedContents.length) {
+      setSelectedId("");
+      return;
+    }
+    const selectedStillExists = sortedContents.some((content) => content.id === selectedId);
+    if (!selectedStillExists) {
+      setSelectedId(sortedContents[0]?.id || "");
+    }
+  }, [selectedId, sortedContents]);
+
+  if (!sortedContents.length) {
+    return <EmptyState text="Gere ou edite os roteiros de aula antes de preparar a narração." />;
+  }
+
+  const selectedContent = sortedContents.find((content) => content.id === selectedId) || sortedContents[0];
+  const selectedScript = (selectedContent?.content_json as LessonScriptContent | null)?.lesson_script;
+  const narrationText = selectedScript ? buildNarrationText(selectedScript) : "";
+  const narrationBlocks = splitNarrationBlocks(narrationText);
+  const lessonTitle = getLessonScriptLabel(selectedScript, selectedContent);
+
+  async function copyNarration(key: string, text: string) {
+    setCopiedKey("");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+    } catch {
+      setCopiedKey("error");
+    }
+  }
+
+  const numberedBlocksText = narrationBlocks.map((block, index) => `Bloco ${index + 1}\n${block}`).join("\n\n");
+
+  return (
+    <div className="grid gap-6">
+      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <label className="grid min-w-[260px] flex-1 gap-2 text-sm text-slate-300">
+            Aula para narração
+            <select
+              value={selectedContent?.id || ""}
+              onChange={(event) => {
+                setSelectedId(event.target.value);
+                setCopiedKey("");
+              }}
+              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              {sortedContents.map((content) => {
+                const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
+                return (
+                  <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
+                    {getLessonScriptLabel(script, content)}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => copyNarration("full", narrationText)}
+              disabled={!narrationText}
+              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Copiar narração completa
+            </button>
+            <button
+              type="button"
+              onClick={() => copyNarration("all-blocks", numberedBlocksText)}
+              disabled={!numberedBlocksText}
+              className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Copiar blocos numerados
+            </button>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">
+              Pronta para geração de voz
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-50">{lessonTitle}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              Texto limpo em blocos para futura narração por voz, sem gerar áudio nesta etapa.
+            </p>
+          </div>
+          <div className="rounded-md border border-white/10 bg-black/20 px-4 py-3 text-right">
+            <p className="text-xs text-slate-500">Tempo estimado total</p>
+            <p className="mt-1 text-lg font-semibold text-gold-300">{formatSpeechTime(narrationText)}</p>
+          </div>
+        </div>
+        {copiedKey ? (
+          <p className={`mt-4 text-sm ${copiedKey === "error" ? "text-red-300" : "text-gold-300"}`}>
+            {copiedKey === "error" ? "Não foi possível copiar." : "Copiado"}
+          </p>
+        ) : null}
+      </section>
+
+      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-slate-100">Narração completa</p>
+            <p className="mt-1 text-xs text-slate-500">{countWords(narrationText)} palavras</p>
+          </div>
+        </div>
+        <div className="mt-4 max-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/20 p-4 text-sm leading-7 text-slate-200">
+          {narrationText || "Não foi possível montar a narração deste roteiro."}
+        </div>
+      </section>
+
+      <section className="grid gap-4">
+        <div>
+          <p className="text-sm font-medium text-slate-100">Blocos de narração</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {narrationBlocks.length} {narrationBlocks.length === 1 ? "bloco preparado" : "blocos preparados"}
+          </p>
+        </div>
+        {narrationBlocks.length ? (
+          narrationBlocks.map((block, index) => {
+            const blockKey = `block-${index}`;
+            return (
+              <article key={blockKey} className="rounded-lg border border-white/10 bg-navy-950/50 p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-50">Bloco {index + 1}</h3>
+                    <p className="mt-1 text-xs text-slate-500">Tempo estimado: {formatSpeechTime(block)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyNarration(blockKey, block)}
+                    className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                  >
+                    Copiar bloco
+                  </button>
+                </div>
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-300">{block}</p>
+                {copiedKey === blockKey ? <p className="mt-3 text-sm text-gold-300">Copiado</p> : null}
+              </article>
+            );
+          })
+        ) : (
+          <EmptyState text="Não foi possível dividir a narração em blocos." />
+        )}
       </section>
     </div>
   );
@@ -1992,6 +2149,141 @@ function buildTeleprompterText(script: NonNullable<LessonScriptContent["lesson_s
   appendTeleprompterSection(parts, "Notas do instrutor", (script as Record<string, unknown>).instructor_notes);
 
   return parts.join("\n\n").trim();
+}
+
+function cleanNarrationText(text: string): string {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .join("\n")
+    .trim();
+}
+
+function narrationValueToText(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => narrationValueToText(item)).filter(Boolean).join("\n\n");
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const parts = [
+      record.narration_text,
+      record.narration,
+      record.script_text,
+      record.content,
+      record.text,
+      record.description,
+      record.explanation,
+      record.example,
+      record.practical_example,
+    ]
+      .map((item) => narrationValueToText(item))
+      .filter(Boolean);
+
+    if (parts.length) return parts.join("\n\n");
+
+    return Object.entries(record)
+      .filter(([key]) => !["module_number", "lesson_number", "metadata", "estimated_duration", "estimated_duration_minutes"].includes(key))
+      .map(([, item]) => narrationValueToText(item))
+      .filter(Boolean)
+      .join("\n\n");
+  }
+
+  return "";
+}
+
+function appendNarrationSection(parts: string[], value: unknown) {
+  const text = cleanNarrationText(narrationValueToText(value));
+  if (text) parts.push(text);
+}
+
+function buildNarrationText(script: NonNullable<LessonScriptContent["lesson_script"]>): string {
+  const record = script as Record<string, unknown>;
+  const parts: string[] = [];
+
+  appendNarrationSection(parts, record.narration_text);
+  appendNarrationSection(parts, record.narration);
+  appendNarrationSection(parts, record.script_text);
+
+  if (!parts.length) {
+    appendNarrationSection(parts, script.opening);
+    appendNarrationSection(parts, record.introduction);
+    appendNarrationSection(parts, record.development);
+    appendNarrationSection(parts, script.main_script);
+    appendNarrationSection(parts, record.sections);
+    appendNarrationSection(parts, record.examples ?? script.practical_example);
+    appendNarrationSection(parts, record.practical_activity);
+    appendNarrationSection(parts, record.conclusion ?? script.closing);
+    appendNarrationSection(parts, script.call_to_action);
+  } else {
+    appendNarrationSection(parts, script.opening);
+    appendNarrationSection(parts, record.development);
+    appendNarrationSection(parts, record.conclusion ?? script.closing);
+    appendNarrationSection(parts, script.call_to_action);
+  }
+
+  return cleanNarrationText(parts.join("\n\n"));
+}
+
+function splitNarrationBlocks(text: string): string[] {
+  const cleanText = cleanNarrationText(text);
+  if (!cleanText) return [];
+  if (cleanText.length <= 1200) return [cleanText];
+
+  const paragraphs = cleanText.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
+  const chunks = paragraphs.length > 1 ? paragraphs : cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
+  const blocks: string[] = [];
+  let current = "";
+
+  chunks.forEach((chunk) => {
+    const candidate = current ? `${current}\n\n${chunk.trim()}` : chunk.trim();
+    if (candidate.length <= 1200 || current.length < 700) {
+      current = candidate;
+      return;
+    }
+
+    if (current) blocks.push(current);
+    current = chunk.trim();
+  });
+
+  if (current) blocks.push(current);
+
+  return blocks.flatMap((block) => {
+    if (block.length <= 1400) return [block];
+    const sentences = block.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [block];
+    const sentenceBlocks: string[] = [];
+    let currentSentenceBlock = "";
+    sentences.forEach((sentence) => {
+      const candidate = currentSentenceBlock ? `${currentSentenceBlock} ${sentence.trim()}` : sentence.trim();
+      if (candidate.length <= 1200 || !currentSentenceBlock) {
+        currentSentenceBlock = candidate;
+      } else {
+        sentenceBlocks.push(currentSentenceBlock);
+        currentSentenceBlock = sentence.trim();
+      }
+    });
+    if (currentSentenceBlock) sentenceBlocks.push(currentSentenceBlock);
+    return sentenceBlocks;
+  });
+}
+
+function countWords(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function formatSpeechTime(text: string): string {
+  const words = countWords(text);
+  if (!words) return "menos de 1 min";
+  const minutes = Math.round(words / 130);
+  if (minutes < 1) return "menos de 1 min";
+  return `${minutes} min`;
 }
 
 function getEstimatedSpeechTime(text: string): string {
