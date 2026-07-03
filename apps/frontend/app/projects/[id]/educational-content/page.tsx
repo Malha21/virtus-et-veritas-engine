@@ -10,6 +10,7 @@ import {
   ApiError,
   apiFetch,
   downloadComplementaryMaterialsPdf,
+  downloadFullCoursePdf,
   downloadLessonScriptsPdf,
   downloadPresentationPdf,
   downloadQuizzesPdf,
@@ -151,6 +152,16 @@ function sortSummaries(contents: GeneratedContent[]): GeneratedContent[] {
   );
 }
 
+function hasAnyEducationalContent(data: EducationalContentSummaryResponse): boolean {
+  return (
+    data.course_summaries.length > 0 ||
+    data.lesson_scripts.length > 0 ||
+    data.module_quizzes.length > 0 ||
+    data.complementary_materials.length > 0 ||
+    data.presentation_decks.length > 0
+  );
+}
+
 export default function EducationalContentPage() {
   const params = useParams<{ id: string }>();
   const [data, setData] = useState<EducationalContentSummaryResponse | null>(null);
@@ -164,6 +175,8 @@ export default function EducationalContentPage() {
   const [quizzesExportError, setQuizzesExportError] = useState("");
   const [exportingMaterials, setExportingMaterials] = useState(false);
   const [materialsExportError, setMaterialsExportError] = useState("");
+  const [exportingFullCourse, setExportingFullCourse] = useState(false);
+  const [fullCourseExportError, setFullCourseExportError] = useState("");
   const [exportingPresentation, setExportingPresentation] = useState(false);
   const [exportError, setExportError] = useState("");
 
@@ -191,6 +204,24 @@ export default function EducationalContentPage() {
       .finally(() => setLoading(false));
   }, [params.id]);
 
+  async function handleExportFullCourse() {
+    setExportingFullCourse(true);
+    setFullCourseExportError("");
+    try {
+      await downloadFullCoursePdf(params.id);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setFullCourseExportError("Sua sessao expirou. Faca login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setFullCourseExportError(err.message);
+      } else {
+        setFullCourseExportError("Nao foi possivel exportar o curso completo.");
+      }
+    } finally {
+      setExportingFullCourse(false);
+    }
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl">
@@ -217,6 +248,25 @@ export default function EducationalContentPage() {
             <p className="mt-4 rounded-md border border-gold-500/20 bg-gold-500/10 px-4 py-3 text-sm text-gold-200">
               {generationMessage}
             </p>
+          ) : null}
+          {data && hasAnyEducationalContent(data) ? (
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-navy-950/60 p-4">
+              <div>
+                <p className="text-sm font-medium text-slate-100">Exportacao completa</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Gere um PDF consolidado com resumo, estrutura, roteiros, quizzes, materiais e apresentacao.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleExportFullCourse}
+                disabled={exportingFullCourse}
+                className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exportingFullCourse ? "Gerando PDF..." : "Exportar curso completo"}
+              </button>
+              {fullCourseExportError ? <p className="w-full text-sm text-red-300">{fullCourseExportError}</p> : null}
+            </div>
           ) : null}
 
           <div className="mt-6 flex flex-wrap gap-2 border-b border-white/10 pb-4">

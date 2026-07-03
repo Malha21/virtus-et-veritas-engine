@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.services.export_service import (
     export_complementary_materials_pdf,
+    export_full_course_pdf,
     export_lesson_scripts_pdf,
     export_presentation_pdf,
     export_quizzes_pdf,
@@ -77,5 +78,17 @@ def get_complementary_materials_pdf(
 ) -> StreamingResponse:
     project, pdf_bytes = export_complementary_materials_pdf(db, current_user, project_id)
     filename = f"complementary-materials-{safe_filename(project.slug or project.id)}.pdf"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
+
+
+@router.get("/full-course.pdf")
+def get_full_course_pdf(
+    project_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StreamingResponse:
+    project, pdf_bytes = export_full_course_pdf(db, current_user, project_id)
+    filename = f"full-course-{safe_filename(project.slug or project.id)}.pdf"
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     return StreamingResponse(BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
