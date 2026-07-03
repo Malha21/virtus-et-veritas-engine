@@ -37,6 +37,32 @@ export type GeneratedAudio = {
   download_url: string;
 };
 
+export type InstructorProfilePayload = {
+  display_name: string | null;
+  bio: string | null;
+  teaching_style: string | null;
+  voice_provider: string | null;
+  voice_id: string | null;
+  voice_name: string | null;
+  voice_sample_notes: string | null;
+  avatar_provider: string | null;
+  avatar_id: string | null;
+  avatar_name: string | null;
+  avatar_style: string | null;
+  avatar_image_path: string | null;
+  consent_voice_clone: boolean;
+  consent_avatar_use: boolean;
+  consent_terms_text: string | null;
+};
+
+export type InstructorProfile = InstructorProfilePayload & {
+  id: string;
+  user_id: string;
+  consent_updated_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
 type ApiEnvelope<T> = {
   success: boolean;
   data?: T;
@@ -180,6 +206,28 @@ export async function startEducationalContentJob(
 
 export async function getProjectJob(projectId: string, jobId: string): Promise<ProcessingJob> {
   return apiFetch<ProcessingJob>(`/projects/${projectId}/jobs/${jobId}`);
+}
+
+export async function getInstructorProfile(): Promise<InstructorProfile | null> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<InstructorProfile | null>("/instructor-profile", { token });
+}
+
+export async function saveInstructorProfile(payload: InstructorProfilePayload): Promise<InstructorProfile> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<InstructorProfile>("/instructor-profile", {
+    method: "PUT",
+    token,
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getPresentationExportUrl(projectId: string): string {
