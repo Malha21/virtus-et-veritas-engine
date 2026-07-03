@@ -606,11 +606,11 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
 
   async function copyText() {
     setCopyMessage("");
-    try {
-      await navigator.clipboard.writeText(teleprompterText);
+    const copied = await copyTextToClipboard(teleprompterText);
+    if (copied) {
       setCopyMessage("Texto copiado");
-    } catch {
-      setCopyMessage("Nao foi possivel copiar o texto.");
+    } else {
+      setCopyMessage("Não foi possível copiar automaticamente. Selecione o texto e copie manualmente.");
     }
   }
 
@@ -771,10 +771,10 @@ function NarrationView({ contents }: { contents: GeneratedContent[] }) {
 
   async function copyNarration(key: string, text: string) {
     setCopiedKey("");
-    try {
-      await navigator.clipboard.writeText(text);
+    const copied = await copyTextToClipboard(text);
+    if (copied) {
       setCopiedKey(key);
-    } catch {
+    } else {
       setCopiedKey("error");
     }
   }
@@ -841,7 +841,9 @@ function NarrationView({ contents }: { contents: GeneratedContent[] }) {
         </div>
         {copiedKey ? (
           <p className={`mt-4 text-sm ${copiedKey === "error" ? "text-red-300" : "text-gold-300"}`}>
-            {copiedKey === "error" ? "Não foi possível copiar." : "Copiado"}
+            {copiedKey === "error"
+              ? "Não foi possível copiar automaticamente. Selecione o texto e copie manualmente."
+              : "Copiado"}
           </p>
         ) : null}
       </section>
@@ -2149,6 +2151,39 @@ function buildTeleprompterText(script: NonNullable<LessonScriptContent["lesson_s
   appendTeleprompterSection(parts, "Notas do instrutor", (script as Record<string, unknown>).instructor_notes);
 
   return parts.join("\n\n").trim();
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (!text.trim()) return false;
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall back to textarea copy for HTTP or restricted clipboard contexts.
+  }
+
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.top = "0";
+    textarea.style.left = "0";
+    textarea.style.opacity = "0";
+    textarea.setAttribute("readonly", "true");
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    try {
+      return document.execCommand("copy");
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  } catch {
+    return false;
+  }
 }
 
 function cleanNarrationText(text: string): string {
