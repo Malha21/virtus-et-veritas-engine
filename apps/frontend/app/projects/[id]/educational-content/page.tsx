@@ -526,12 +526,12 @@ function SummaryView({ contents }: { contents: GeneratedContent[] }) {
 function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
   const sortedContents = sortLessonScripts(contents);
   const [selectedId, setSelectedId] = useState(sortedContents[0]?.id || "");
-  const [isRunning, setIsRunning] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [fontSize, setFontSize] = useState<"small" | "medium" | "large" | "xlarge">("large");
   const [copyMessage, setCopyMessage] = useState("");
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const frameRef = useRef<number | null>(null);
+  const teleprompterRef = useRef<HTMLDivElement | null>(null);
+  const scrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!sortedContents.length) {
@@ -550,42 +550,53 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
   const estimatedTime = getEstimatedSpeechTime(teleprompterText);
 
   useEffect(() => {
-    if (!isRunning) {
-      if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
-      }
+    if (scrollTimerRef.current !== null) {
+      clearInterval(scrollTimerRef.current);
+      scrollTimerRef.current = null;
+    }
+
+    if (!isPlaying) {
       return;
     }
 
-    let lastTimestamp = 0;
-    const step = (timestamp: number) => {
-      if (!lastTimestamp) lastTimestamp = timestamp;
-      const delta = timestamp - lastTimestamp;
-      lastTimestamp = timestamp;
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop += (delta / 16) * speed * 0.45;
-      }
-      frameRef.current = requestAnimationFrame(step);
-    };
+    scrollTimerRef.current = setInterval(() => {
+      const element = teleprompterRef.current;
+      if (!element) return;
 
-    frameRef.current = requestAnimationFrame(step);
+      const maxScrollTop = element.scrollHeight - element.clientHeight;
+      if (element.scrollTop >= maxScrollTop) {
+        setIsPlaying(false);
+        return;
+      }
+
+      element.scrollTop = Math.min(element.scrollTop + speed, maxScrollTop);
+    }, 30);
+
     return () => {
-      if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
+      if (scrollTimerRef.current !== null) {
+        clearInterval(scrollTimerRef.current);
+        scrollTimerRef.current = null;
       }
     };
-  }, [isRunning, speed]);
+  }, [isPlaying, speed]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollTimerRef.current !== null) {
+        clearInterval(scrollTimerRef.current);
+        scrollTimerRef.current = null;
+      }
+    };
+  }, []);
 
   if (!sortedContents.length) {
     return <EmptyState text="Gere ou edite os roteiros de aula antes de usar o teleprompter." />;
   }
 
   function resetTeleprompter() {
-    setIsRunning(false);
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = 0;
+    setIsPlaying(false);
+    if (teleprompterRef.current) {
+      teleprompterRef.current.scrollTop = 0;
     }
   }
 
@@ -600,8 +611,8 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
   }
 
   function enterFullscreen() {
-    if (scrollRef.current?.requestFullscreen) {
-      scrollRef.current.requestFullscreen().catch(() => undefined);
+    if (teleprompterRef.current?.requestFullscreen) {
+      teleprompterRef.current.requestFullscreen().catch(() => undefined);
     }
   }
 
@@ -639,14 +650,14 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setIsRunning(true)}
+              onClick={() => setIsPlaying(true)}
               className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
             >
               Iniciar
             </button>
             <button
               type="button"
-              onClick={() => setIsRunning(false)}
+              onClick={() => setIsPlaying(false)}
               className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
             >
               Pausar
@@ -716,8 +727,8 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
           <h2 className="mt-1 text-2xl font-semibold text-slate-50">{getLessonScriptLabel(selectedScript, selectedContent)}</h2>
         </div>
         <div
-          ref={scrollRef}
-          className="h-[620px] overflow-y-auto rounded-md border border-white/10 bg-navy-950 px-8 py-10 text-slate-50 outline-none"
+          ref={teleprompterRef}
+          className="h-[620px] max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-navy-950 px-8 py-10 text-slate-50 outline-none"
         >
           <div className={`${fontClass} mx-auto max-w-4xl whitespace-pre-wrap`}>
             {teleprompterText || "Nao foi possivel montar o texto deste roteiro."}
