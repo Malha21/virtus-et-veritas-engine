@@ -2,6 +2,7 @@ from app.models.ai_provider import AIProvider
 from app.models.ai_request import AIRequest
 from app.models.generated_audio import GeneratedAudio
 from app.models.generated_content import GeneratedContent
+from app.models.instructor_asset import InstructorAsset
 from app.models.instructor_profile import InstructorProfile
 from app.models.organization import Organization
 from app.models.project import Project
@@ -15,6 +16,7 @@ __all__ = [
     "AIRequest",
     "GeneratedAudio",
     "GeneratedContent",
+    "InstructorAsset",
     "InstructorProfile",
     "Organization",
     "ProcessingJob",

@@ -66,6 +66,29 @@ export type InstructorProfile = InstructorProfilePayload & {
   updated_at: string | null;
 };
 
+export type InstructorAssetType = "voice_sample" | "avatar_image";
+
+export type InstructorAsset = {
+  id: string;
+  user_id: string;
+  instructor_profile_id: string | null;
+  asset_type: InstructorAssetType;
+  original_filename: string | null;
+  stored_filename: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  description: string | null;
+  consent_confirmed: boolean;
+  created_at: string;
+  updated_at: string | null;
+  download_url: string;
+};
+
+export type InstructorAssetUpdatePayload = {
+  description?: string | null;
+  consent_confirmed?: boolean;
+};
+
 type ApiEnvelope<T> = {
   success: boolean;
   data?: T;
@@ -231,6 +254,106 @@ export async function saveInstructorProfile(payload: InstructorProfilePayload): 
     token,
     body: JSON.stringify(payload),
   });
+}
+
+export async function listInstructorAssets(assetType?: InstructorAssetType): Promise<InstructorAsset[]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  const query = assetType ? `?asset_type=${encodeURIComponent(assetType)}` : "";
+  return apiFetch<InstructorAsset[]>(`/instructor-assets${query}`, { token });
+}
+
+export async function uploadInstructorAsset(payload: {
+  file: File;
+  asset_type: InstructorAssetType;
+  description?: string;
+  consent_confirmed: boolean;
+}): Promise<InstructorAsset> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  const formData = new FormData();
+  formData.append("file", payload.file);
+  formData.append("asset_type", payload.asset_type);
+  formData.append("consent_confirmed", String(payload.consent_confirmed));
+  if (payload.description) {
+    formData.append("description", payload.description);
+  }
+
+  return apiFetch<InstructorAsset>("/instructor-assets/upload", {
+    method: "POST",
+    token,
+    body: formData,
+  });
+}
+
+export async function updateInstructorAsset(
+  assetId: string,
+  payload: InstructorAssetUpdatePayload,
+): Promise<InstructorAsset> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<InstructorAsset>(`/instructor-assets/${assetId}`, {
+    method: "PUT",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteInstructorAsset(assetId: string): Promise<{ message: string }> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<{ message: string }>(`/instructor-assets/${assetId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function getInstructorAssetDownloadUrl(assetId: string): string {
+  return `${baseURL}/instructor-assets/${assetId}/download`;
+}
+
+export async function fetchInstructorAssetBlob(assetId: string): Promise<Blob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  const response = await fetch(getInstructorAssetDownloadUrl(assetId), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+    throw new ApiError(getApiErrorMessage(payload), response.status);
+  }
+
+  return response.blob();
+}
+
+export async function downloadInstructorAsset(asset: InstructorAsset): Promise<void> {
+  const blob = await fetchInstructorAssetBlob(asset.id);
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = asset.original_filename || asset.stored_filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
 }
 
 export function getPresentationExportUrl(projectId: string): string {

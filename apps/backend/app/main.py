@@ -9,6 +9,7 @@ from app.api.v1.educational_content import router as educational_content_router
 from app.api.v1.exports import router as exports_router
 from app.api.v1.files import router as files_router
 from app.api.v1.health import router as health_router
+from app.api.v1.instructor_assets import router as instructor_assets_router
 from app.api.v1.instructor_profiles import router as instructor_profiles_router
 from app.api.v1.jobs import router as jobs_router
 from app.api.v1.processing import router as processing_router
@@ -48,6 +49,7 @@ app.include_router(processing_router, prefix=settings.api_prefix)
 app.include_router(contents_router, prefix=settings.api_prefix)
 app.include_router(ai_router, prefix=settings.api_prefix)
 app.include_router(audio_router, prefix=settings.api_prefix)
+app.include_router(instructor_assets_router, prefix=settings.api_prefix)
 app.include_router(instructor_profiles_router, prefix=settings.api_prefix)
 app.include_router(educational_content_router, prefix=settings.api_prefix)
 app.include_router(jobs_router, prefix=settings.api_prefix)
