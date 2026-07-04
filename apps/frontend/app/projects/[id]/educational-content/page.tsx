@@ -28,7 +28,7 @@ import {
   updateModuleQuiz,
   updatePresentationDeck,
 } from "@/lib/api";
-import type { DocumentAnalysisContent, GeneratedContent, GeneratedContentListResponse } from "@/types/content";
+import type { GeneratedContent } from "@/types/content";
 import type {
   ComplementaryMaterialContent,
   CourseSummaryContent,
@@ -38,7 +38,7 @@ import type {
   PresentationDeckContent,
 } from "@/types/educational-content";
 
-type Tab = "document" | "summary" | "scripts" | "quizzes" | "materials" | "presentation" | "teleprompter" | "narration";
+type Tab = "summary" | "scripts" | "quizzes" | "materials" | "presentation" | "teleprompter" | "narration";
 
 type PresentationSlideDraft = {
   slide_number: number;
@@ -81,31 +81,6 @@ type LessonScriptDraft = {
   reflection_question: string;
   closing: string;
   call_to_action: string;
-};
-
-type LessonScriptPayload = NonNullable<LessonScriptContent["lesson_script"]> & Record<string, unknown>;
-
-type LessonScriptOption = {
-  key: string;
-  contentId: string;
-  moduleNumber?: number | string;
-  lessonNumber?: number | string;
-  title: string;
-  label: string;
-  payload: LessonScriptPayload;
-  createdAt?: string;
-};
-
-type DocumentBaseSummary = {
-  source: "document_analysis" | "course_summary" | "empty";
-  fileName?: string;
-  overview?: unknown;
-  mainIdeas?: unknown[];
-  concepts?: unknown[];
-  themes?: unknown[];
-  opportunities?: unknown[];
-  transformation?: unknown;
-  notice: string;
 };
 
 type QuizQuestionDraft = {
@@ -159,69 +134,6 @@ function getContentNumber(content: GeneratedContent, section: string, field: str
   return Number.isFinite(parsed) ? parsed : 9999;
 }
 
-function getContentMetadata(content: GeneratedContent): Record<string, unknown> {
-  const contentJson = content.content_json as Record<string, unknown> | null;
-  const metadata = contentJson?.metadata;
-  return typeof metadata === "object" && metadata !== null ? (metadata as Record<string, unknown>) : {};
-}
-
-function toRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
-
-function normalizeLessonKeyValue(value: unknown): string {
-  return editText(value)
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ");
-}
-
-function normalizeNumber(value: unknown): number | string | undefined {
-  const text = editText(value).trim();
-  if (!text || text === "Nao informado") return undefined;
-  const parsed = Number(text);
-  return Number.isFinite(parsed) ? parsed : text;
-}
-
-function getModuleNumber(payload: Record<string, unknown>, metadata?: Record<string, unknown>): number | string | undefined {
-  return normalizeNumber(payload.module_number ?? payload.moduleNumber ?? metadata?.module_number ?? metadata?.moduleNumber);
-}
-
-function getLessonNumber(payload: Record<string, unknown>, metadata?: Record<string, unknown>): number | string | undefined {
-  return normalizeNumber(payload.lesson_number ?? payload.lessonNumber ?? metadata?.lesson_number ?? metadata?.lessonNumber);
-}
-
-function getLessonTitle(payload: Record<string, unknown>, content?: GeneratedContent, fallback = "Roteiro de aula"): string {
-  const title = editText(
-    payload.lesson_title ??
-      payload.lessonTitle ??
-      payload.title ??
-      payload.name ??
-      payload.subject ??
-      content?.title ??
-      fallback,
-  ).trim();
-  return title || fallback;
-}
-
-function buildLessonOptionLabel(
-  moduleNumber: number | string | undefined,
-  lessonNumber: number | string | undefined,
-  title: string,
-): string {
-  if (moduleNumber !== undefined && lessonNumber !== undefined) return `Modulo ${moduleNumber} - Aula ${lessonNumber}: ${title}`;
-  if (lessonNumber !== undefined) return `Aula ${lessonNumber}: ${title}`;
-  return title;
-}
-
-function getOptionSortNumber(value: number | string | undefined): number {
-  if (typeof value === "number") return value;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 9999;
-}
-
 function sortLessonScripts(contents: GeneratedContent[]): GeneratedContent[] {
   return [...contents].sort(
     (a, b) =>
@@ -229,155 +141,6 @@ function sortLessonScripts(contents: GeneratedContent[]): GeneratedContent[] {
       getContentNumber(a, "lesson_script", "lesson_number") - getContentNumber(b, "lesson_script", "lesson_number") ||
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
-}
-
-function looksLikeLessonScriptPayload(record: Record<string, unknown>): boolean {
-  const hasLessonIdentity = Boolean(
-    record.lesson_number ??
-      record.lessonNumber ??
-      record.lesson_title ??
-      record.lessonTitle,
-  );
-  const hasLessonBody = Boolean(
-    record.opening ??
-      record.learning_objective ??
-      record.learningObjective ??
-      record.main_script ??
-      record.mainScript ??
-      record.narration_text ??
-      record.narration ??
-      record.script_text ??
-      record.development ??
-      record.sections ??
-      record.blocks,
-  );
-
-  return hasLessonIdentity || hasLessonBody;
-}
-
-function withModuleContext(
-  payload: Record<string, unknown>,
-  context: Record<string, unknown>,
-): Record<string, unknown> {
-  return {
-    ...payload,
-    module_number: payload.module_number ?? payload.moduleNumber ?? context.module_number ?? context.moduleNumber,
-    module_title: payload.module_title ?? payload.moduleTitle ?? context.module_title ?? context.moduleTitle ?? context.title,
-  };
-}
-
-function collectLessonScriptPayloads(
-  value: unknown,
-  content: GeneratedContent,
-  results: Array<{ payload: LessonScriptPayload; metadata: Record<string, unknown>; index: number }>,
-  context: Record<string, unknown> = {},
-) {
-  if (Array.isArray(value)) {
-    value.forEach((item) => collectLessonScriptPayloads(item, content, results, context));
-    return;
-  }
-
-  const record = toRecord(value);
-  if (!record) return;
-
-  const metadata = {
-    ...getContentMetadata(content),
-    ...(toRecord(record.metadata) || {}),
-    ...context,
-  };
-  const directLessonScript = toRecord(record.lesson_script);
-
-  if (directLessonScript) {
-    results.push({
-      payload: withModuleContext(directLessonScript, metadata) as LessonScriptPayload,
-      metadata,
-      index: results.length,
-    });
-  } else if (looksLikeLessonScriptPayload(record)) {
-    results.push({
-      payload: withModuleContext(record, metadata) as LessonScriptPayload,
-      metadata,
-      index: results.length,
-    });
-  }
-
-  ["content", "payload", "data"].forEach((key) => {
-    if (record[key]) collectLessonScriptPayloads(record[key], content, results, metadata);
-  });
-
-  ["lessons", "lesson_scripts", "scripts"].forEach((key) => {
-    if (record[key]) collectLessonScriptPayloads(record[key], content, results, metadata);
-  });
-
-  const modules = toArray(record.modules);
-  modules.forEach((moduleItem) => {
-    const moduleRecord = toRecord(moduleItem);
-    if (!moduleRecord) return;
-
-    const moduleContext = {
-      ...metadata,
-      module_number: moduleRecord.module_number ?? moduleRecord.moduleNumber ?? metadata.module_number,
-      module_title: moduleRecord.module_title ?? moduleRecord.moduleTitle ?? moduleRecord.title ?? metadata.module_title,
-    };
-
-    ["lessons", "lesson_scripts", "scripts"].forEach((key) => {
-      if (moduleRecord[key]) collectLessonScriptPayloads(moduleRecord[key], content, results, moduleContext);
-    });
-  });
-}
-
-function isNewerLessonOption(candidate: LessonScriptOption, current: LessonScriptOption): boolean {
-  const candidateTime = new Date(candidate.createdAt || "").getTime();
-  const currentTime = new Date(current.createdAt || "").getTime();
-
-  if (Number.isFinite(candidateTime) && Number.isFinite(currentTime)) return candidateTime > currentTime;
-  return Number.isFinite(candidateTime) && !Number.isFinite(currentTime);
-}
-
-function buildLessonScriptOptions(contents: GeneratedContent[]): LessonScriptOption[] {
-  const selectedByKey = new Map<string, LessonScriptOption>();
-
-  sortLessonScripts(contents).forEach((content) => {
-    const candidates: Array<{ payload: LessonScriptPayload; metadata: Record<string, unknown>; index: number }> = [];
-    collectLessonScriptPayloads(content.content_json, content, candidates);
-
-    candidates.forEach((candidate) => {
-      const moduleNumber = getModuleNumber(candidate.payload, candidate.metadata);
-      const lessonNumber = getLessonNumber(candidate.payload, candidate.metadata);
-      const title = getLessonTitle(candidate.payload, content, `Aula ${candidate.index + 1}`);
-      const dedupeKey =
-        moduleNumber !== undefined || lessonNumber !== undefined
-          ? [
-              normalizeLessonKeyValue(moduleNumber),
-              normalizeLessonKeyValue(lessonNumber),
-              normalizeLessonKeyValue(title),
-            ].join("|")
-          : `${content.id}|${candidate.index}`;
-      const option: LessonScriptOption = {
-        key: dedupeKey,
-        contentId: content.id,
-        moduleNumber,
-        lessonNumber,
-        title,
-        label: buildLessonOptionLabel(moduleNumber, lessonNumber, title),
-        payload: candidate.payload,
-        createdAt: content.created_at,
-      };
-      const existing = selectedByKey.get(dedupeKey);
-
-      if (!existing || isNewerLessonOption(option, existing)) {
-        selectedByKey.set(dedupeKey, option);
-      }
-    });
-  });
-
-  return Array.from(selectedByKey.values()).sort((a, b) => {
-    const moduleDiff = getOptionSortNumber(a.moduleNumber) - getOptionSortNumber(b.moduleNumber);
-    if (moduleDiff !== 0) return moduleDiff;
-    const lessonDiff = getOptionSortNumber(a.lessonNumber) - getOptionSortNumber(b.lessonNumber);
-    if (lessonDiff !== 0) return lessonDiff;
-    return a.title.localeCompare(b.title) || new Date(a.createdAt || "").getTime() - new Date(b.createdAt || "").getTime();
-  });
 }
 
 function sortModuleQuizzes(contents: GeneratedContent[]): GeneratedContent[] {
@@ -398,382 +161,6 @@ function sortSummaries(contents: GeneratedContent[]): GeneratedContent[] {
   );
 }
 
-function getCreatedAtTimestamp(item: { created_at?: string; createdAt?: string }): number {
-  const parsed = new Date(item.created_at || item.createdAt || "").getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function normalizeTitle(text: unknown): string {
-  return editText(text)
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, " ");
-}
-
-function deduplicateByStableKey<T extends { created_at?: string; createdAt?: string }>(
-  items: T[],
-  getKey: (item: T, index: number) => string,
-): T[] {
-  const selectedByKey = new Map<string, T>();
-
-  items.forEach((item, index) => {
-    const key = getKey(item, index) || `item-${index}`;
-    const existing = selectedByKey.get(key);
-    if (!existing || getCreatedAtTimestamp(item) > getCreatedAtTimestamp(existing)) {
-      selectedByKey.set(key, item);
-    }
-  });
-
-  return Array.from(selectedByKey.values());
-}
-
-function getLatestContentByType(contents: GeneratedContent[], contentType: string): GeneratedContent | null {
-  return getLatestContentsByType(contents, [contentType])[0] || null;
-}
-
-function getLatestContentsByType(contents: GeneratedContent[], contentTypes: string[]): GeneratedContent[] {
-  const allowedTypes = new Set(contentTypes);
-  return contents
-    .filter((content) => allowedTypes.has(content.content_type))
-    .sort((a, b) => getCreatedAtTimestamp(b) - getCreatedAtTimestamp(a));
-}
-
-function deduplicateLessonScriptContents(contents: GeneratedContent[]): GeneratedContent[] {
-  return deduplicateByStableKey(sortLessonScripts(contents), (content, index) => {
-    const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
-    const metadata = getContentMetadata(content);
-    const moduleNumber = normalizeTitle(script?.module_number ?? metadata.module_number);
-    const lessonNumber = normalizeTitle(script?.lesson_number ?? metadata.lesson_number);
-    const title = normalizeTitle(script?.lesson_title || content.title);
-    if (moduleNumber || lessonNumber || title) {
-      return [moduleNumber || "sem-modulo", lessonNumber || "sem-aula", title || "sem-titulo"].join("|");
-    }
-    return `${content.id}|${index}`;
-  });
-}
-
-function deduplicateQuizQuestions(questions: unknown): unknown[] {
-  return deduplicateByStableKey(toArray(questions).map((question) => ({ value: question })), (item, index) => {
-    const record = toRecord(item.value);
-    const questionText = normalizeTitle(record?.question ?? item.value);
-    return questionText || `question-${index}`;
-  }).map((item) => item.value);
-}
-
-function normalizeQuizContent(content: GeneratedContent): GeneratedContent {
-  const contentJson = content.content_json as ModuleQuizContent | null;
-  const quiz = contentJson?.module_quiz;
-  if (!quiz) return content;
-  return {
-    ...content,
-    content_json: {
-      ...contentJson,
-      module_quiz: {
-        ...quiz,
-        questions: deduplicateQuizQuestions(quiz.questions),
-      },
-    },
-  };
-}
-
-function deduplicateModuleQuizContents(contents: GeneratedContent[]): GeneratedContent[] {
-  return deduplicateByStableKey(sortModuleQuizzes(contents).map(normalizeQuizContent), (content, index) => {
-    const quiz = (content.content_json as ModuleQuizContent | null)?.module_quiz;
-    const moduleNumber = normalizeTitle(quiz?.module_number);
-    const lessonNumber = normalizeTitle((quiz as Record<string, unknown> | undefined)?.lesson_number);
-    const title = normalizeTitle((quiz as Record<string, unknown> | undefined)?.quiz_title ?? quiz?.module_title ?? content.title);
-    if (moduleNumber || lessonNumber || title) {
-      return [moduleNumber || "sem-modulo", lessonNumber || "sem-aula", title || "sem-titulo"].join("|");
-    }
-    return `${content.id}|${index}`;
-  });
-}
-
-function findNestedRecord(value: unknown, key: string): Record<string, unknown> | null {
-  const record = toRecord(value);
-  if (!record) return null;
-  const direct = toRecord(record[key]);
-  if (direct) return direct;
-
-  for (const nestedKey of ["content", "payload", "data"]) {
-    const nested = findNestedRecord(record[nestedKey], key);
-    if (nested) return nested;
-  }
-
-  return null;
-}
-
-function normalizeCourseSummaryContent(content: GeneratedContent): GeneratedContent | null {
-  const contentJson = content.content_json as CourseSummaryContent | null;
-  if (contentJson?.course_summary) return content;
-  const summary = findNestedRecord(content.content_json, "course_summary");
-  if (!summary) return null;
-  return {
-    ...content,
-    content_json: {
-      ...(toRecord(content.content_json) || {}),
-      course_summary: summary,
-    },
-  };
-}
-
-function deduplicateUnknownList(items: unknown): unknown[] {
-  return deduplicateByStableKey(toArray(items).map((item) => ({ value: item })), (item, index) => {
-    const record = toRecord(item.value);
-    return normalizeTitle(record?.concept ?? record?.title ?? record?.name ?? record?.text ?? record?.description ?? item.value) || `item-${index}`;
-  }).map((item) => item.value);
-}
-
-function normalizeMaterialContent(content: GeneratedContent): GeneratedContent {
-  const contentJson = content.content_json as ComplementaryMaterialContent | null;
-  const material = contentJson?.complementary_material;
-  if (!material) return content;
-  return {
-    ...content,
-    content_json: {
-      ...contentJson,
-      complementary_material: {
-        ...material,
-        key_concepts: deduplicateUnknownList(material.key_concepts),
-        practical_applications: deduplicateUnknownList(material.practical_applications),
-        reflection_exercises: deduplicateUnknownList(material.reflection_exercises),
-        recommended_next_steps: deduplicateUnknownList(material.recommended_next_steps),
-      },
-    },
-  };
-}
-
-function deduplicateMaterialContents(contents: GeneratedContent[]): GeneratedContent[] {
-  return deduplicateByStableKey(sortByCreatedAt(contents).map(normalizeMaterialContent), (content, index) => {
-    const material = (content.content_json as ComplementaryMaterialContent | null)?.complementary_material;
-    const materialRecord = material as Record<string, unknown> | undefined;
-    const moduleNumber = normalizeTitle(materialRecord?.module_number);
-    const lessonNumber = normalizeTitle(materialRecord?.lesson_number);
-    const title = normalizeTitle(material?.material_title ?? content.title);
-    const type = normalizeTitle(material?.material_type);
-    if (moduleNumber || lessonNumber || title || type) {
-      return [moduleNumber || "sem-modulo", lessonNumber || "sem-aula", title || "sem-titulo", type || "sem-tipo"].join("|");
-    }
-    return `${content.id}|${index}`;
-  });
-}
-
-function deduplicateSlides(slides: unknown): NonNullable<PresentationDeckContent["slides"]> {
-  return deduplicateByStableKey(toArray(slides).map((slide) => ({ value: slide })), (item, index) => {
-    const record = toRecord(item.value);
-    const slideNumber = normalizeTitle(record?.slide_number ?? index + 1);
-    const title = normalizeTitle(record?.title);
-    return title ? `${slideNumber}|${title}` : `slide-${index}`;
-  })
-    .map((item) => toRecord(item.value))
-    .filter((slide): slide is NonNullable<PresentationDeckContent["slides"]>[number] => slide !== null);
-}
-
-function normalizePresentationContent(content: GeneratedContent): GeneratedContent {
-  const contentJson = toRecord(content.content_json);
-  const wrappedDeck = findNestedRecord(content.content_json, "presentation_deck");
-  const deck = (wrappedDeck || contentJson) as PresentationDeckContent | null;
-  if (!deck) return content;
-  return {
-    ...content,
-    content_json: {
-      ...deck,
-      slides: deduplicateSlides(deck.slides),
-    },
-  };
-}
-
-function buildNormalizedEducationalContent(data: EducationalContentSummaryResponse): EducationalContentSummaryResponse {
-  const normalizedSummaries = data.course_summaries
-    .map(normalizeCourseSummaryContent)
-    .filter((content): content is GeneratedContent => content !== null);
-  const sortedSummaries = sortSummaries(normalizedSummaries);
-  const sortedPresentations = sortSummaries(data.presentation_decks);
-  const latestSummary =
-    getLatestContentByType(normalizedSummaries, "course_summary") ||
-    sortedSummaries[sortedSummaries.length - 1] ||
-    null;
-  const latestPresentation =
-    getLatestContentByType(data.presentation_decks, "presentation_deck") ||
-    sortedPresentations[sortedPresentations.length - 1] ||
-    null;
-
-  return {
-    lesson_scripts: deduplicateLessonScriptContents(data.lesson_scripts),
-    module_quizzes: deduplicateModuleQuizContents(data.module_quizzes),
-    complementary_materials: deduplicateMaterialContents(data.complementary_materials),
-    course_summaries: latestSummary ? [latestSummary] : [],
-    presentation_decks: latestPresentation ? [normalizePresentationContent(latestPresentation)] : [],
-  };
-}
-
-function getUsefulField(record: Record<string, unknown> | null, keys: string[]): unknown {
-  if (!record) return undefined;
-  for (const key of keys) {
-    const value = record[key];
-    if (value !== null && value !== undefined && value !== "") return value;
-  }
-  return undefined;
-}
-
-function findFirstNestedRecord(value: unknown, keys: string[]): Record<string, unknown> | null {
-  const record = toRecord(value);
-  if (!record) return null;
-
-  for (const key of keys) {
-    const direct = toRecord(record[key]);
-    if (direct) return direct;
-  }
-
-  for (const key of ["content", "payload", "data", "metadata", "analysis", "source_analysis"]) {
-    const nested = findFirstNestedRecord(record[key], keys);
-    if (nested) return nested;
-  }
-
-  return null;
-}
-
-function getDocumentFileName(content?: GeneratedContent): string | undefined {
-  const metadata = content ? getContentMetadata(content) : {};
-  const value = getUsefulField(metadata, [
-    "original_filename",
-    "originalFilename",
-    "file_name",
-    "fileName",
-    "filename",
-    "pdf_filename",
-    "source_file_name",
-  ]);
-  const text = editText(value || content?.title).trim();
-  return text || undefined;
-}
-
-function contentLooksLikeDocumentBase(content: GeneratedContent): boolean {
-  const normalizedType = normalizeTitle(content.content_type);
-  return [
-    "document_analysis",
-    "document_summary",
-    "pdf_summary",
-    "base_document_summary",
-    "source_summary",
-    "source_analysis",
-    "extracted_summary",
-  ].includes(normalizedType);
-}
-
-function toReadableValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(toReadableValue).filter(Boolean).join("\n");
-  const record = toRecord(value);
-  if (!record) return value;
-
-  const direct = getUsefulField(record, [
-    "authorial_summary",
-    "summary",
-    "overview",
-    "description",
-    "text",
-    "content",
-    "main_theme",
-    "suggested_approach",
-    "title",
-    "concept",
-    "name",
-  ]);
-  if (direct && direct !== value) return toReadableValue(direct);
-
-  return Object.values(record)
-    .map(toReadableValue)
-    .filter(Boolean)
-    .join("\n");
-}
-
-function toReadableList(value: unknown): unknown[] {
-  return toArray(value).map(toReadableValue).filter(Boolean);
-}
-
-function buildDocumentBaseFromRecord(content: GeneratedContent, record: Record<string, unknown>): DocumentBaseSummary {
-  const mainTheme = getUsefulField(record, ["main_theme", "theme", "title", "document_title", "summary_title"]);
-  const overview =
-    getUsefulField(record, [
-      "authorial_summary",
-      "document_summary",
-      "pdf_summary",
-      "base_document_summary",
-      "source_summary",
-      "summary",
-      "overview",
-      "description",
-      "main_theme",
-    ]) || mainTheme;
-
-  return {
-    source: "document_analysis",
-    fileName: getDocumentFileName(content),
-    overview: toReadableValue(overview),
-    mainIdeas: toReadableList(getUsefulField(record, ["main_ideas", "key_ideas", "principal_ideas", "subthemes", "topics"])),
-    concepts: toReadableList(getUsefulField(record, ["central_concepts", "key_concepts", "concepts", "main_concepts"])),
-    themes: toReadableList(getUsefulField(record, ["themes", "subthemes", "topics", "main_topics"])),
-    opportunities: toReadableList(getUsefulField(record, ["opportunities", "course_opportunities", "transformation_opportunities"])),
-    transformation: toReadableValue(
-      getUsefulField(record, ["course_transformation", "suggested_approach", "didactic_approach", "how_to_transform", "recommended_product_type"]),
-    ),
-    notice:
-      "Este resumo e uma interpretacao didatica do documento enviado, reescrita com linguagem propria para apoiar a criacao do curso.",
-  };
-}
-
-function buildDocumentBaseSummary(
-  sourceContents: GeneratedContent[],
-  courseSummaries: GeneratedContent[],
-): DocumentBaseSummary {
-  const documentContent = sourceContents
-    .filter(contentLooksLikeDocumentBase)
-    .sort((a, b) => getCreatedAtTimestamp(b) - getCreatedAtTimestamp(a))[0];
-  const documentRecord =
-    (documentContent?.content_json as DocumentAnalysisContent | null)?.document_analysis ||
-    findFirstNestedRecord(documentContent?.content_json, [
-      "document_analysis",
-      "source_summary",
-      "document_summary",
-      "pdf_summary",
-      "base_document_summary",
-      "extracted_summary",
-      "source_analysis",
-    ]);
-
-  if (documentContent && documentRecord) {
-    return buildDocumentBaseFromRecord(documentContent, documentRecord);
-  }
-
-  const sortedSummaries = sortSummaries(courseSummaries);
-  const summaryContent = sortedSummaries[sortedSummaries.length - 1];
-  const summary = (summaryContent?.content_json as CourseSummaryContent | null)?.course_summary;
-
-  if (summary) {
-    return {
-      source: "course_summary",
-      fileName: getDocumentFileName(summaryContent),
-      overview: toReadableValue(summary.long_description || summary.short_description || summary.promise || summary.title),
-      mainIdeas: toReadableList(summary.what_student_will_learn),
-      concepts: toReadableList(summary.course_differentials),
-      themes: toReadableList(summary.target_audience),
-      opportunities: toReadableList(summary.suggested_sales_copy || summary.suggested_instagram_caption || summary.suggested_whatsapp_message),
-      transformation: toReadableValue(summary.transformation_statement || summary.promise),
-      notice:
-        "Ainda nao foi gerada uma analise especifica do documento base. Abaixo esta o resumo do curso derivado do conteudo.",
-    };
-  }
-
-  return {
-    source: "empty",
-    notice:
-      "A analise do documento base ainda nao foi gerada. Gere os conteudos educacionais para visualizar a interpretacao do PDF enviado.",
-  };
-}
-
 function hasAnyEducationalContent(data: EducationalContentSummaryResponse): boolean {
   return (
     data.course_summaries.length > 0 ||
@@ -787,8 +174,7 @@ function hasAnyEducationalContent(data: EducationalContentSummaryResponse): bool
 export default function EducationalContentPage() {
   const params = useParams<{ id: string }>();
   const [data, setData] = useState<EducationalContentSummaryResponse | null>(null);
-  const [sourceContents, setSourceContents] = useState<GeneratedContent[]>([]);
-  const [activeTab, setActiveTab] = useState<Tab>("document");
+  const [activeTab, setActiveTab] = useState<Tab>("summary");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [generationMessage, setGenerationMessage] = useState("");
@@ -804,7 +190,6 @@ export default function EducationalContentPage() {
   const [exportError, setExportError] = useState("");
   const [exportingPresentationPptx, setExportingPresentationPptx] = useState(false);
   const [presentationPptxError, setPresentationPptxError] = useState("");
-  const normalizedData = data ? buildNormalizedEducationalContent(data) : null;
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -816,20 +201,16 @@ export default function EducationalContentPage() {
       }
     }
 
-    Promise.all([
-      apiFetch<EducationalContentSummaryResponse>(`/projects/${params.id}/educational-content`),
-      apiFetch<GeneratedContentListResponse>(`/projects/${params.id}/contents`),
-    ])
-      .then(([payload, sourcePayload]) => {
+    apiFetch<EducationalContentSummaryResponse>(`/projects/${params.id}/educational-content`)
+      .then((payload) =>
         setData({
           lesson_scripts: sortLessonScripts(payload.lesson_scripts),
           module_quizzes: sortModuleQuizzes(payload.module_quizzes),
           complementary_materials: sortByCreatedAt(payload.complementary_materials),
           course_summaries: sortSummaries(payload.course_summaries),
           presentation_decks: sortSummaries(payload.presentation_decks || []),
-        });
-        setSourceContents(sourcePayload.items);
-      })
+        }),
+      )
       .catch(() => setError("Nao foi possivel carregar os conteudos educacionais."))
       .finally(() => setLoading(false));
   }, [params.id]);
@@ -879,7 +260,7 @@ export default function EducationalContentPage() {
               {generationMessage}
             </p>
           ) : null}
-          {normalizedData && hasAnyEducationalContent(normalizedData) ? (
+          {data && hasAnyEducationalContent(data) ? (
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-navy-950/60 p-4">
               <div>
                 <p className="text-sm font-medium text-slate-100">Exportacao completa</p>
@@ -900,9 +281,6 @@ export default function EducationalContentPage() {
           ) : null}
 
           <div className="mt-6 flex flex-wrap gap-2 border-b border-white/10 pb-4">
-            <TabButton active={activeTab === "document"} onClick={() => setActiveTab("document")}>
-              Documento Base
-            </TabButton>
             <TabButton active={activeTab === "summary"} onClick={() => setActiveTab("summary")}>
               Resumo do Curso
             </TabButton>
@@ -930,17 +308,12 @@ export default function EducationalContentPage() {
             <p className="mt-8 text-slate-300">Carregando conteudos...</p>
           ) : error ? (
             <p className="mt-8 text-red-300">{error}</p>
-          ) : normalizedData ? (
+          ) : data ? (
             <div className="mt-8">
-              {activeTab === "document" ? (
-                <DocumentBaseView
-                  summary={buildDocumentBaseSummary(sourceContents, normalizedData.course_summaries)}
-                />
-              ) : null}
-              {activeTab === "summary" ? <SummaryView contents={normalizedData.course_summaries} /> : null}
+              {activeTab === "summary" ? <SummaryView contents={data.course_summaries} /> : null}
               {activeTab === "scripts" ? (
                 <ScriptsView
-                  contents={normalizedData.lesson_scripts}
+                  contents={data.lesson_scripts}
                   projectId={params.id}
                   exporting={exportingLessonScripts}
                   exportError={lessonScriptsExportError}
@@ -977,7 +350,7 @@ export default function EducationalContentPage() {
               ) : null}
               {activeTab === "quizzes" ? (
                 <QuizzesView
-                  contents={normalizedData.module_quizzes}
+                  contents={data.module_quizzes}
                   projectId={params.id}
                   exporting={exportingQuizzes}
                   exportError={quizzesExportError}
@@ -1014,7 +387,7 @@ export default function EducationalContentPage() {
               ) : null}
               {activeTab === "materials" ? (
                 <MaterialsView
-                  contents={normalizedData.complementary_materials}
+                  contents={data.complementary_materials}
                   projectId={params.id}
                   exporting={exportingMaterials}
                   exportError={materialsExportError}
@@ -1051,7 +424,7 @@ export default function EducationalContentPage() {
               ) : null}
               {activeTab === "presentation" ? (
                 <PresentationView
-                  contents={normalizedData.presentation_decks}
+                  contents={data.presentation_decks}
                   projectId={params.id}
                   exporting={exportingPresentation}
                   exportError={exportError}
@@ -1105,8 +478,8 @@ export default function EducationalContentPage() {
                   }}
                 />
               ) : null}
-              {activeTab === "teleprompter" ? <TeleprompterView contents={normalizedData.lesson_scripts} /> : null}
-              {activeTab === "narration" ? <NarrationView contents={normalizedData.lesson_scripts} projectId={params.id} /> : null}
+              {activeTab === "teleprompter" ? <TeleprompterView contents={data.lesson_scripts} /> : null}
+              {activeTab === "narration" ? <NarrationView contents={data.lesson_scripts} projectId={params.id} /> : null}
             </div>
           ) : null}
         </section>
@@ -1131,47 +504,8 @@ function TabButton({ active, children, onClick }: { active: boolean; children: R
   );
 }
 
-function DocumentBaseView({ summary }: { summary: DocumentBaseSummary }) {
-  if (summary.source === "empty") {
-    return (
-      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-6">
-        <p className="text-sm text-gold-400">Documento Base</p>
-        <h2 className="mt-2 text-2xl font-semibold text-slate-50">Resumo Inteligente do PDF</h2>
-        <p className="mt-4 rounded-md border border-white/10 bg-black/20 p-4 text-sm leading-6 text-slate-300">
-          {summary.notice}
-        </p>
-      </section>
-    );
-  }
-
-  return (
-    <div className="grid gap-5">
-      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-6">
-        <p className="text-sm text-gold-400">Documento Base</p>
-        <h2 className="mt-2 text-2xl font-semibold text-slate-50">Resumo Inteligente do PDF</h2>
-        {summary.fileName ? <p className="mt-2 text-sm text-slate-400">Arquivo: {safeText(summary.fileName)}</p> : null}
-        <p className="mt-4 rounded-md border border-gold-500/20 bg-gold-500/10 p-4 text-sm leading-6 text-gold-100">
-          {summary.notice}
-        </p>
-      </section>
-
-      <InfoBlock label="Visao geral" value={summary.overview} />
-      <div className="grid gap-5 md:grid-cols-2">
-        <ListBlock title="Ideias principais" items={summary.mainIdeas} />
-        <ListBlock title="Conceitos centrais" items={summary.concepts} />
-      </div>
-      <div className="grid gap-5 md:grid-cols-2">
-        <ListBlock title="Temas encontrados" items={summary.themes} />
-        <ListBlock title="Oportunidades de transformacao em curso" items={summary.opportunities} />
-      </div>
-      <InfoBlock label="Como o conteudo foi transformado em curso" value={summary.transformation} />
-    </div>
-  );
-}
-
 function SummaryView({ contents }: { contents: GeneratedContent[] }) {
-  const sortedContents = sortSummaries(contents);
-  const content = sortedContents[sortedContents.length - 1];
+  const content = sortSummaries(contents)[0];
   const summary = content?.content_json as CourseSummaryContent | undefined;
   const item = summary?.course_summary;
 
@@ -1202,8 +536,8 @@ function SummaryView({ contents }: { contents: GeneratedContent[] }) {
 }
 
 function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
-  const lessonOptions = buildLessonScriptOptions(contents);
-  const [selectedKey, setSelectedKey] = useState(lessonOptions[0]?.key || "");
+  const sortedContents = sortLessonScripts(contents);
+  const [selectedId, setSelectedId] = useState(sortedContents[0]?.id || "");
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [fontSize, setFontSize] = useState<"small" | "medium" | "large" | "xlarge">("large");
@@ -1212,18 +546,18 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
   const scrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (!lessonOptions.length) {
-      setSelectedKey("");
+    if (!sortedContents.length) {
+      setSelectedId("");
       return;
     }
-    const selectedStillExists = lessonOptions.some((lesson) => lesson.key === selectedKey);
+    const selectedStillExists = sortedContents.some((content) => content.id === selectedId);
     if (!selectedStillExists) {
-      setSelectedKey(lessonOptions[0]?.key || "");
+      setSelectedId(sortedContents[0]?.id || "");
     }
-  }, [selectedKey, lessonOptions]);
+  }, [selectedId, sortedContents]);
 
-  const selectedLesson = lessonOptions.find((lesson) => lesson.key === selectedKey) || lessonOptions[0];
-  const selectedScript = selectedLesson?.payload;
+  const selectedContent = sortedContents.find((content) => content.id === selectedId) || sortedContents[0];
+  const selectedScript = (selectedContent?.content_json as LessonScriptContent | null)?.lesson_script;
   const teleprompterText = selectedScript ? buildTeleprompterText(selectedScript) : "";
   const estimatedTime = getEstimatedSpeechTime(teleprompterText);
 
@@ -1267,7 +601,7 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
     };
   }, []);
 
-  if (!lessonOptions.length) {
+  if (!sortedContents.length) {
     return <EmptyState text="Gere ou edite os roteiros de aula antes de usar o teleprompter." />;
   }
 
@@ -1308,17 +642,18 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
           <label className="grid min-w-[260px] flex-1 gap-2 text-sm text-slate-300">
             Aula para gravacao
             <select
-              value={selectedLesson?.key || ""}
+              value={selectedContent?.id || ""}
               onChange={(event) => {
-                setSelectedKey(event.target.value);
+                setSelectedId(event.target.value);
                 resetTeleprompter();
               }}
               className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
             >
-              {lessonOptions.map((lesson) => {
+              {sortedContents.map((content) => {
+                const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
                 return (
-                  <option key={lesson.key} value={lesson.key} className="bg-navy-950 text-slate-100">
-                    {lesson.label}
+                  <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
+                    {getLessonScriptLabel(script, content)}
                   </option>
                 );
               })}
@@ -1401,7 +736,7 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
       <section className="rounded-lg border border-white/10 bg-black/40 p-4">
         <div className="mb-4">
           <p className="text-xs font-medium text-gold-400">Modo teleprompter</p>
-          <h2 className="mt-1 text-2xl font-semibold text-slate-50">{selectedLesson?.label || "Roteiro de aula"}</h2>
+          <h2 className="mt-1 text-2xl font-semibold text-slate-50">{getLessonScriptLabel(selectedScript, selectedContent)}</h2>
         </div>
         <div
           ref={teleprompterRef}
@@ -1417,8 +752,8 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
 }
 
 function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; projectId: string }) {
-  const lessonOptions = buildLessonScriptOptions(contents);
-  const [selectedKey, setSelectedKey] = useState(lessonOptions[0]?.key || "");
+  const sortedContents = sortLessonScripts(contents);
+  const [selectedId, setSelectedId] = useState(sortedContents[0]?.id || "");
   const [copiedKey, setCopiedKey] = useState("");
   const [audios, setAudios] = useState<GeneratedAudio[]>([]);
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
@@ -1430,15 +765,15 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
   const [audioError, setAudioError] = useState("");
 
   useEffect(() => {
-    if (!lessonOptions.length) {
-      setSelectedKey("");
+    if (!sortedContents.length) {
+      setSelectedId("");
       return;
     }
-    const selectedStillExists = lessonOptions.some((lesson) => lesson.key === selectedKey);
+    const selectedStillExists = sortedContents.some((content) => content.id === selectedId);
     if (!selectedStillExists) {
-      setSelectedKey(lessonOptions[0]?.key || "");
+      setSelectedId(sortedContents[0]?.id || "");
     }
-  }, [selectedKey, lessonOptions]);
+  }, [selectedId, sortedContents]);
 
   useEffect(() => {
     let isActive = true;
@@ -1517,15 +852,15 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
     };
   }, [audios, projectId]);
 
-  if (!lessonOptions.length) {
+  if (!sortedContents.length) {
     return <EmptyState text="Gere ou edite os roteiros de aula antes de preparar a narração." />;
   }
 
-  const selectedLesson = lessonOptions.find((lesson) => lesson.key === selectedKey) || lessonOptions[0];
-  const selectedScript = selectedLesson?.payload;
+  const selectedContent = sortedContents.find((content) => content.id === selectedId) || sortedContents[0];
+  const selectedScript = (selectedContent?.content_json as LessonScriptContent | null)?.lesson_script;
   const narrationText = selectedScript ? buildNarrationText(selectedScript) : "";
   const narrationBlocks = splitNarrationBlocks(narrationText);
-  const lessonTitle = selectedLesson?.label || "Roteiro de aula";
+  const lessonTitle = getLessonScriptLabel(selectedScript, selectedContent);
 
   async function copyNarration(key: string, text: string) {
     setCopiedKey("");
@@ -1543,7 +878,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
     setLoadingAudioByBlock((current) => ({ ...current, [blockIndex]: true }));
     try {
       const audio = await generateNarrationAudio(projectId, {
-        generated_content_id: selectedLesson?.contentId || null,
+        generated_content_id: selectedContent?.id || null,
         block_index: blockIndex,
         title: `Bloco ${blockIndex}`,
         text: block,
@@ -1610,17 +945,18 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
           <label className="grid min-w-[260px] flex-1 gap-2 text-sm text-slate-300">
             Aula para narração
             <select
-              value={selectedLesson?.key || ""}
+              value={selectedContent?.id || ""}
               onChange={(event) => {
-                setSelectedKey(event.target.value);
+                setSelectedId(event.target.value);
                 setCopiedKey("");
               }}
               className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
             >
-              {lessonOptions.map((lesson) => {
+              {sortedContents.map((content) => {
+                const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
                 return (
-                  <option key={lesson.key} value={lesson.key} className="bg-navy-950 text-slate-100">
-                    {lesson.label}
+                  <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
+                    {getLessonScriptLabel(script, content)}
                   </option>
                 );
               })}
@@ -1696,7 +1032,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
           narrationBlocks.map((block, index) => {
             const blockKey = `block-${index}`;
             const blockIndex = index + 1;
-            const audio = findAudioForBlock(audios, blockIndex, selectedLesson?.contentId);
+            const audio = findAudioForBlock(audios, blockIndex);
             const audioUrl = audio ? audioUrls[audio.id] : "";
             const isGeneratingAudio = Boolean(loadingAudioByBlock[blockIndex]);
             return (
@@ -1874,12 +1210,11 @@ function ScriptsView({
     return <EmptyState text="Roteiros de aula ainda nao encontrados." />;
   }
 
-  const parentById = new Map(contents.map((content) => [content.id, content]));
-  const lessonOptions = buildLessonScriptOptions(contents);
-  const grouped = lessonOptions.reduce<Record<string, LessonScriptOption[]>>((acc, lesson) => {
-    const key = String(lesson.moduleNumber ?? "sem-modulo");
+  const grouped = sortLessonScripts(contents).reduce<Record<string, GeneratedContent[]>>((acc, content) => {
+    const moduleNumber = getContentNumber(content, "lesson_script", "module_number");
+    const key = String(moduleNumber || "sem-modulo");
     acc[key] = acc[key] || [];
-    acc[key].push(lesson);
+    acc[key].push(content);
     return acc;
   }, {});
 
@@ -1900,25 +1235,22 @@ function ScriptsView({
         </button>
         {exportError ? <p className="w-full text-sm text-red-300">{exportError}</p> : null}
       </div>
-      {Object.entries(grouped).map(([moduleKey, moduleLessons]) => {
-        const firstScript = moduleLessons[0]?.payload;
+      {Object.entries(grouped).map(([moduleKey, moduleContents]) => {
+        const firstScript = (moduleContents[0]?.content_json as LessonScriptContent | null)?.lesson_script;
         return (
           <section key={moduleKey} className="grid gap-4">
             <div>
               <p className="text-xs font-medium text-gold-400">Modulo {firstScript?.module_number || moduleKey}</p>
               <h3 className="mt-1 text-xl font-semibold text-slate-50">{firstScript?.module_title || "Modulo"}</h3>
             </div>
-            {moduleLessons.map((lesson) => {
-              const editableContent = getEditableContentForLessonOption(lesson, parentById);
-              return editableContent ? (
+            {moduleContents.map((content) => {
+              return (
                 <LessonScriptCard
-                  key={lesson.key}
-                  content={editableContent}
+                  key={content.id}
+                  content={content}
                   projectId={projectId}
                   onUpdated={onUpdated}
                 />
-              ) : (
-                <LessonScriptOptionCard key={lesson.key} lesson={lesson} />
               );
             })}
           </section>
@@ -2264,7 +1596,8 @@ function MaterialCard({
   projectId: string;
   onUpdated: (content: GeneratedContent) => void;
 }) {
-  const material = (content.content_json as ComplementaryMaterialContent | null)?.complementary_material;
+  const raw = content.content_json || {};
+  const material = (raw as ComplementaryMaterialContent | null)?.complementary_material;
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<ComplementaryMaterialDraft | null>(null);
   const [saving, setSaving] = useState(false);
@@ -2275,9 +1608,9 @@ function MaterialCard({
       <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
         <p className="text-xs font-medium text-gold-400">Material complementar</p>
         <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-        <p className="mt-4 text-sm leading-6 text-slate-300">
-          Nao foi possivel identificar um material complementar valido neste conteudo.
-        </p>
+        <pre className="mt-5 max-h-[720px] overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-4 text-sm leading-6 text-slate-200">
+          {JSON.stringify(raw, null, 2)}
+        </pre>
       </article>
     );
   }
@@ -2483,54 +1816,6 @@ function MaterialCard({
         <ListBlock title="Exercicios reflexivos" items={Array.isArray(material.reflection_exercises) ? material.reflection_exercises : []} />
         <ListBlock title="Proximos passos" items={Array.isArray(material.recommended_next_steps) ? material.recommended_next_steps : []} />
       </div>
-    </article>
-  );
-}
-
-function getEditableContentForLessonOption(
-  lesson: LessonScriptOption,
-  parentById: Map<string, GeneratedContent>,
-): GeneratedContent | null {
-  const parent = parentById.get(lesson.contentId);
-  const directScript = (parent?.content_json as LessonScriptContent | null)?.lesson_script;
-  return parent && directScript === lesson.payload ? parent : null;
-}
-
-function LessonScriptOptionCard({ lesson }: { lesson: LessonScriptOption }) {
-  const script = lesson.payload;
-
-  return (
-    <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium text-gold-400">
-            Modulo {safeText(script.module_number ?? lesson.moduleNumber)}
-          </p>
-          <h3 className="mt-2 text-xl font-semibold text-slate-50">{safeText(script.lesson_title || lesson.title)}</h3>
-          <p className="mt-1 text-sm text-slate-400">
-            Aula {safeText(script.lesson_number ?? lesson.lessonNumber)} - {safeText(script.estimated_duration_minutes)} min
-          </p>
-        </div>
-      </div>
-      <InfoBlock label="Abertura" value={script.opening} />
-      <InfoBlock label="Objetivo da aula" value={script.learning_objective} />
-      <div className="mt-4 grid gap-3">
-        {toArray(script.main_script).map((section, index) => {
-          const record = toRecord(section);
-          return (
-            <div key={itemKey(section, index)} className="rounded-md border border-white/10 bg-black/20 p-4">
-              <h4 className="font-semibold text-slate-100">{safeText(record?.section_title ?? `Secao ${index + 1}`)}</h4>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{safeText(record?.narration ?? section)}</p>
-              <p className="mt-3 whitespace-pre-wrap text-xs text-slate-500">{safeText(record?.teaching_notes)}</p>
-              <p className="mt-2 whitespace-pre-wrap text-xs text-gold-400">{safeText(record?.visual_suggestion)}</p>
-            </div>
-          );
-        })}
-      </div>
-      <InfoBlock label="Exemplo pratico" value={script.practical_example} />
-      <InfoBlock label="Pergunta reflexiva" value={script.reflection_question} />
-      <InfoBlock label="Fechamento" value={script.closing} />
-      <InfoBlock label="Call to action" value={script.call_to_action} />
     </article>
   );
 }
@@ -3098,6 +2383,16 @@ function safeText(value: unknown): string {
   return String(value);
 }
 
+function getLessonScriptLabel(script: LessonScriptContent["lesson_script"] | undefined, content?: GeneratedContent): string {
+  if (!script) return content?.title || "Roteiro de aula";
+  const moduleNumber = safeText(script.module_number);
+  const lessonNumber = safeText(script.lesson_number);
+  const lessonTitle = safeText(script.lesson_title || content?.title || "Roteiro de aula");
+  const moduleLabel = moduleNumber === "Nao informado" ? "Modulo" : `Modulo ${moduleNumber}`;
+  const lessonLabel = lessonNumber === "Nao informado" ? "Aula" : `Aula ${lessonNumber}`;
+  return `${moduleLabel} - ${lessonLabel}: ${lessonTitle}`;
+}
+
 function appendTeleprompterSection(parts: string[], title: string, value: unknown) {
   const text = editText(value).trim();
   if (!text) return;
@@ -3311,10 +2606,8 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function findAudioForBlock(audios: GeneratedAudio[], blockIndex: number, contentId?: string): GeneratedAudio | null {
-  const matchingAudios = audios.filter(
-    (audio) => audio.block_index === blockIndex && (!contentId || audio.generated_content_id === contentId),
-  );
+function findAudioForBlock(audios: GeneratedAudio[], blockIndex: number): GeneratedAudio | null {
+  const matchingAudios = audios.filter((audio) => audio.block_index === blockIndex);
   if (!matchingAudios.length) return null;
   return matchingAudios.sort((first, second) => {
     const firstTime = new Date(first.created_at).getTime();
