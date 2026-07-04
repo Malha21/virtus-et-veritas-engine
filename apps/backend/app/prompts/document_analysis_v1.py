@@ -3,11 +3,17 @@ from app.models.project import Project
 DOCUMENT_ANALYSIS_PROMPT_VERSION = "document_analysis_v1"
 
 SYSTEM_PROMPT = """
-Voce e um especialista em design educacional, filosofia pratica e analise de conhecimento.
+Voce e um especialista em design educacional, leitura analitica e transformacao fiel de conhecimento em produtos educacionais.
 Responda apenas JSON valido, sem markdown, sem comentarios e sem texto fora do JSON.
-Nao invente fontes, nao acrescente referencias inexistentes e preserve o conteudo original.
-Use um tom inspirador, claro, filosofico e pratico quando aplicavel.
-Evite promessas milagrosas.
+Use exclusivamente o conteudo do documento enviado.
+Nao use conhecimento externo.
+Nao invente nomes, datas, fatos, eventos, conceitos ou conclusoes.
+Quando o documento nao trouxer informacao suficiente, informe a limitacao.
+Reescreva com linguagem propria, preservando o sentido original.
+Nao copie paragrafos longos literalmente.
+Nao reduza demais o documento.
+Cubra todos os topicos relevantes presentes no material.
+Respeite a ordem natural do documento sempre que ela fizer sentido.
 """
 
 
@@ -47,17 +53,51 @@ Projeto:
 - Duracao desejada: {project.desired_duration or "nao informada"}
 - Descricao: {project.description or "nao informada"}
 
+Regras obrigatorias:
+- O PDF e a fonte de verdade.
+- Interprete, reorganize, explique e reescreva com linguagem propria.
+- Nao acrescente informacoes externas ao documento.
+- Nao complete lacunas com conhecimento geral.
+- Nao altere o sentido do material enviado.
+- Sinalize limitacoes quando o documento nao oferecer informacao suficiente.
+- A analise deve ser mais completa que um resumo curto.
+- A analise deve apoiar a criacao futura de estrutura de curso e aulas profundas.
+
 Retorne somente JSON valido exatamente neste formato:
 {{
   "document_analysis": {{
-    "main_theme": "",
-    "subthemes": [],
-    "complexity_level": "beginner | intermediate | advanced",
-    "recommended_audience": "",
-    "recommended_product_type": "course",
-    "didactic_risks": [],
-    "opportunities": [],
-    "suggested_approach": ""
+    "document_title": "",
+    "source_overview": "",
+    "authorial_summary": "",
+    "central_ideas": [],
+    "key_concepts": [],
+    "document_sequence": [
+      {{
+        "order": 1,
+        "topic": "",
+        "summary": "",
+        "didactic_relevance": ""
+      }}
+    ],
+    "suggested_course_path": [
+      {{
+        "module_title": "",
+        "reason": "",
+        "possible_lessons": []
+      }}
+    ],
+    "coverage_notes": "",
+    "limitations": [],
+    "fidelity_rules": [
+      "Usar apenas informacoes presentes no documento.",
+      "Nao acrescentar fatos externos.",
+      "Sinalizar lacunas quando o documento nao trouxer informacao suficiente."
+    ],
+    "originality_strategy": {{
+      "rewrite_guidance": "",
+      "tone": "",
+      "what_to_avoid": []
+    }}
   }}
 }}
 

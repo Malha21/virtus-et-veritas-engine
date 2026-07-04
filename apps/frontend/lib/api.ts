@@ -198,6 +198,27 @@ export async function generateEducationalContent(
   });
 }
 
+export async function getDocumentAnalysis(projectId: string): Promise<GeneratedContent | null> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedContent | null>(`/projects/${projectId}/document-analysis`, { token });
+}
+
+export async function generateDocumentAnalysis(projectId: string): Promise<GeneratedContent> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedContent>(`/projects/${projectId}/document-analysis/generate`, {
+    method: "POST",
+    token,
+  });
+}
+
 export async function startAiStructureJob(
   projectId: string,
   generationLanguage: GenerationLanguage = "pt-BR",

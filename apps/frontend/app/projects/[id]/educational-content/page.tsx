@@ -19,7 +19,9 @@ import {
   downloadQuizzesPdf,
   fetchNarrationAudioBlob,
   generateNarrationAudio,
+  generateDocumentAnalysis,
   getInstructorProfile,
+  getDocumentAnalysis,
   listProjectAudios,
   type GeneratedAudio,
   type InstructorProfile,
@@ -38,7 +40,7 @@ import type {
   PresentationDeckContent,
 } from "@/types/educational-content";
 
-type Tab = "summary" | "scripts" | "quizzes" | "materials" | "presentation" | "teleprompter" | "narration";
+type Tab = "document-base" | "summary" | "scripts" | "quizzes" | "materials" | "presentation" | "teleprompter" | "narration";
 
 type PresentationSlideDraft = {
   slide_number: number;
@@ -174,9 +176,12 @@ function hasAnyEducationalContent(data: EducationalContentSummaryResponse): bool
 export default function EducationalContentPage() {
   const params = useParams<{ id: string }>();
   const [data, setData] = useState<EducationalContentSummaryResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("summary");
+  const [documentAnalysis, setDocumentAnalysis] = useState<GeneratedContent | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("document-base");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [documentAnalysisError, setDocumentAnalysisError] = useState("");
+  const [generatingDocumentAnalysis, setGeneratingDocumentAnalysis] = useState(false);
   const [generationMessage, setGenerationMessage] = useState("");
   const [exportingLessonScripts, setExportingLessonScripts] = useState(false);
   const [lessonScriptsExportError, setLessonScriptsExportError] = useState("");
@@ -213,7 +218,38 @@ export default function EducationalContentPage() {
       )
       .catch(() => setError("Nao foi possivel carregar os conteudos educacionais."))
       .finally(() => setLoading(false));
+
+    getDocumentAnalysis(params.id)
+      .then((content) => setDocumentAnalysis(content))
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) {
+          setDocumentAnalysisError("Sua sessao expirou. Faca login novamente.");
+        } else if (err instanceof Error && err.message) {
+          setDocumentAnalysisError(err.message);
+        } else {
+          setDocumentAnalysisError("Nao foi possivel carregar a analise do documento base.");
+        }
+      });
   }, [params.id]);
+
+  async function handleGenerateDocumentAnalysis() {
+    setGeneratingDocumentAnalysis(true);
+    setDocumentAnalysisError("");
+    try {
+      const content = await generateDocumentAnalysis(params.id);
+      setDocumentAnalysis(content);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setDocumentAnalysisError("Sua sessao expirou. Faca login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setDocumentAnalysisError(err.message);
+      } else {
+        setDocumentAnalysisError("Nao foi possivel gerar a analise do documento base.");
+      }
+    } finally {
+      setGeneratingDocumentAnalysis(false);
+    }
+  }
 
   async function handleExportFullCourse() {
     setExportingFullCourse(true);
@@ -281,6 +317,9 @@ export default function EducationalContentPage() {
           ) : null}
 
           <div className="mt-6 flex flex-wrap gap-2 border-b border-white/10 pb-4">
+            <TabButton active={activeTab === "document-base"} onClick={() => setActiveTab("document-base")}>
+              Documento Base
+            </TabButton>
             <TabButton active={activeTab === "summary"} onClick={() => setActiveTab("summary")}>
               Resumo do Curso
             </TabButton>
@@ -310,6 +349,14 @@ export default function EducationalContentPage() {
             <p className="mt-8 text-red-300">{error}</p>
           ) : data ? (
             <div className="mt-8">
+              {activeTab === "document-base" ? (
+                <DocumentBaseView
+                  content={documentAnalysis}
+                  error={documentAnalysisError}
+                  generating={generatingDocumentAnalysis}
+                  onGenerate={handleGenerateDocumentAnalysis}
+                />
+              ) : null}
               {activeTab === "summary" ? <SummaryView contents={data.course_summaries} /> : null}
               {activeTab === "scripts" ? (
                 <ScriptsView
@@ -501,6 +548,126 @@ function TabButton({ active, children, onClick }: { active: boolean; children: R
     >
       {children}
     </button>
+  );
+}
+
+function getDocumentAnalysisPayload(content: GeneratedContent | null): Record<string, unknown> | null {
+  const contentJson = content?.content_json || null;
+  const documentAnalysis = contentJson?.document_analysis;
+  if (typeof documentAnalysis === "object" && documentAnalysis !== null && !Array.isArray(documentAnalysis)) {
+    return documentAnalysis as Record<string, unknown>;
+  }
+  return contentJson;
+}
+
+function DocumentBaseView({
+  content,
+  error,
+  generating,
+  onGenerate,
+}: {
+  content: GeneratedContent | null;
+  error: string;
+  generating: boolean;
+  onGenerate: () => void;
+}) {
+  const analysis = getDocumentAnalysisPayload(content);
+  const originality = analysis?.originality_strategy as Record<string, unknown> | undefined;
+
+  return (
+    <div className="grid gap-5">
+      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-gold-400">Documento Base</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-50">Analise Inteligente do Documento Base</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+              Esta analise interpreta o PDF enviado com linguagem propria, sem inventar informacoes externas.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onGenerate}
+            disabled={generating}
+            className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {generating ? "Gerando analise..." : "Gerar analise do documento"}
+          </button>
+        </div>
+        {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
+        {!analysis ? (
+          <p className="mt-4 rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+            A analise do documento base ainda nao foi gerada.
+          </p>
+        ) : null}
+      </section>
+
+      {analysis ? (
+        <>
+          <InfoBlock label="Titulo do documento" value={analysis.document_title} />
+          <InfoBlock label="Visao geral" value={analysis.source_overview} />
+          <InfoBlock label="Resumo autoral" value={analysis.authorial_summary} />
+          <div className="grid gap-5 md:grid-cols-2">
+            <ListBlock title="Ideias centrais" items={Array.isArray(analysis.central_ideas) ? analysis.central_ideas : []} />
+            <ListBlock title="Conceitos-chave" items={Array.isArray(analysis.key_concepts) ? analysis.key_concepts : []} />
+          </div>
+          <DocumentSequenceBlock items={Array.isArray(analysis.document_sequence) ? analysis.document_sequence : []} />
+          <CoursePathBlock items={Array.isArray(analysis.suggested_course_path) ? analysis.suggested_course_path : []} />
+          <InfoBlock label="Notas de cobertura" value={analysis.coverage_notes} />
+          <ListBlock title="Limitacoes" items={Array.isArray(analysis.limitations) ? analysis.limitations : []} />
+          <div className="grid gap-5 md:grid-cols-2">
+            <InfoBlock label="Estrategia de reescrita" value={originality?.rewrite_guidance} />
+            <InfoBlock label="Tom sugerido" value={originality?.tone} />
+          </div>
+          <ListBlock title="O que evitar" items={Array.isArray(originality?.what_to_avoid) ? originality?.what_to_avoid : []} />
+          <ListBlock title="Regras de fidelidade" items={Array.isArray(analysis.fidelity_rules) ? analysis.fidelity_rules : []} />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function DocumentSequenceBlock({ items }: { items: unknown[] }) {
+  if (!items.length) return <ListBlock title="Sequencia do documento" items={[]} />;
+  return (
+    <section className="rounded-md border border-white/10 bg-black/20 p-4">
+      <p className="text-sm text-slate-400">Sequencia do documento</p>
+      <div className="mt-3 grid gap-3">
+        {items.map((item, index) => {
+          const record = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
+          return (
+            <article key={itemKey(item, index)} className="rounded border border-white/10 bg-navy-950/60 px-3 py-2">
+              <p className="font-medium text-slate-100">
+                {safeText(record.order ?? index + 1)}. {safeText(record.topic)}
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{safeText(record.summary)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-xs text-gold-300">{safeText(record.didactic_relevance)}</p>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CoursePathBlock({ items }: { items: unknown[] }) {
+  if (!items.length) return <ListBlock title="Caminho sugerido para o curso" items={[]} />;
+  return (
+    <section className="rounded-md border border-white/10 bg-black/20 p-4">
+      <p className="text-sm text-slate-400">Caminho sugerido para o curso</p>
+      <div className="mt-3 grid gap-3">
+        {items.map((item, index) => {
+          const record = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
+          return (
+            <article key={itemKey(item, index)} className="rounded border border-white/10 bg-navy-950/60 px-3 py-2">
+              <p className="font-medium text-slate-100">{safeText(record.module_title ?? `Modulo ${index + 1}`)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{safeText(record.reason)}</p>
+              <ListBlock title="Possiveis aulas" items={Array.isArray(record.possible_lessons) ? record.possible_lessons : []} />
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
