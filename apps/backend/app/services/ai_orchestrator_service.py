@@ -164,6 +164,18 @@ def save_generated_content(
     return content
 
 
+def get_latest_document_analysis_content(db: Session, project: Project) -> GeneratedContent | None:
+    return db.execute(
+        select(GeneratedContent)
+        .where(
+            GeneratedContent.project_id == project.id,
+            GeneratedContent.organization_id == project.organization_id,
+            GeneratedContent.content_type == "document_analysis",
+        )
+        .order_by(GeneratedContent.version.desc(), GeneratedContent.created_at.desc())
+    ).scalars().first()
+
+
 def generate_project_structure(
     db: Session,
     current_user: User,
@@ -216,40 +228,60 @@ def generate_project_structure(
         )
         db.flush()
 
-        update_processing_job(db, job, 20, "Texto do documento preparado", "Texto extraido carregado para analise")
-        system_prompt, user_prompt = build_document_analysis_prompt(project, extracted_text, generation_language)
-        update_processing_job(db, job, 45, "Analise com IA em andamento", "Analisando documento com IA")
-        analysis_response = ai_provider.generate_text(
-            AIProviderRequest(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                model=settings.openai_default_model,
-            )
-        )
-        register_ai_request(
-            db,
-            project_id=project.id,
-            job_id=job.id,
-            provider_id=provider_record.id,
-            request_type="analyze_document",
-            prompt_version=DOCUMENT_ANALYSIS_PROMPT_VERSION,
-            response=analysis_response,
-            model_name=settings.openai_default_model,
-            generation_language=generation_language,
-        )
-        if not analysis_response.success:
-            raise RuntimeError(analysis_response.error or "Falha ao analisar documento com IA.")
+        update_processing_job(db, job, 20, "Texto do documento preparado", "Texto extraido carregado para estrutura")
+        analysis_content = get_latest_document_analysis_content(db, project)
 
-        document_analysis = parse_json_content(analysis_response.content)
-        analysis_content = save_generated_content(
-            db,
-            project=project,
-            provider_id=provider_record.id,
-            content_type="document_analysis",
-            title="Analise do documento",
-            content_json=document_analysis,
-            generation_language=generation_language,
-        )
+        if analysis_content and analysis_content.content_json:
+            document_analysis = analysis_content.content_json
+            update_processing_job(
+                db,
+                job,
+                35,
+                "Analise do documento localizada",
+                "Usando analise inteligente do documento base como referencia principal",
+            )
+            add_processing_log(
+                db,
+                project_id=project.id,
+                organization_id=current_user.organization_id,
+                job_id=job.id,
+                message="Analise do documento base encontrada e usada para gerar a estrutura",
+                context_json={"document_analysis_id": str(analysis_content.id)},
+            )
+        else:
+            system_prompt, user_prompt = build_document_analysis_prompt(project, extracted_text, generation_language)
+            update_processing_job(db, job, 35, "Analise nao encontrada", "Gerando analise do documento antes da estrutura")
+            analysis_response = ai_provider.generate_text(
+                AIProviderRequest(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    model=settings.openai_default_model,
+                )
+            )
+            register_ai_request(
+                db,
+                project_id=project.id,
+                job_id=job.id,
+                provider_id=provider_record.id,
+                request_type="analyze_document",
+                prompt_version=DOCUMENT_ANALYSIS_PROMPT_VERSION,
+                response=analysis_response,
+                model_name=settings.openai_default_model,
+                generation_language=generation_language,
+            )
+            if not analysis_response.success:
+                raise RuntimeError(analysis_response.error or "Falha ao analisar documento com IA.")
+
+            document_analysis = parse_json_content(analysis_response.content)
+            analysis_content = save_generated_content(
+                db,
+                project=project,
+                provider_id=provider_record.id,
+                content_type="document_analysis",
+                title="Analise do documento",
+                content_json=document_analysis,
+                generation_language=generation_language,
+            )
 
         system_prompt, user_prompt = build_course_structure_prompt(
             project,

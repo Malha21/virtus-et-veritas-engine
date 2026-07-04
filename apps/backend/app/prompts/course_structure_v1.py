@@ -8,8 +8,14 @@ COURSE_STRUCTURE_PROMPT_VERSION = "course_structure_v1"
 SYSTEM_PROMPT = """
 Voce e um arquiteto de cursos premium da Virtus et Veritas Academy.
 Responda apenas JSON valido, sem markdown, sem comentarios e sem texto fora do JSON.
-Nao invente fontes, nao acrescente referencias inexistentes e preserve o conteudo original.
-Crie uma progressao didatica coerente, com tom inspirador, claro, filosofico e pratico.
+O PDF e a fonte da verdade.
+Use a analise inteligente do documento base como referencia principal quando ela estiver disponivel.
+Nao use conhecimento externo.
+Nao invente fatos, nomes, datas, conceitos, leis, eventos ou conclusoes que nao estejam no documento.
+Reescreva com linguagem propria, mas mantenha fidelidade substancial ao conteudo.
+Nao comprima demais o documento.
+Nao force uma quantidade pequena de modulos ou aulas.
+Crie uma progressao didatica coerente, fiel, profunda, com tom inspirador, claro, filosofico e pratico.
 Adapte a estrutura ao publico-alvo informado no projeto e evite promessas milagrosas.
 """
 
@@ -39,10 +45,11 @@ def build_course_structure_prompt(
 ) -> tuple[str, str]:
     language_instruction = build_language_instruction(generation_language)
     analysis_json = json.dumps(document_analysis, ensure_ascii=False, indent=2)
+    analysis_available = bool(document_analysis and document_analysis.get("document_analysis"))
     user_prompt = f"""
 {language_instruction}
 
-Crie a estrutura inicial de um curso a partir da analise e do texto extraido.
+Crie a estrutura completa de um curso a partir da analise inteligente do documento base e do texto extraido.
 
 Projeto:
 - Titulo: {project.title}
@@ -54,6 +61,27 @@ Projeto:
 
 Analise do documento:
 {analysis_json}
+
+Status da analise do documento base:
+{"A analise do documento base esta disponivel e deve orientar a estrutura." if analysis_available else "A analise do documento base nao estava disponivel. Use o texto extraido diretamente, mantendo o comportamento antigo, sem quebrar a geracao."}
+
+Regras de fidelidade e profundidade:
+- Use a analise do documento base como referencia principal quando disponivel.
+- Use especialmente: document_title, source_overview, central_ideas, key_concepts, document_sequence, suggested_course_path, coverage_notes, limitations, originality_strategy e fidelity_rules.
+- O PDF continua sendo a fonte de verdade.
+- Nao use conhecimento externo.
+- Nao invente fatos, nomes, datas, conceitos, leis, eventos ou conclusoes.
+- Cubra todos os temas relevantes identificados na analise do documento base.
+- Mantenha a ordem natural do documento sempre que fizer sentido.
+- Reorganize a ordem apenas quando houver justificativa didatica clara.
+- Nao transforme capitulos ou blocos complexos inteiros em uma unica aula.
+- Divida assuntos complexos em aulas separadas.
+- Crie modulos suficientes para cobrir a complexidade real do documento.
+- Se um ponto do PDF for introdutorio, complementar ou repetitivo, indique isso honestamente no campo fidelity_note ou covered_document_points.
+- Cada modulo deve ter um proposito claro.
+- Cada aula deve representar um recorte real do conteudo do PDF.
+- A estrutura deve permitir gerar depois roteiros profundos, quizzes, materiais, apresentacao, narracao e video.
+- Use linguagem autoral e didatica, sem copiar grandes trechos do PDF.
 
 Retorne somente JSON valido exatamente neste formato:
 {{
@@ -75,9 +103,14 @@ Retorne somente JSON valido exatamente neste formato:
             "title": "",
             "summary": "",
             "estimated_duration_minutes": 10,
-            "learning_objective": ""
+            "learning_objective": "",
+            "key_topics": [],
+            "covered_document_points": [],
+            "fidelity_note": ""
           }}
-        ]
+        ],
+        "covered_document_points": [],
+        "fidelity_note": ""
       }}
     ]
   }}
