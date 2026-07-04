@@ -229,6 +229,69 @@ def normalize_lesson_script_payload(payload: dict[str, Any], current_json: dict[
     }
 
 
+def build_lesson_speech_text(script: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in (
+        "opening",
+        "introduction",
+        "learning_objective",
+        "development",
+        "script_text",
+        "narration_text",
+    ):
+        text = normalize_presentation_text(script.get(key))
+        if text and text not in parts:
+            parts.append(text)
+
+    for section in script.get("main_script") or []:
+        section_text = ""
+        if isinstance(section, dict):
+            section_text = normalize_presentation_text(
+                section.get("narration")
+                or section.get("script_text")
+                or section.get("content")
+                or section.get("text")
+                or section.get("description")
+            )
+        else:
+            section_text = normalize_presentation_text(section)
+        if section_text and section_text not in parts:
+            parts.append(section_text)
+
+    for key in (
+        "practical_example",
+        "examples",
+        "practical_activity",
+        "reflection_question",
+        "closing",
+        "conclusion",
+        "call_to_action",
+    ):
+        text = normalize_presentation_text(script.get(key))
+        if text and text not in parts:
+            parts.append(text)
+
+    return "\n\n".join(parts).strip()
+
+
+def enrich_generated_lesson_script(script_json: dict[str, Any]) -> dict[str, Any]:
+    script = script_json.get("lesson_script")
+    if not isinstance(script, dict):
+        return script_json
+
+    speech_text = build_lesson_speech_text(script)
+    if speech_text:
+        script["script_text"] = normalize_presentation_text(script.get("script_text")) or speech_text
+        script["narration_text"] = normalize_presentation_text(script.get("narration_text")) or speech_text
+
+    script.setdefault("covered_structure_topics", [])
+    script.setdefault("covered_document_topics", [])
+    script.setdefault("fidelity_notes", "")
+    script.setdefault("instructor_notes", "")
+    script_json["lesson_script"] = script
+    return script_json
+
+
 def update_lesson_script(
     db: Session,
     current_user: User,
@@ -946,6 +1009,7 @@ def generate_educational_content(
                     script["module_title"] = module_title
                     script["lesson_title"] = lesson_title
                     script_json["lesson_script"] = script
+                    script_json = enrich_generated_lesson_script(script_json)
                     script_json["metadata"] = {
                         "module_number": module_number,
                         "lesson_number": lesson_number,
