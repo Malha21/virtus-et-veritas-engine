@@ -1155,7 +1155,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-slate-50">{lessonTitle}</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">
-              Texto limpo em blocos para futura narração por voz, sem gerar áudio nesta etapa.
+              Texto fiel ao roteiro completo da aula, dividido em blocos para geracao de voz.
             </p>
           </div>
           <div className="rounded-md border border-white/10 bg-black/20 px-4 py-3 text-right">
@@ -1199,7 +1199,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
           narrationBlocks.map((block, index) => {
             const blockKey = `block-${index}`;
             const blockIndex = index + 1;
-            const audio = findAudioForBlock(audios, blockIndex);
+            const audio = findAudioForBlock(audios, blockIndex, selectedContent?.id);
             const audioUrl = audio ? audioUrls[audio.id] : "";
             const isGeneratingAudio = Boolean(loadingAudioByBlock[blockIndex]);
             return (
@@ -2694,35 +2694,97 @@ function narrationValueToText(value: unknown): string {
   return "";
 }
 
-function appendNarrationSection(parts: string[], value: unknown) {
+function isCompleteNarrationCandidate(text: string): boolean {
+  return text.length >= 500 && countWords(text) >= 80;
+}
+
+function normalizeNarrationFingerprint(text: string): string {
+  return cleanNarrationText(text).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function pushUniqueNarrationPart(parts: string[], value: unknown) {
   const text = cleanNarrationText(narrationValueToText(value));
-  if (text) parts.push(text);
+  if (!text) return;
+
+  const fingerprint = normalizeNarrationFingerprint(text);
+  if (!fingerprint) return;
+
+  const alreadyIncluded = parts.some((part) => {
+    const current = normalizeNarrationFingerprint(part);
+    return current === fingerprint || current.includes(fingerprint) || fingerprint.includes(current);
+  });
+
+  if (!alreadyIncluded) parts.push(text);
+}
+
+function getLessonNarrationHeading(script: NonNullable<LessonScriptContent["lesson_script"]>): string {
+  const moduleNumber = safeText(script.module_number);
+  const lessonNumber = safeText(script.lesson_number);
+  const moduleTitle = safeText(script.module_title);
+  const lessonTitle = safeText(script.lesson_title);
+  const parts: string[] = [];
+
+  if (moduleNumber !== "Nao informado" || moduleTitle !== "Nao informado") {
+    const label = moduleNumber === "Nao informado" ? "Modulo" : `Modulo ${moduleNumber}`;
+    parts.push(moduleTitle === "Nao informado" ? label : `${label}: ${moduleTitle}`);
+  }
+
+  if (lessonNumber !== "Nao informado" || lessonTitle !== "Nao informado") {
+    const label = lessonNumber === "Nao informado" ? "Aula" : `Aula ${lessonNumber}`;
+    parts.push(lessonTitle === "Nao informado" ? label : `${label}: ${lessonTitle}`);
+  }
+
+  return parts.join("\n");
+}
+
+function getBestCompleteNarrationText(record: Record<string, unknown>): string {
+  const narrationText = cleanNarrationText(narrationValueToText(record.narration_text));
+  const scriptText = cleanNarrationText(narrationValueToText(record.script_text));
+  const legacyNarration = cleanNarrationText(narrationValueToText(record.narration));
+
+  if (isCompleteNarrationCandidate(narrationText) && narrationText.length >= scriptText.length * 0.9) {
+    return narrationText;
+  }
+
+  if (isCompleteNarrationCandidate(scriptText)) {
+    return scriptText;
+  }
+
+  if (isCompleteNarrationCandidate(narrationText)) {
+    return narrationText;
+  }
+
+  if (isCompleteNarrationCandidate(legacyNarration)) {
+    return legacyNarration;
+  }
+
+  return "";
 }
 
 function buildNarrationText(script: NonNullable<LessonScriptContent["lesson_script"]>): string {
   const record = script as Record<string, unknown>;
   const parts: string[] = [];
+  const heading = getLessonNarrationHeading(script);
+  const completeText = getBestCompleteNarrationText(record);
 
-  appendNarrationSection(parts, record.narration_text);
-  appendNarrationSection(parts, record.narration);
-  appendNarrationSection(parts, record.script_text);
+  if (heading) parts.push(heading);
 
-  if (!parts.length) {
-    appendNarrationSection(parts, script.opening);
-    appendNarrationSection(parts, record.introduction);
-    appendNarrationSection(parts, record.development);
-    appendNarrationSection(parts, script.main_script);
-    appendNarrationSection(parts, record.sections);
-    appendNarrationSection(parts, record.examples ?? script.practical_example);
-    appendNarrationSection(parts, record.practical_activity);
-    appendNarrationSection(parts, record.conclusion ?? script.closing);
-    appendNarrationSection(parts, script.call_to_action);
-  } else {
-    appendNarrationSection(parts, script.opening);
-    appendNarrationSection(parts, record.development);
-    appendNarrationSection(parts, record.conclusion ?? script.closing);
-    appendNarrationSection(parts, script.call_to_action);
+  if (completeText) {
+    parts.push(completeText);
+    return cleanNarrationText(parts.join("\n\n"));
   }
+
+  pushUniqueNarrationPart(parts, script.opening);
+  pushUniqueNarrationPart(parts, record.introduction);
+  pushUniqueNarrationPart(parts, record.development);
+  pushUniqueNarrationPart(parts, script.main_script);
+  pushUniqueNarrationPart(parts, record.sections ?? record.blocks);
+  pushUniqueNarrationPart(parts, record.examples ?? script.practical_example);
+  pushUniqueNarrationPart(parts, record.practical_activity);
+  pushUniqueNarrationPart(parts, script.reflection_question);
+  pushUniqueNarrationPart(parts, record.conclusion ?? script.closing);
+  pushUniqueNarrationPart(parts, script.call_to_action);
+  pushUniqueNarrationPart(parts, record.instructor_notes);
 
   return cleanNarrationText(parts.join("\n\n"));
 }
@@ -2773,8 +2835,12 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function findAudioForBlock(audios: GeneratedAudio[], blockIndex: number): GeneratedAudio | null {
-  const matchingAudios = audios.filter((audio) => audio.block_index === blockIndex);
+function findAudioForBlock(audios: GeneratedAudio[], blockIndex: number, generatedContentId?: string): GeneratedAudio | null {
+  const matchingAudios = audios.filter((audio) => {
+    const matchesBlock = audio.block_index === blockIndex;
+    if (!generatedContentId) return matchesBlock;
+    return matchesBlock && audio.generated_content_id === generatedContentId;
+  });
   if (!matchingAudios.length) return null;
   return matchingAudios.sort((first, second) => {
     const firstTime = new Date(first.created_at).getTime();
