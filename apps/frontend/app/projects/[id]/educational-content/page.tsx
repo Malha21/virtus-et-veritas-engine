@@ -83,6 +83,19 @@ type LessonScriptDraft = {
   call_to_action: string;
 };
 
+type LessonScriptPayload = NonNullable<LessonScriptContent["lesson_script"]> & Record<string, unknown>;
+
+type LessonScriptOption = {
+  key: string;
+  contentId: string;
+  moduleNumber?: number | string;
+  lessonNumber?: number | string;
+  title: string;
+  label: string;
+  payload: LessonScriptPayload;
+  createdAt?: string;
+};
+
 type QuizQuestionDraft = {
   question_number: number;
   question: string;
@@ -134,14 +147,14 @@ function getContentNumber(content: GeneratedContent, section: string, field: str
   return Number.isFinite(parsed) ? parsed : 9999;
 }
 
-function getLessonScript(content: GeneratedContent): LessonScriptContent["lesson_script"] | undefined {
-  return (content.content_json as LessonScriptContent | null)?.lesson_script;
-}
-
 function getContentMetadata(content: GeneratedContent): Record<string, unknown> {
   const contentJson = content.content_json as Record<string, unknown> | null;
   const metadata = contentJson?.metadata;
   return typeof metadata === "object" && metadata !== null ? (metadata as Record<string, unknown>) : {};
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 function normalizeLessonKeyValue(value: unknown): string {
@@ -153,31 +166,48 @@ function normalizeLessonKeyValue(value: unknown): string {
     .replace(/\s+/g, " ");
 }
 
-function getLessonScriptDedupeKey(content: GeneratedContent, index: number): string {
-  const script = getLessonScript(content);
-  const metadata = getContentMetadata(content);
-  const moduleNumber = normalizeLessonKeyValue(script?.module_number ?? metadata.module_number);
-  const lessonNumber = normalizeLessonKeyValue(script?.lesson_number ?? metadata.lesson_number);
-  const lessonTitle = normalizeLessonKeyValue(script?.lesson_title || content.title);
-
-  if (moduleNumber || lessonNumber || lessonTitle) {
-    return [moduleNumber || "sem-modulo", lessonNumber || "sem-aula", lessonTitle || "sem-titulo"].join("|");
-  }
-
-  const normalizedTitle = normalizeLessonKeyValue(content.title);
-  if (normalizedTitle) return `${normalizedTitle}|${index}`;
-  return content.id || `lesson-script-${index}`;
+function normalizeNumber(value: unknown): number | string | undefined {
+  const text = editText(value).trim();
+  if (!text || text === "Nao informado") return undefined;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? parsed : text;
 }
 
-function isNewerContent(candidate: GeneratedContent, current: GeneratedContent): boolean {
-  const candidateTime = new Date(candidate.created_at).getTime();
-  const currentTime = new Date(current.created_at).getTime();
+function getModuleNumber(payload: Record<string, unknown>, metadata?: Record<string, unknown>): number | string | undefined {
+  return normalizeNumber(payload.module_number ?? payload.moduleNumber ?? metadata?.module_number ?? metadata?.moduleNumber);
+}
 
-  if (Number.isFinite(candidateTime) && Number.isFinite(currentTime)) {
-    return candidateTime > currentTime;
-  }
+function getLessonNumber(payload: Record<string, unknown>, metadata?: Record<string, unknown>): number | string | undefined {
+  return normalizeNumber(payload.lesson_number ?? payload.lessonNumber ?? metadata?.lesson_number ?? metadata?.lessonNumber);
+}
 
-  return Number.isFinite(candidateTime) && !Number.isFinite(currentTime);
+function getLessonTitle(payload: Record<string, unknown>, content?: GeneratedContent, fallback = "Roteiro de aula"): string {
+  const title = editText(
+    payload.lesson_title ??
+      payload.lessonTitle ??
+      payload.title ??
+      payload.name ??
+      payload.subject ??
+      content?.title ??
+      fallback,
+  ).trim();
+  return title || fallback;
+}
+
+function buildLessonOptionLabel(
+  moduleNumber: number | string | undefined,
+  lessonNumber: number | string | undefined,
+  title: string,
+): string {
+  if (moduleNumber !== undefined && lessonNumber !== undefined) return `Modulo ${moduleNumber} - Aula ${lessonNumber}: ${title}`;
+  if (lessonNumber !== undefined) return `Aula ${lessonNumber}: ${title}`;
+  return title;
+}
+
+function getOptionSortNumber(value: number | string | undefined): number {
+  if (typeof value === "number") return value;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 9999;
 }
 
 function sortLessonScripts(contents: GeneratedContent[]): GeneratedContent[] {
@@ -189,19 +219,153 @@ function sortLessonScripts(contents: GeneratedContent[]): GeneratedContent[] {
   );
 }
 
-function deduplicateLessonScripts(contents: GeneratedContent[]): GeneratedContent[] {
-  const selectedByKey = new Map<string, GeneratedContent>();
+function looksLikeLessonScriptPayload(record: Record<string, unknown>): boolean {
+  const hasLessonIdentity = Boolean(
+    record.lesson_number ??
+      record.lessonNumber ??
+      record.lesson_title ??
+      record.lessonTitle,
+  );
+  const hasLessonBody = Boolean(
+    record.opening ??
+      record.learning_objective ??
+      record.learningObjective ??
+      record.main_script ??
+      record.mainScript ??
+      record.narration_text ??
+      record.narration ??
+      record.script_text ??
+      record.development ??
+      record.sections ??
+      record.blocks,
+  );
 
-  sortLessonScripts(contents).forEach((content, index) => {
-    const key = getLessonScriptDedupeKey(content, index);
-    const existing = selectedByKey.get(key);
+  return hasLessonIdentity || hasLessonBody;
+}
 
-    if (!existing || isNewerContent(content, existing)) {
-      selectedByKey.set(key, content);
-    }
+function withModuleContext(
+  payload: Record<string, unknown>,
+  context: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    ...payload,
+    module_number: payload.module_number ?? payload.moduleNumber ?? context.module_number ?? context.moduleNumber,
+    module_title: payload.module_title ?? payload.moduleTitle ?? context.module_title ?? context.moduleTitle ?? context.title,
+  };
+}
+
+function collectLessonScriptPayloads(
+  value: unknown,
+  content: GeneratedContent,
+  results: Array<{ payload: LessonScriptPayload; metadata: Record<string, unknown>; index: number }>,
+  context: Record<string, unknown> = {},
+) {
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectLessonScriptPayloads(item, content, results, context));
+    return;
+  }
+
+  const record = toRecord(value);
+  if (!record) return;
+
+  const metadata = {
+    ...getContentMetadata(content),
+    ...(toRecord(record.metadata) || {}),
+    ...context,
+  };
+  const directLessonScript = toRecord(record.lesson_script);
+
+  if (directLessonScript) {
+    results.push({
+      payload: withModuleContext(directLessonScript, metadata) as LessonScriptPayload,
+      metadata,
+      index: results.length,
+    });
+  } else if (looksLikeLessonScriptPayload(record)) {
+    results.push({
+      payload: withModuleContext(record, metadata) as LessonScriptPayload,
+      metadata,
+      index: results.length,
+    });
+  }
+
+  ["content", "payload", "data"].forEach((key) => {
+    if (record[key]) collectLessonScriptPayloads(record[key], content, results, metadata);
   });
 
-  return sortLessonScripts(Array.from(selectedByKey.values()));
+  ["lessons", "lesson_scripts", "scripts"].forEach((key) => {
+    if (record[key]) collectLessonScriptPayloads(record[key], content, results, metadata);
+  });
+
+  const modules = toArray(record.modules);
+  modules.forEach((moduleItem) => {
+    const moduleRecord = toRecord(moduleItem);
+    if (!moduleRecord) return;
+
+    const moduleContext = {
+      ...metadata,
+      module_number: moduleRecord.module_number ?? moduleRecord.moduleNumber ?? metadata.module_number,
+      module_title: moduleRecord.module_title ?? moduleRecord.moduleTitle ?? moduleRecord.title ?? metadata.module_title,
+    };
+
+    ["lessons", "lesson_scripts", "scripts"].forEach((key) => {
+      if (moduleRecord[key]) collectLessonScriptPayloads(moduleRecord[key], content, results, moduleContext);
+    });
+  });
+}
+
+function isNewerLessonOption(candidate: LessonScriptOption, current: LessonScriptOption): boolean {
+  const candidateTime = new Date(candidate.createdAt || "").getTime();
+  const currentTime = new Date(current.createdAt || "").getTime();
+
+  if (Number.isFinite(candidateTime) && Number.isFinite(currentTime)) return candidateTime > currentTime;
+  return Number.isFinite(candidateTime) && !Number.isFinite(currentTime);
+}
+
+function buildLessonScriptOptions(contents: GeneratedContent[]): LessonScriptOption[] {
+  const selectedByKey = new Map<string, LessonScriptOption>();
+
+  sortLessonScripts(contents).forEach((content) => {
+    const candidates: Array<{ payload: LessonScriptPayload; metadata: Record<string, unknown>; index: number }> = [];
+    collectLessonScriptPayloads(content.content_json, content, candidates);
+
+    candidates.forEach((candidate) => {
+      const moduleNumber = getModuleNumber(candidate.payload, candidate.metadata);
+      const lessonNumber = getLessonNumber(candidate.payload, candidate.metadata);
+      const title = getLessonTitle(candidate.payload, content, `Aula ${candidate.index + 1}`);
+      const dedupeKey =
+        moduleNumber !== undefined || lessonNumber !== undefined
+          ? [
+              normalizeLessonKeyValue(moduleNumber),
+              normalizeLessonKeyValue(lessonNumber),
+              normalizeLessonKeyValue(title),
+            ].join("|")
+          : `${content.id}|${candidate.index}`;
+      const option: LessonScriptOption = {
+        key: dedupeKey,
+        contentId: content.id,
+        moduleNumber,
+        lessonNumber,
+        title,
+        label: buildLessonOptionLabel(moduleNumber, lessonNumber, title),
+        payload: candidate.payload,
+        createdAt: content.created_at,
+      };
+      const existing = selectedByKey.get(dedupeKey);
+
+      if (!existing || isNewerLessonOption(option, existing)) {
+        selectedByKey.set(dedupeKey, option);
+      }
+    });
+  });
+
+  return Array.from(selectedByKey.values()).sort((a, b) => {
+    const moduleDiff = getOptionSortNumber(a.moduleNumber) - getOptionSortNumber(b.moduleNumber);
+    if (moduleDiff !== 0) return moduleDiff;
+    const lessonDiff = getOptionSortNumber(a.lessonNumber) - getOptionSortNumber(b.lessonNumber);
+    if (lessonDiff !== 0) return lessonDiff;
+    return a.title.localeCompare(b.title) || new Date(a.createdAt || "").getTime() - new Date(b.createdAt || "").getTime();
+  });
 }
 
 function sortModuleQuizzes(contents: GeneratedContent[]): GeneratedContent[] {
@@ -597,8 +761,8 @@ function SummaryView({ contents }: { contents: GeneratedContent[] }) {
 }
 
 function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
-  const sortedContents = deduplicateLessonScripts(contents);
-  const [selectedId, setSelectedId] = useState(sortedContents[0]?.id || "");
+  const lessonOptions = buildLessonScriptOptions(contents);
+  const [selectedKey, setSelectedKey] = useState(lessonOptions[0]?.key || "");
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [fontSize, setFontSize] = useState<"small" | "medium" | "large" | "xlarge">("large");
@@ -607,18 +771,18 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
   const scrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (!sortedContents.length) {
-      setSelectedId("");
+    if (!lessonOptions.length) {
+      setSelectedKey("");
       return;
     }
-    const selectedStillExists = sortedContents.some((content) => content.id === selectedId);
+    const selectedStillExists = lessonOptions.some((lesson) => lesson.key === selectedKey);
     if (!selectedStillExists) {
-      setSelectedId(sortedContents[0]?.id || "");
+      setSelectedKey(lessonOptions[0]?.key || "");
     }
-  }, [selectedId, sortedContents]);
+  }, [selectedKey, lessonOptions]);
 
-  const selectedContent = sortedContents.find((content) => content.id === selectedId) || sortedContents[0];
-  const selectedScript = (selectedContent?.content_json as LessonScriptContent | null)?.lesson_script;
+  const selectedLesson = lessonOptions.find((lesson) => lesson.key === selectedKey) || lessonOptions[0];
+  const selectedScript = selectedLesson?.payload;
   const teleprompterText = selectedScript ? buildTeleprompterText(selectedScript) : "";
   const estimatedTime = getEstimatedSpeechTime(teleprompterText);
 
@@ -662,7 +826,7 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
     };
   }, []);
 
-  if (!sortedContents.length) {
+  if (!lessonOptions.length) {
     return <EmptyState text="Gere ou edite os roteiros de aula antes de usar o teleprompter." />;
   }
 
@@ -703,18 +867,17 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
           <label className="grid min-w-[260px] flex-1 gap-2 text-sm text-slate-300">
             Aula para gravacao
             <select
-              value={selectedContent?.id || ""}
+              value={selectedLesson?.key || ""}
               onChange={(event) => {
-                setSelectedId(event.target.value);
+                setSelectedKey(event.target.value);
                 resetTeleprompter();
               }}
               className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
             >
-              {sortedContents.map((content) => {
-                const script = getLessonScript(content);
+              {lessonOptions.map((lesson) => {
                 return (
-                  <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
-                    {getLessonScriptLabel(script, content)}
+                  <option key={lesson.key} value={lesson.key} className="bg-navy-950 text-slate-100">
+                    {lesson.label}
                   </option>
                 );
               })}
@@ -797,7 +960,7 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
       <section className="rounded-lg border border-white/10 bg-black/40 p-4">
         <div className="mb-4">
           <p className="text-xs font-medium text-gold-400">Modo teleprompter</p>
-          <h2 className="mt-1 text-2xl font-semibold text-slate-50">{getLessonScriptLabel(selectedScript, selectedContent)}</h2>
+          <h2 className="mt-1 text-2xl font-semibold text-slate-50">{selectedLesson?.label || "Roteiro de aula"}</h2>
         </div>
         <div
           ref={teleprompterRef}
@@ -813,8 +976,8 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
 }
 
 function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; projectId: string }) {
-  const sortedContents = deduplicateLessonScripts(contents);
-  const [selectedId, setSelectedId] = useState(sortedContents[0]?.id || "");
+  const lessonOptions = buildLessonScriptOptions(contents);
+  const [selectedKey, setSelectedKey] = useState(lessonOptions[0]?.key || "");
   const [copiedKey, setCopiedKey] = useState("");
   const [audios, setAudios] = useState<GeneratedAudio[]>([]);
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
@@ -826,15 +989,15 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
   const [audioError, setAudioError] = useState("");
 
   useEffect(() => {
-    if (!sortedContents.length) {
-      setSelectedId("");
+    if (!lessonOptions.length) {
+      setSelectedKey("");
       return;
     }
-    const selectedStillExists = sortedContents.some((content) => content.id === selectedId);
+    const selectedStillExists = lessonOptions.some((lesson) => lesson.key === selectedKey);
     if (!selectedStillExists) {
-      setSelectedId(sortedContents[0]?.id || "");
+      setSelectedKey(lessonOptions[0]?.key || "");
     }
-  }, [selectedId, sortedContents]);
+  }, [selectedKey, lessonOptions]);
 
   useEffect(() => {
     let isActive = true;
@@ -913,15 +1076,15 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
     };
   }, [audios, projectId]);
 
-  if (!sortedContents.length) {
+  if (!lessonOptions.length) {
     return <EmptyState text="Gere ou edite os roteiros de aula antes de preparar a narração." />;
   }
 
-  const selectedContent = sortedContents.find((content) => content.id === selectedId) || sortedContents[0];
-  const selectedScript = (selectedContent?.content_json as LessonScriptContent | null)?.lesson_script;
+  const selectedLesson = lessonOptions.find((lesson) => lesson.key === selectedKey) || lessonOptions[0];
+  const selectedScript = selectedLesson?.payload;
   const narrationText = selectedScript ? buildNarrationText(selectedScript) : "";
   const narrationBlocks = splitNarrationBlocks(narrationText);
-  const lessonTitle = getLessonScriptLabel(selectedScript, selectedContent);
+  const lessonTitle = selectedLesson?.label || "Roteiro de aula";
 
   async function copyNarration(key: string, text: string) {
     setCopiedKey("");
@@ -939,7 +1102,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
     setLoadingAudioByBlock((current) => ({ ...current, [blockIndex]: true }));
     try {
       const audio = await generateNarrationAudio(projectId, {
-        generated_content_id: selectedContent?.id || null,
+        generated_content_id: selectedLesson?.contentId || null,
         block_index: blockIndex,
         title: `Bloco ${blockIndex}`,
         text: block,
@@ -1006,18 +1169,17 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
           <label className="grid min-w-[260px] flex-1 gap-2 text-sm text-slate-300">
             Aula para narração
             <select
-              value={selectedContent?.id || ""}
+              value={selectedLesson?.key || ""}
               onChange={(event) => {
-                setSelectedId(event.target.value);
+                setSelectedKey(event.target.value);
                 setCopiedKey("");
               }}
               className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
             >
-              {sortedContents.map((content) => {
-                const script = getLessonScript(content);
+              {lessonOptions.map((lesson) => {
                 return (
-                  <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
-                    {getLessonScriptLabel(script, content)}
+                  <option key={lesson.key} value={lesson.key} className="bg-navy-950 text-slate-100">
+                    {lesson.label}
                   </option>
                 );
               })}
@@ -1093,7 +1255,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
           narrationBlocks.map((block, index) => {
             const blockKey = `block-${index}`;
             const blockIndex = index + 1;
-            const audio = findAudioForBlock(audios, blockIndex);
+            const audio = findAudioForBlock(audios, blockIndex, selectedLesson?.contentId);
             const audioUrl = audio ? audioUrls[audio.id] : "";
             const isGeneratingAudio = Boolean(loadingAudioByBlock[blockIndex]);
             return (
@@ -2444,16 +2606,6 @@ function safeText(value: unknown): string {
   return String(value);
 }
 
-function getLessonScriptLabel(script: LessonScriptContent["lesson_script"] | undefined, content?: GeneratedContent): string {
-  const metadata = content ? getContentMetadata(content) : {};
-  const moduleNumber = safeText(script?.module_number ?? metadata.module_number);
-  const lessonNumber = safeText(script?.lesson_number ?? metadata.lesson_number);
-  const lessonTitle = safeText(script?.lesson_title || content?.title || "Roteiro de aula");
-  const moduleLabel = moduleNumber === "Nao informado" ? "Modulo" : `Modulo ${moduleNumber}`;
-  const lessonLabel = lessonNumber === "Nao informado" ? "Aula" : `Aula ${lessonNumber}`;
-  return `${moduleLabel} - ${lessonLabel}: ${lessonTitle}`;
-}
-
 function appendTeleprompterSection(parts: string[], title: string, value: unknown) {
   const text = editText(value).trim();
   if (!text) return;
@@ -2667,8 +2819,10 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function findAudioForBlock(audios: GeneratedAudio[], blockIndex: number): GeneratedAudio | null {
-  const matchingAudios = audios.filter((audio) => audio.block_index === blockIndex);
+function findAudioForBlock(audios: GeneratedAudio[], blockIndex: number, contentId?: string): GeneratedAudio | null {
+  const matchingAudios = audios.filter(
+    (audio) => audio.block_index === blockIndex && (!contentId || audio.generated_content_id === contentId),
+  );
   if (!matchingAudios.length) return null;
   return matchingAudios.sort((first, second) => {
     const firstTime = new Date(first.created_at).getTime();
