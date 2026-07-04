@@ -134,6 +134,52 @@ function getContentNumber(content: GeneratedContent, section: string, field: str
   return Number.isFinite(parsed) ? parsed : 9999;
 }
 
+function getLessonScript(content: GeneratedContent): LessonScriptContent["lesson_script"] | undefined {
+  return (content.content_json as LessonScriptContent | null)?.lesson_script;
+}
+
+function getContentMetadata(content: GeneratedContent): Record<string, unknown> {
+  const contentJson = content.content_json as Record<string, unknown> | null;
+  const metadata = contentJson?.metadata;
+  return typeof metadata === "object" && metadata !== null ? (metadata as Record<string, unknown>) : {};
+}
+
+function normalizeLessonKeyValue(value: unknown): string {
+  return editText(value)
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function getLessonScriptDedupeKey(content: GeneratedContent, index: number): string {
+  const script = getLessonScript(content);
+  const metadata = getContentMetadata(content);
+  const moduleNumber = normalizeLessonKeyValue(script?.module_number ?? metadata.module_number);
+  const lessonNumber = normalizeLessonKeyValue(script?.lesson_number ?? metadata.lesson_number);
+  const lessonTitle = normalizeLessonKeyValue(script?.lesson_title || content.title);
+
+  if (moduleNumber || lessonNumber || lessonTitle) {
+    return [moduleNumber || "sem-modulo", lessonNumber || "sem-aula", lessonTitle || "sem-titulo"].join("|");
+  }
+
+  const normalizedTitle = normalizeLessonKeyValue(content.title);
+  if (normalizedTitle) return `${normalizedTitle}|${index}`;
+  return content.id || `lesson-script-${index}`;
+}
+
+function isNewerContent(candidate: GeneratedContent, current: GeneratedContent): boolean {
+  const candidateTime = new Date(candidate.created_at).getTime();
+  const currentTime = new Date(current.created_at).getTime();
+
+  if (Number.isFinite(candidateTime) && Number.isFinite(currentTime)) {
+    return candidateTime > currentTime;
+  }
+
+  return Number.isFinite(candidateTime) && !Number.isFinite(currentTime);
+}
+
 function sortLessonScripts(contents: GeneratedContent[]): GeneratedContent[] {
   return [...contents].sort(
     (a, b) =>
@@ -141,6 +187,21 @@ function sortLessonScripts(contents: GeneratedContent[]): GeneratedContent[] {
       getContentNumber(a, "lesson_script", "lesson_number") - getContentNumber(b, "lesson_script", "lesson_number") ||
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
+}
+
+function deduplicateLessonScripts(contents: GeneratedContent[]): GeneratedContent[] {
+  const selectedByKey = new Map<string, GeneratedContent>();
+
+  sortLessonScripts(contents).forEach((content, index) => {
+    const key = getLessonScriptDedupeKey(content, index);
+    const existing = selectedByKey.get(key);
+
+    if (!existing || isNewerContent(content, existing)) {
+      selectedByKey.set(key, content);
+    }
+  });
+
+  return sortLessonScripts(Array.from(selectedByKey.values()));
 }
 
 function sortModuleQuizzes(contents: GeneratedContent[]): GeneratedContent[] {
@@ -536,7 +597,7 @@ function SummaryView({ contents }: { contents: GeneratedContent[] }) {
 }
 
 function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
-  const sortedContents = sortLessonScripts(contents);
+  const sortedContents = deduplicateLessonScripts(contents);
   const [selectedId, setSelectedId] = useState(sortedContents[0]?.id || "");
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -650,7 +711,7 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
               className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
             >
               {sortedContents.map((content) => {
-                const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
+                const script = getLessonScript(content);
                 return (
                   <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
                     {getLessonScriptLabel(script, content)}
@@ -752,7 +813,7 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
 }
 
 function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; projectId: string }) {
-  const sortedContents = sortLessonScripts(contents);
+  const sortedContents = deduplicateLessonScripts(contents);
   const [selectedId, setSelectedId] = useState(sortedContents[0]?.id || "");
   const [copiedKey, setCopiedKey] = useState("");
   const [audios, setAudios] = useState<GeneratedAudio[]>([]);
@@ -953,7 +1014,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
               className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
             >
               {sortedContents.map((content) => {
-                const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
+                const script = getLessonScript(content);
                 return (
                   <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
                     {getLessonScriptLabel(script, content)}
@@ -2384,10 +2445,10 @@ function safeText(value: unknown): string {
 }
 
 function getLessonScriptLabel(script: LessonScriptContent["lesson_script"] | undefined, content?: GeneratedContent): string {
-  if (!script) return content?.title || "Roteiro de aula";
-  const moduleNumber = safeText(script.module_number);
-  const lessonNumber = safeText(script.lesson_number);
-  const lessonTitle = safeText(script.lesson_title || content?.title || "Roteiro de aula");
+  const metadata = content ? getContentMetadata(content) : {};
+  const moduleNumber = safeText(script?.module_number ?? metadata.module_number);
+  const lessonNumber = safeText(script?.lesson_number ?? metadata.lesson_number);
+  const lessonTitle = safeText(script?.lesson_title || content?.title || "Roteiro de aula");
   const moduleLabel = moduleNumber === "Nao informado" ? "Modulo" : `Modulo ${moduleNumber}`;
   const lessonLabel = lessonNumber === "Nao informado" ? "Aula" : `Aula ${lessonNumber}`;
   return `${moduleLabel} - ${lessonLabel}: ${lessonTitle}`;
