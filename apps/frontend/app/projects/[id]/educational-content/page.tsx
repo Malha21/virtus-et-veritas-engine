@@ -28,7 +28,7 @@ import {
   updateModuleQuiz,
   updatePresentationDeck,
 } from "@/lib/api";
-import type { GeneratedContent } from "@/types/content";
+import type { DocumentAnalysisContent, GeneratedContent, GeneratedContentListResponse } from "@/types/content";
 import type {
   ComplementaryMaterialContent,
   CourseSummaryContent,
@@ -38,7 +38,7 @@ import type {
   PresentationDeckContent,
 } from "@/types/educational-content";
 
-type Tab = "summary" | "scripts" | "quizzes" | "materials" | "presentation" | "teleprompter" | "narration";
+type Tab = "document" | "summary" | "scripts" | "quizzes" | "materials" | "presentation" | "teleprompter" | "narration";
 
 type PresentationSlideDraft = {
   slide_number: number;
@@ -94,6 +94,18 @@ type LessonScriptOption = {
   label: string;
   payload: LessonScriptPayload;
   createdAt?: string;
+};
+
+type DocumentBaseSummary = {
+  source: "document_analysis" | "course_summary" | "empty";
+  fileName?: string;
+  overview?: unknown;
+  mainIdeas?: unknown[];
+  concepts?: unknown[];
+  themes?: unknown[];
+  opportunities?: unknown[];
+  transformation?: unknown;
+  notice: string;
 };
 
 type QuizQuestionDraft = {
@@ -598,6 +610,170 @@ function buildNormalizedEducationalContent(data: EducationalContentSummaryRespon
   };
 }
 
+function getUsefulField(record: Record<string, unknown> | null, keys: string[]): unknown {
+  if (!record) return undefined;
+  for (const key of keys) {
+    const value = record[key];
+    if (value !== null && value !== undefined && value !== "") return value;
+  }
+  return undefined;
+}
+
+function findFirstNestedRecord(value: unknown, keys: string[]): Record<string, unknown> | null {
+  const record = toRecord(value);
+  if (!record) return null;
+
+  for (const key of keys) {
+    const direct = toRecord(record[key]);
+    if (direct) return direct;
+  }
+
+  for (const key of ["content", "payload", "data", "metadata", "analysis", "source_analysis"]) {
+    const nested = findFirstNestedRecord(record[key], keys);
+    if (nested) return nested;
+  }
+
+  return null;
+}
+
+function getDocumentFileName(content?: GeneratedContent): string | undefined {
+  const metadata = content ? getContentMetadata(content) : {};
+  const value = getUsefulField(metadata, [
+    "original_filename",
+    "originalFilename",
+    "file_name",
+    "fileName",
+    "filename",
+    "pdf_filename",
+    "source_file_name",
+  ]);
+  const text = editText(value || content?.title).trim();
+  return text || undefined;
+}
+
+function contentLooksLikeDocumentBase(content: GeneratedContent): boolean {
+  const normalizedType = normalizeTitle(content.content_type);
+  return [
+    "document_analysis",
+    "document_summary",
+    "pdf_summary",
+    "base_document_summary",
+    "source_summary",
+    "source_analysis",
+    "extracted_summary",
+  ].includes(normalizedType);
+}
+
+function toReadableValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toReadableValue).filter(Boolean).join("\n");
+  const record = toRecord(value);
+  if (!record) return value;
+
+  const direct = getUsefulField(record, [
+    "authorial_summary",
+    "summary",
+    "overview",
+    "description",
+    "text",
+    "content",
+    "main_theme",
+    "suggested_approach",
+    "title",
+    "concept",
+    "name",
+  ]);
+  if (direct && direct !== value) return toReadableValue(direct);
+
+  return Object.values(record)
+    .map(toReadableValue)
+    .filter(Boolean)
+    .join("\n");
+}
+
+function toReadableList(value: unknown): unknown[] {
+  return toArray(value).map(toReadableValue).filter(Boolean);
+}
+
+function buildDocumentBaseFromRecord(content: GeneratedContent, record: Record<string, unknown>): DocumentBaseSummary {
+  const mainTheme = getUsefulField(record, ["main_theme", "theme", "title", "document_title", "summary_title"]);
+  const overview =
+    getUsefulField(record, [
+      "authorial_summary",
+      "document_summary",
+      "pdf_summary",
+      "base_document_summary",
+      "source_summary",
+      "summary",
+      "overview",
+      "description",
+      "main_theme",
+    ]) || mainTheme;
+
+  return {
+    source: "document_analysis",
+    fileName: getDocumentFileName(content),
+    overview: toReadableValue(overview),
+    mainIdeas: toReadableList(getUsefulField(record, ["main_ideas", "key_ideas", "principal_ideas", "subthemes", "topics"])),
+    concepts: toReadableList(getUsefulField(record, ["central_concepts", "key_concepts", "concepts", "main_concepts"])),
+    themes: toReadableList(getUsefulField(record, ["themes", "subthemes", "topics", "main_topics"])),
+    opportunities: toReadableList(getUsefulField(record, ["opportunities", "course_opportunities", "transformation_opportunities"])),
+    transformation: toReadableValue(
+      getUsefulField(record, ["course_transformation", "suggested_approach", "didactic_approach", "how_to_transform", "recommended_product_type"]),
+    ),
+    notice:
+      "Este resumo e uma interpretacao didatica do documento enviado, reescrita com linguagem propria para apoiar a criacao do curso.",
+  };
+}
+
+function buildDocumentBaseSummary(
+  sourceContents: GeneratedContent[],
+  courseSummaries: GeneratedContent[],
+): DocumentBaseSummary {
+  const documentContent = sourceContents
+    .filter(contentLooksLikeDocumentBase)
+    .sort((a, b) => getCreatedAtTimestamp(b) - getCreatedAtTimestamp(a))[0];
+  const documentRecord =
+    (documentContent?.content_json as DocumentAnalysisContent | null)?.document_analysis ||
+    findFirstNestedRecord(documentContent?.content_json, [
+      "document_analysis",
+      "source_summary",
+      "document_summary",
+      "pdf_summary",
+      "base_document_summary",
+      "extracted_summary",
+      "source_analysis",
+    ]);
+
+  if (documentContent && documentRecord) {
+    return buildDocumentBaseFromRecord(documentContent, documentRecord);
+  }
+
+  const sortedSummaries = sortSummaries(courseSummaries);
+  const summaryContent = sortedSummaries[sortedSummaries.length - 1];
+  const summary = (summaryContent?.content_json as CourseSummaryContent | null)?.course_summary;
+
+  if (summary) {
+    return {
+      source: "course_summary",
+      fileName: getDocumentFileName(summaryContent),
+      overview: toReadableValue(summary.long_description || summary.short_description || summary.promise || summary.title),
+      mainIdeas: toReadableList(summary.what_student_will_learn),
+      concepts: toReadableList(summary.course_differentials),
+      themes: toReadableList(summary.target_audience),
+      opportunities: toReadableList(summary.suggested_sales_copy || summary.suggested_instagram_caption || summary.suggested_whatsapp_message),
+      transformation: toReadableValue(summary.transformation_statement || summary.promise),
+      notice:
+        "Ainda nao foi gerada uma analise especifica do documento base. Abaixo esta o resumo do curso derivado do conteudo.",
+    };
+  }
+
+  return {
+    source: "empty",
+    notice:
+      "A analise do documento base ainda nao foi gerada. Gere os conteudos educacionais para visualizar a interpretacao do PDF enviado.",
+  };
+}
+
 function hasAnyEducationalContent(data: EducationalContentSummaryResponse): boolean {
   return (
     data.course_summaries.length > 0 ||
@@ -611,7 +787,8 @@ function hasAnyEducationalContent(data: EducationalContentSummaryResponse): bool
 export default function EducationalContentPage() {
   const params = useParams<{ id: string }>();
   const [data, setData] = useState<EducationalContentSummaryResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("summary");
+  const [sourceContents, setSourceContents] = useState<GeneratedContent[]>([]);
+  const [activeTab, setActiveTab] = useState<Tab>("document");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [generationMessage, setGenerationMessage] = useState("");
@@ -639,16 +816,20 @@ export default function EducationalContentPage() {
       }
     }
 
-    apiFetch<EducationalContentSummaryResponse>(`/projects/${params.id}/educational-content`)
-      .then((payload) =>
+    Promise.all([
+      apiFetch<EducationalContentSummaryResponse>(`/projects/${params.id}/educational-content`),
+      apiFetch<GeneratedContentListResponse>(`/projects/${params.id}/contents`),
+    ])
+      .then(([payload, sourcePayload]) => {
         setData({
           lesson_scripts: sortLessonScripts(payload.lesson_scripts),
           module_quizzes: sortModuleQuizzes(payload.module_quizzes),
           complementary_materials: sortByCreatedAt(payload.complementary_materials),
           course_summaries: sortSummaries(payload.course_summaries),
           presentation_decks: sortSummaries(payload.presentation_decks || []),
-        }),
-      )
+        });
+        setSourceContents(sourcePayload.items);
+      })
       .catch(() => setError("Nao foi possivel carregar os conteudos educacionais."))
       .finally(() => setLoading(false));
   }, [params.id]);
@@ -719,6 +900,9 @@ export default function EducationalContentPage() {
           ) : null}
 
           <div className="mt-6 flex flex-wrap gap-2 border-b border-white/10 pb-4">
+            <TabButton active={activeTab === "document"} onClick={() => setActiveTab("document")}>
+              Documento Base
+            </TabButton>
             <TabButton active={activeTab === "summary"} onClick={() => setActiveTab("summary")}>
               Resumo do Curso
             </TabButton>
@@ -748,6 +932,11 @@ export default function EducationalContentPage() {
             <p className="mt-8 text-red-300">{error}</p>
           ) : normalizedData ? (
             <div className="mt-8">
+              {activeTab === "document" ? (
+                <DocumentBaseView
+                  summary={buildDocumentBaseSummary(sourceContents, normalizedData.course_summaries)}
+                />
+              ) : null}
               {activeTab === "summary" ? <SummaryView contents={normalizedData.course_summaries} /> : null}
               {activeTab === "scripts" ? (
                 <ScriptsView
@@ -939,6 +1128,44 @@ function TabButton({ active, children, onClick }: { active: boolean; children: R
     >
       {children}
     </button>
+  );
+}
+
+function DocumentBaseView({ summary }: { summary: DocumentBaseSummary }) {
+  if (summary.source === "empty") {
+    return (
+      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-6">
+        <p className="text-sm text-gold-400">Documento Base</p>
+        <h2 className="mt-2 text-2xl font-semibold text-slate-50">Resumo Inteligente do PDF</h2>
+        <p className="mt-4 rounded-md border border-white/10 bg-black/20 p-4 text-sm leading-6 text-slate-300">
+          {summary.notice}
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <div className="grid gap-5">
+      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-6">
+        <p className="text-sm text-gold-400">Documento Base</p>
+        <h2 className="mt-2 text-2xl font-semibold text-slate-50">Resumo Inteligente do PDF</h2>
+        {summary.fileName ? <p className="mt-2 text-sm text-slate-400">Arquivo: {safeText(summary.fileName)}</p> : null}
+        <p className="mt-4 rounded-md border border-gold-500/20 bg-gold-500/10 p-4 text-sm leading-6 text-gold-100">
+          {summary.notice}
+        </p>
+      </section>
+
+      <InfoBlock label="Visao geral" value={summary.overview} />
+      <div className="grid gap-5 md:grid-cols-2">
+        <ListBlock title="Ideias principais" items={summary.mainIdeas} />
+        <ListBlock title="Conceitos centrais" items={summary.concepts} />
+      </div>
+      <div className="grid gap-5 md:grid-cols-2">
+        <ListBlock title="Temas encontrados" items={summary.themes} />
+        <ListBlock title="Oportunidades de transformacao em curso" items={summary.opportunities} />
+      </div>
+      <InfoBlock label="Como o conteudo foi transformado em curso" value={summary.transformation} />
+    </div>
   );
 }
 
