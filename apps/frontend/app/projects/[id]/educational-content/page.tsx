@@ -10,11 +10,13 @@ import {
   ApiError,
   apiFetch,
   deleteProjectAudio,
+  deleteProjectVideo,
   downloadComplementaryMaterialsPdf,
   downloadFullCoursePdf,
   downloadLessonScriptsPdf,
   downloadNarrationAudiosZip,
   downloadNarrationAudio,
+  downloadProjectVideo,
   downloadPresentationPdf,
   downloadPresentationPptx,
   downloadQuizzesPdf,
@@ -23,8 +25,11 @@ import {
   generateDocumentAnalysis,
   getInstructorProfile,
   getDocumentAnalysis,
+  generateProjectVideo,
   listProjectAudios,
+  listProjectVideos,
   type GeneratedAudio,
+  type GeneratedVideo,
   type InstructorProfile,
   updateComplementaryMaterial,
   updateLessonScript,
@@ -949,6 +954,15 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
   const [audioMessage, setAudioMessage] = useState("");
   const [audioError, setAudioError] = useState("");
   const [exportingAudioZip, setExportingAudioZip] = useState(false);
+  const [videos, setVideos] = useState<GeneratedVideo[]>([]);
+  const [selectedVideoAudioId, setSelectedVideoAudioId] = useState("");
+  const [videoAvatarId, setVideoAvatarId] = useState("");
+  const [videoAvatarName, setVideoAvatarName] = useState("");
+  const [videoResolution, setVideoResolution] = useState("1080p");
+  const [videoFormat, setVideoFormat] = useState("mp4");
+  const [generatingVideo, setGeneratingVideo] = useState(false);
+  const [videoMessage, setVideoMessage] = useState("");
+  const [videoError, setVideoError] = useState("");
 
   useEffect(() => {
     if (!sortedContents.length) {
@@ -1027,6 +1041,28 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
 
   useEffect(() => {
     let isActive = true;
+    setVideoError("");
+    listProjectVideos(projectId)
+      .then((items) => {
+        if (isActive) setVideos(items);
+      })
+      .catch((err) => {
+        if (!isActive) return;
+        if (err instanceof ApiError && err.status === 401) {
+          setVideoError("Sua sessÃ£o expirou. FaÃ§a login novamente.");
+        } else if (err instanceof Error && err.message) {
+          setVideoError(err.message);
+        } else {
+          setVideoError("Nao foi possivel carregar os videos gerados.");
+        }
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    let isActive = true;
     const objectUrls: string[] = [];
 
     async function loadAudioUrls() {
@@ -1090,6 +1126,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
   const otherAudios = audios
     .filter((audio) => !selectedAudios.some((selectedAudio) => selectedAudio.id === audio.id))
     .sort(sortAudiosByCreatedAtDesc);
+  const selectedVideoAudio = selectedAudios.find((audio) => audio.id === selectedVideoAudioId) || selectedAudios[0] || null;
 
   async function copyNarration(key: string, text: string) {
     setCopiedKey("");
@@ -1206,6 +1243,82 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
       }
     } finally {
       setExportingAudioZip(false);
+    }
+  }
+
+  async function handleGenerateVideo() {
+    if (!selectedVideoAudio) {
+      setVideoError("Selecione um audio gerado antes de criar o video mock.");
+      return;
+    }
+
+    setVideoError("");
+    setVideoMessage("");
+    setGeneratingVideo(true);
+    try {
+      const video = await generateProjectVideo(projectId, {
+        lesson_id: mode === "lesson" ? selectedContent?.id || null : null,
+        module_id: null,
+        audio_id: selectedVideoAudio.id,
+        avatar_id: videoAvatarId.trim() || null,
+        avatar_name: videoAvatarName.trim() || null,
+        resolution: videoResolution,
+        format: videoFormat,
+        extra_metadata: {
+          narration_mode: mode,
+          narration_title: narrationTitle,
+          module_key: mode === "module" ? selectedModule?.key || null : null,
+        },
+      });
+      setVideos((current) => [video, ...current.filter((item) => item.id !== video.id)]);
+      setVideoMessage("Video mock gerado com sucesso.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setVideoError("Sua sessÃ£o expirou. FaÃ§a login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setVideoError(err.message);
+      } else {
+        setVideoError("Nao foi possivel gerar o video mock agora.");
+      }
+    } finally {
+      setGeneratingVideo(false);
+    }
+  }
+
+  async function handleDownloadVideo(video: GeneratedVideo) {
+    setVideoError("");
+    setVideoMessage("");
+    try {
+      await downloadProjectVideo(projectId, video.id, video.file_name || `video-${video.id}.${video.format || "mp4"}`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setVideoError("Sua sessÃ£o expirou. FaÃ§a login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setVideoError(err.message);
+      } else {
+        setVideoError("Nao foi possivel baixar o video.");
+      }
+    }
+  }
+
+  async function handleDeleteVideo(video: GeneratedVideo) {
+    const confirmed = window.confirm("Tem certeza que deseja excluir este video?");
+    if (!confirmed) return;
+
+    setVideoError("");
+    setVideoMessage("");
+    try {
+      await deleteProjectVideo(projectId, video.id);
+      setVideos((current) => current.filter((item) => item.id !== video.id));
+      setVideoMessage("Video excluido com sucesso.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setVideoError("Sua sessÃ£o expirou. FaÃ§a login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setVideoError(err.message);
+      } else {
+        setVideoError("Nao foi possivel excluir o video.");
+      }
     }
   }
 
@@ -1464,6 +1577,141 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
           onDownload={handleDownloadAudio}
           onDelete={handleDeleteAudio}
         />
+      </section>
+
+      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-slate-100">Base de video por aula</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Geracao mock para preparar futuro avatar sincronizado com audio.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleGenerateVideo}
+            disabled={!selectedVideoAudio || generatingVideo}
+            className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {generatingVideo ? "Gerando video..." : "Gerar video mock"}
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <label className="grid gap-2 text-sm text-slate-300">
+            Audio base
+            <select
+              value={selectedVideoAudio?.id || ""}
+              onChange={(event) => setSelectedVideoAudioId(event.target.value)}
+              disabled={!selectedAudios.length}
+              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {selectedAudios.length ? (
+                selectedAudios.map((audio) => (
+                  <option key={audio.id} value={audio.id} className="bg-navy-950 text-slate-100">
+                    {audio.title || `Audio bloco ${audio.block_index}`}
+                  </option>
+                ))
+              ) : (
+                <option value="" className="bg-navy-950 text-slate-100">
+                  Nenhum audio disponivel
+                </option>
+              )}
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm text-slate-300">
+            Avatar ID
+            <input
+              value={videoAvatarId}
+              onChange={(event) => setVideoAvatarId(event.target.value)}
+              placeholder="avatar_demo_01"
+              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+            />
+          </label>
+          <label className="grid gap-2 text-sm text-slate-300">
+            Nome do avatar
+            <input
+              value={videoAvatarName}
+              onChange={(event) => setVideoAvatarName(event.target.value)}
+              placeholder="Instrutor Virtus"
+              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="grid gap-2 text-sm text-slate-300">
+              Resolucao
+              <select
+                value={videoResolution}
+                onChange={(event) => setVideoResolution(event.target.value)}
+                className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              >
+                <option value="1080p" className="bg-navy-950 text-slate-100">1080p</option>
+                <option value="720p" className="bg-navy-950 text-slate-100">720p</option>
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm text-slate-300">
+              Formato
+              <select
+                value={videoFormat}
+                onChange={(event) => setVideoFormat(event.target.value)}
+                className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              >
+                <option value="mp4" className="bg-navy-950 text-slate-100">mp4</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        {videoMessage ? <p className="mt-4 text-sm text-gold-300">{videoMessage}</p> : null}
+        {videoError ? <p className="mt-4 text-sm text-red-300">{videoError}</p> : null}
+
+        <div className="mt-6 grid gap-3">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Videos gerados</p>
+          {videos.length ? (
+            videos.map((video) => (
+              <article key={video.id} className="rounded-md border border-white/10 bg-black/20 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-100">
+                      {video.avatar_name || video.avatar_id || "Avatar mock"} - {video.status}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {video.resolution} - {video.format.toUpperCase()} - {formatAudioDate(video.created_at)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Provider {video.provider} - Audio {video.audio_id ? "vinculado" : "nao informado"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Origem: {getVideoOriginLabel(video)}
+                    </p>
+                    {video.error_message ? <p className="mt-2 text-xs text-red-300">{video.error_message}</p> : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadVideo(video)}
+                      disabled={video.status !== "completed" || !video.download_url}
+                      className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Baixar video
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteVideo(video)}
+                      className="rounded-md border border-red-400/40 px-3 py-2 text-sm text-red-300 transition hover:border-red-300 hover:text-red-200"
+                    >
+                      Excluir video
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))
+          ) : (
+            <p className="rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+              Nenhum video mock gerado neste projeto.
+            </p>
+          )}
+        </div>
       </section>
     </div>
   );
@@ -3178,6 +3426,13 @@ function formatAudioDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "data nao informada";
   return date.toLocaleString("pt-BR");
+}
+
+function getVideoOriginLabel(video: GeneratedVideo): string {
+  const title = video.extra_metadata?.narration_title;
+  if (typeof title === "string" && title.trim()) return title;
+  if (video.lesson_id) return "Aula vinculada";
+  return "Origem nao informada";
 }
 
 function splitNarrationBlocks(text: string): string[] {

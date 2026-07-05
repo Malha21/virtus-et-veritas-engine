@@ -10,6 +10,7 @@ from app.models import (  # noqa: F401
     AIRequest,
     GeneratedAudio,
     GeneratedContent,
+    GeneratedVideo,
     InstructorAsset,
     InstructorProfile,
     Organization,

@@ -47,6 +47,40 @@ export type NarrationAudiosZipParams = {
   title_contains?: string | null;
 };
 
+export type GenerateProjectVideoPayload = {
+  lesson_id?: string | null;
+  module_id?: string | null;
+  audio_id?: string | null;
+  avatar_id?: string | null;
+  avatar_name?: string | null;
+  resolution?: string | null;
+  format?: string | null;
+  extra_metadata?: Record<string, unknown> | null;
+};
+
+export type GeneratedVideo = {
+  id: string;
+  project_id: string;
+  lesson_id: string | null;
+  module_id: string | null;
+  audio_id: string | null;
+  avatar_id: string | null;
+  avatar_name: string | null;
+  provider: string;
+  status: string;
+  resolution: string;
+  format: string;
+  file_name: string | null;
+  file_size_bytes: number | null;
+  duration_seconds: number | null;
+  error_message: string | null;
+  extra_metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string | null;
+  completed_at: string | null;
+  download_url: string | null;
+};
+
 export type InstructorProfilePayload = {
   display_name: string | null;
   bio: string | null;
@@ -412,6 +446,10 @@ export function getAudioDownloadUrl(projectId: string, audioId: string): string 
   return `${baseURL}/projects/${projectId}/audio/${audioId}/download`;
 }
 
+export function getVideoDownloadUrl(projectId: string, videoId: string): string {
+  return `${baseURL}/projects/${projectId}/videos/${videoId}/download`;
+}
+
 export function getAudiosZipExportUrl(projectId: string, params: NarrationAudiosZipParams): string {
   const searchParams = new URLSearchParams();
   searchParams.set("scope", params.scope);
@@ -520,6 +558,88 @@ export async function downloadNarrationAudiosZip(
 
   const blob = await response.blob();
   const filename = getFilenameFromContentDisposition(response.headers.get("Content-Disposition"), fallbackFilename);
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+export async function listProjectVideos(projectId: string): Promise<GeneratedVideo[]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedVideo[]>(`/projects/${projectId}/videos`, { token });
+}
+
+export async function generateProjectVideo(
+  projectId: string,
+  payload: GenerateProjectVideoPayload,
+): Promise<GeneratedVideo> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedVideo>(`/projects/${projectId}/videos/generate`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getProjectVideo(projectId: string, videoId: string): Promise<GeneratedVideo> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedVideo>(`/projects/${projectId}/videos/${videoId}`, { token });
+}
+
+export async function deleteProjectVideo(projectId: string, videoId: string): Promise<{ message: string }> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<{ message: string }>(`/projects/${projectId}/videos/${videoId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export async function downloadProjectVideo(
+  projectId: string,
+  videoId: string,
+  fallbackFilename = "video.mp4",
+): Promise<void> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  const response = await fetch(getVideoDownloadUrl(projectId, videoId), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+    throw new ApiError(getApiErrorMessage(payload), response.status);
+  }
+
+  const blob = await response.blob();
+  const filename = getFilenameFromContentDisposition(
+    response.headers.get("Content-Disposition"),
+    fallbackFilename,
+  );
   const objectUrl = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = objectUrl;
