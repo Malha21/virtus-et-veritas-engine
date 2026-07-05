@@ -1754,6 +1754,11 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
                     </p>
                     <p className="mt-1 text-xs text-slate-500">Origem: {getVideoOriginLabel(video)}</p>
                     {video.error_message ? <p className="mt-2 text-xs text-red-300">{video.error_message}</p> : null}
+                    {!video.download_url ? (
+                      <p className="mt-2 text-xs text-gold-300">
+                        Download de MP4 real disponível na próxima fase.
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button

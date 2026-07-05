@@ -1,4 +1,6 @@
 import uuid
+import shutil
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -14,6 +16,9 @@ from app.models.generated_video import GeneratedVideo
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.video import GeneratedVideoGenerateRequest
+
+MOCK_VIDEO_DURATION_SECONDS = 3
+MOCK_VIDEO_UNAVAILABLE_MESSAGE = "Arquivo MP4 real ainda não disponível para este vídeo mock."
 
 
 def get_video_storage_dir(settings: Settings | None = None) -> Path:
@@ -74,6 +79,7 @@ def validate_lesson_for_video(db: Session, current_user: User, project_id: UUID,
 
 
 def video_to_response_data(video: GeneratedVideo) -> dict[str, object]:
+    has_download = video.status == "completed" and bool(video.file_path) and is_valid_mp4_file(Path(video.file_path))
     return {
         "id": video.id,
         "project_id": video.project_id,
@@ -94,9 +100,7 @@ def video_to_response_data(video: GeneratedVideo) -> dict[str, object]:
         "created_at": video.created_at,
         "updated_at": video.updated_at,
         "completed_at": video.completed_at,
-        "download_url": f"/api/v1/projects/{video.project_id}/videos/{video.id}/download"
-        if video.status == "completed" and video.file_path
-        else None,
+        "download_url": f"/api/v1/projects/{video.project_id}/videos/{video.id}/download" if has_download else None,
     }
 
 
@@ -128,11 +132,85 @@ def get_video_for_project(db: Session, current_user: User, project_id: UUID, vid
     return video
 
 
-def create_mock_video_file(video_dir: Path, project_id: UUID, video_format: str, payload_text: str) -> tuple[str, Path, int]:
-    safe_format = video_format.lower().strip(".") or "mp4"
-    filename = f"{project_id}-mock-video-{uuid.uuid4().hex}.{safe_format}"
+def get_video_size(resolution: str) -> str:
+    normalized = resolution.lower().strip()
+    if normalized == "720p":
+        return "1280x720"
+    return "1920x1080"
+
+
+def is_valid_mp4_file(file_path: Path) -> bool:
+    if file_path.suffix.lower() != ".mp4" or not file_path.exists() or not file_path.is_file():
+        return False
+    if file_path.stat().st_size < 64:
+        return False
+    return b"ftyp" in file_path.read_bytes()[:64]
+
+
+def create_mock_video_file(video_dir: Path, project_id: UUID, resolution: str) -> tuple[str, Path, int]:
+    ffmpeg_binary = shutil.which("ffmpeg")
+    if not ffmpeg_binary:
+        raise RuntimeError("ffmpeg is not available in the backend container.")
+
+    filename = f"{project_id}-mock-video-{uuid.uuid4().hex}.mp4"
     file_path = video_dir / filename
-    file_path.write_bytes(payload_text.encode("utf-8"))
+    video_filter = (
+        f"color=c=#050505:s={get_video_size(resolution)}:d={MOCK_VIDEO_DURATION_SECONDS},"
+        "drawtext=text='VVE Engine - Video mock':fontcolor=white:fontsize=56:x=(w-text_w)/2:y=(h-text_h)/2"
+    )
+    command_with_text = [
+        ffmpeg_binary,
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        video_filter,
+        "-t",
+        str(MOCK_VIDEO_DURATION_SECONDS),
+        "-r",
+        "30",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        str(file_path),
+    ]
+    fallback_command = [
+        ffmpeg_binary,
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        f"color=c=#050505:s={get_video_size(resolution)}:d={MOCK_VIDEO_DURATION_SECONDS}",
+        "-t",
+        str(MOCK_VIDEO_DURATION_SECONDS),
+        "-r",
+        "30",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        str(file_path),
+    ]
+
+    try:
+        subprocess.run(command_with_text, check=True, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        try:
+            file_path.unlink(missing_ok=True)
+            subprocess.run(fallback_command, check=True, capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as fallback_exc:
+            file_path.unlink(missing_ok=True)
+            raise RuntimeError("Could not generate a valid MP4 mock video.") from fallback_exc
+
+    if not is_valid_mp4_file(file_path):
+        file_path.unlink(missing_ok=True)
+        raise RuntimeError("Generated mock video is not a valid MP4 file.")
+
     return filename, file_path, file_path.stat().st_size
 
 
@@ -155,21 +233,18 @@ def generate_mock_video(
     resolution = payload.resolution or active_settings.video_default_resolution or "1080p"
     provider = active_settings.video_provider or "mock"
     video_dir = get_video_storage_dir(active_settings)
-    mock_text = "\n".join(
-        [
-            "VVE Engine mock video placeholder",
-            f"project_id={project.id}",
-            f"lesson_id={payload.lesson_id or ''}",
-            f"module_id={payload.module_id or ''}",
-            f"audio_id={audio.id if audio else ''}",
-            f"avatar_id={payload.avatar_id or ''}",
-            f"avatar_name={payload.avatar_name or ''}",
-            f"resolution={resolution}",
-            f"format={video_format}",
-            "provider=mock",
-        ]
-    )
-    file_name, file_path, file_size = create_mock_video_file(video_dir, project.id, video_format, mock_text)
+    file_name: str | None = None
+    file_path: Path | None = None
+    file_size: int | None = None
+    video_status = "completed"
+    error_message: str | None = None
+
+    try:
+        file_name, file_path, file_size = create_mock_video_file(video_dir, project.id, resolution)
+    except RuntimeError:
+        video_status = "completed_mock"
+        error_message = MOCK_VIDEO_UNAVAILABLE_MESSAGE
+
     now = datetime.now(UTC)
 
     video = GeneratedVideo(
@@ -180,15 +255,17 @@ def generate_mock_video(
         avatar_id=payload.avatar_id,
         avatar_name=payload.avatar_name,
         provider=provider,
-        status="completed",
+        status=video_status,
         resolution=resolution,
         format=video_format,
-        file_path=str(file_path),
+        file_path=str(file_path) if file_path else None,
         file_name=file_name,
         file_size_bytes=file_size,
-        duration_seconds=int(audio.duration_seconds or 0) if audio else None,
+        duration_seconds=MOCK_VIDEO_DURATION_SECONDS,
+        error_message=error_message,
         extra_metadata={
             "mock": True,
+            "mock_mp4_real": video_status == "completed",
             "source": "fase_18_0",
             "audio_title": audio.title if audio else None,
             **(payload.extra_metadata or {}),
@@ -204,16 +281,18 @@ def generate_mock_video(
 def get_video_download_path(db: Session, current_user: User, project_id: UUID, video_id: UUID) -> tuple[GeneratedVideo, Path]:
     video = get_video_for_project(db, current_user, project_id, video_id)
     if video.status != "completed":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Vídeo ainda não está pronto para download.")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=MOCK_VIDEO_UNAVAILABLE_MESSAGE)
     if not video.file_path:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Arquivo de vídeo não encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=MOCK_VIDEO_UNAVAILABLE_MESSAGE)
 
     video_dir = get_video_storage_dir().resolve()
     file_path = Path(video.file_path).resolve()
     if video_dir not in file_path.parents:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Caminho de vídeo inválido.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Caminho de video invalido.")
     if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Arquivo de vídeo não encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=MOCK_VIDEO_UNAVAILABLE_MESSAGE)
+    if not is_valid_mp4_file(file_path):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=MOCK_VIDEO_UNAVAILABLE_MESSAGE)
 
     return video, file_path
 
