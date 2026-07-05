@@ -53,6 +53,21 @@ def count_course_structure_items(course_structure: dict[str, Any]) -> tuple[int,
     return len(modules), lesson_count
 
 
+def get_course_module_titles(course_structure: dict[str, Any]) -> list[str]:
+    course = course_structure.get("course") if isinstance(course_structure, dict) else {}
+    modules = as_list(course.get("modules") if isinstance(course, dict) else [])
+    titles: list[str] = []
+    for module in modules:
+        if not isinstance(module, dict):
+            continue
+        title = module.get("title")
+        module_number = module.get("module_number")
+        if isinstance(title, str) and title.strip():
+            prefix = f"Modulo {module_number}: " if module_number else ""
+            titles.append(f"{prefix}{title.strip()}")
+    return titles
+
+
 def count_document_sequence_items(document_analysis: dict[str, Any]) -> int:
     analysis = get_document_analysis_payload(document_analysis)
     sequence_count = len(as_list(analysis.get("document_sequence")))
@@ -378,8 +393,22 @@ def generate_project_structure(
             raise RuntimeError(structure_response.error or "Falha ao gerar estrutura do curso com IA.")
 
         course_structure = parse_json_content(structure_response.content)
+        module_count, lesson_count = count_course_structure_items(course_structure)
+        module_titles = get_course_module_titles(course_structure)
+        add_processing_log(
+            db,
+            project_id=project.id,
+            organization_id=current_user.organization_id,
+            job_id=job.id,
+            message="Estrutura inicial recebida da IA",
+            context_json={
+                "modules": module_count,
+                "lessons": lesson_count,
+                "module_titles": module_titles,
+                "insufficient_retry": False,
+            },
+        )
         if is_course_structure_insufficient(course_structure, document_analysis, extracted_text):
-            module_count, lesson_count = count_course_structure_items(course_structure)
             update_processing_job(
                 db,
                 job,
@@ -393,7 +422,12 @@ def generate_project_structure(
                 organization_id=current_user.organization_id,
                 job_id=job.id,
                 message="Estrutura inicial insuficiente; reexecutando geracao expandida",
-                context_json={"modules": module_count, "lessons": lesson_count},
+                context_json={
+                    "modules": module_count,
+                    "lessons": lesson_count,
+                    "module_titles": module_titles,
+                    "insufficient_retry": True,
+                },
             )
             expansion_system_prompt, expansion_user_prompt = build_course_structure_expansion_prompt(
                 project,
@@ -425,6 +459,7 @@ def generate_project_structure(
 
             expanded_structure = parse_json_content(expansion_response.content)
             expanded_module_count, expanded_lesson_count = count_course_structure_items(expanded_structure)
+            expanded_module_titles = get_course_module_titles(expanded_structure)
             if expanded_module_count >= module_count and expanded_lesson_count >= lesson_count:
                 course_structure = expanded_structure
                 add_processing_log(
@@ -433,10 +468,17 @@ def generate_project_structure(
                     organization_id=current_user.organization_id,
                     job_id=job.id,
                     message="Estrutura expandida recebida da IA",
-                    context_json={"modules": expanded_module_count, "lessons": expanded_lesson_count},
+                    context_json={
+                        "modules": expanded_module_count,
+                        "lessons": expanded_lesson_count,
+                        "module_titles": expanded_module_titles,
+                        "insufficient_retry": True,
+                    },
                 )
 
         update_processing_job(db, job, 75, "Estrutura recebida", "Estrutura do curso recebida da IA")
+        final_module_count, final_lesson_count = count_course_structure_items(course_structure)
+        final_module_titles = get_course_module_titles(course_structure)
         structure_content = save_generated_content(
             db,
             project=project,
@@ -462,7 +504,12 @@ def generate_project_structure(
             organization_id=current_user.organization_id,
             job_id=job.id,
             message="Estrutura de curso gerada com sucesso",
-            context_json=job.result_json,
+            context_json={
+                **job.result_json,
+                "modules": final_module_count,
+                "lessons": final_lesson_count,
+                "module_titles": final_module_titles,
+            },
         )
         db.commit()
         return {

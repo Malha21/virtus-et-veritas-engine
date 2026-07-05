@@ -148,7 +148,7 @@ def build_course_structure_expansion_prompt(
     user_prompt = f"""
 {language_instruction}
 
-A estrutura anterior ficou superficial. Gere uma estrutura completa, respeitando todos os capítulos e seções principais do documento.
+A estrutura anterior ficou superficial e não cobriu o documento inteiro. Gere uma estrutura completa, cobrindo todos os capítulos e seções principais do documento.
 
 Projeto:
 - Titulo: {project.title}
