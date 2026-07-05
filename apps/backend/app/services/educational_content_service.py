@@ -36,8 +36,6 @@ from app.services.processing_service import add_processing_log, update_processin
 from app.services.project_service import get_project_by_id
 
 EXCERPT_CHARS = 20000
-MAX_LESSON_SCRIPTS_PER_RUN = 3
-MAX_MODULE_QUIZZES_PER_RUN = 2
 MAX_COMPLEMENTARY_MATERIALS_PER_RUN = 1
 MAX_PRESENTATION_CONTEXT_ITEMS = 8
 MAX_PRESENTATION_UPDATE_BYTES = 250_000
@@ -807,6 +805,7 @@ def generate_educational_content(
     document_analysis = analysis_content.content_json if analysis_content and analysis_content.content_json else {}
     course_structure = structure_content.content_json
     modules = course_structure.get("course", {}).get("modules", [])
+    total_lessons = sum(len(module.get("lessons", [])) for module in modules)
 
     provider_record = get_openai_provider_record(db)
     project_file = get_latest_extracted_text_file(db, project)
@@ -856,8 +855,8 @@ def generate_educational_content(
             message="Geração educacional iniciada",
             context_json={
                 "generation_language": generation_language,
-                "max_lesson_scripts": MAX_LESSON_SCRIPTS_PER_RUN,
-                "max_module_quizzes": MAX_MODULE_QUIZZES_PER_RUN,
+                "total_modules": len(modules),
+                "total_lessons": total_lessons,
                 "max_complementary_materials": MAX_COMPLEMENTARY_MATERIALS_PER_RUN,
                 "presentation_deck": True,
             },
@@ -905,7 +904,7 @@ def generate_educational_content(
             )
             raise RuntimeError("Falha ao gerar resumo do curso com IA. Tente novamente em instantes.") from exc
 
-        for module in modules[:MAX_MODULE_QUIZZES_PER_RUN]:
+        for module in modules:
             module_number_for_log = module.get("module_number") or "?"
             try:
                 update_processing_job(db, job, 50, "Gerando quizzes", f"Gerando quiz do modulo {module_number_for_log}")
@@ -960,14 +959,8 @@ def generate_educational_content(
                     context_json={"error": str(exc)},
                 )
 
-        lesson_limit_reached = False
         for module in modules:
-            if lesson_limit_reached:
-                break
             for lesson in module.get("lessons", []):
-                if counts["lesson_scripts"] >= MAX_LESSON_SCRIPTS_PER_RUN:
-                    lesson_limit_reached = True
-                    break
                 module_number_for_log = module.get("module_number") or "?"
                 lesson_number_for_log = lesson.get("lesson_number") or "?"
                 try:

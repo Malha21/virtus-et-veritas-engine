@@ -26,8 +26,6 @@ from app.providers.ai import AIProviderRequest, AIProviderResponse, OpenAIProvid
 from app.services.processing_service import add_processing_log, update_processing_job
 from app.services.project_service import get_project_by_id
 
-MAX_INITIAL_TEXT_CHARS = 60000
-
 
 def get_openai_provider_record(db: Session) -> AIProvider:
     settings = get_settings()
@@ -87,7 +85,7 @@ def load_extracted_text(project_file: ProjectFile) -> str:
             detail="Texto extraido vazio.",
         )
 
-    return extracted_text[:MAX_INITIAL_TEXT_CHARS]
+    return extracted_text
 
 
 def parse_json_content(content: str | None) -> dict[str, Any]:
