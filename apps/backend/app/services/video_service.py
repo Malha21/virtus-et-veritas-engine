@@ -17,7 +17,6 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.video import GeneratedVideoGenerateRequest
 
-MOCK_VIDEO_DURATION_SECONDS = 3
 MOCK_VIDEO_UNAVAILABLE_MESSAGE = "Arquivo MP4 real ainda não disponível para este vídeo mock."
 
 
@@ -139,6 +138,30 @@ def get_video_size(resolution: str) -> str:
     return "1920x1080"
 
 
+def get_media_duration_seconds(file_path: Path) -> float | None:
+    ffprobe_binary = shutil.which("ffprobe")
+    if not ffprobe_binary or not file_path.exists():
+        return None
+
+    command = [
+        ffprobe_binary,
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(file_path),
+    ]
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=15)
+        duration = float(result.stdout.strip())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+    return duration if duration > 0 else None
+
+
 def is_valid_mp4_file(file_path: Path) -> bool:
     if file_path.suffix.lower() != ".mp4" or not file_path.exists() or not file_path.is_file():
         return False
@@ -147,15 +170,32 @@ def is_valid_mp4_file(file_path: Path) -> bool:
     return b"ftyp" in file_path.read_bytes()[:64]
 
 
-def create_mock_video_file(video_dir: Path, project_id: UUID, resolution: str) -> tuple[str, Path, int]:
+def get_video_generation_timeout(audio: GeneratedAudio | None) -> int:
+    if audio and audio.duration_seconds:
+        return max(60, int(audio.duration_seconds) + 90)
+    return 300
+
+
+def create_mock_video_file(
+    video_dir: Path,
+    project_id: UUID,
+    resolution: str,
+    audio: GeneratedAudio | None,
+) -> tuple[str, Path, int, float | None]:
     ffmpeg_binary = shutil.which("ffmpeg")
     if not ffmpeg_binary:
         raise RuntimeError("ffmpeg is not available in the backend container.")
+    if audio is None or not audio.file_path:
+        raise RuntimeError("A source audio file is required to generate a mock video.")
+
+    audio_path = Path(audio.file_path)
+    if not audio_path.exists() or not audio_path.is_file():
+        raise RuntimeError("Source audio file does not exist.")
 
     filename = f"{project_id}-mock-video-{uuid.uuid4().hex}.mp4"
     file_path = video_dir / filename
     video_filter = (
-        f"color=c=#050505:s={get_video_size(resolution)}:d={MOCK_VIDEO_DURATION_SECONDS},"
+        f"color=c=#050505:s={get_video_size(resolution)}:r=30,"
         "drawtext=text='VVE Engine - Video mock':fontcolor=white:fontsize=56:x=(w-text_w)/2:y=(h-text_h)/2"
     )
     command_with_text = [
@@ -165,14 +205,17 @@ def create_mock_video_file(video_dir: Path, project_id: UUID, resolution: str) -
         "lavfi",
         "-i",
         video_filter,
-        "-t",
-        str(MOCK_VIDEO_DURATION_SECONDS),
-        "-r",
-        "30",
+        "-i",
+        str(audio_path),
+        "-shortest",
         "-c:v",
         "libx264",
         "-pix_fmt",
         "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
         "-movflags",
         "+faststart",
         str(file_path),
@@ -183,26 +226,30 @@ def create_mock_video_file(video_dir: Path, project_id: UUID, resolution: str) -
         "-f",
         "lavfi",
         "-i",
-        f"color=c=#050505:s={get_video_size(resolution)}:d={MOCK_VIDEO_DURATION_SECONDS}",
-        "-t",
-        str(MOCK_VIDEO_DURATION_SECONDS),
-        "-r",
-        "30",
+        f"color=c=#050505:s={get_video_size(resolution)}:r=30",
+        "-i",
+        str(audio_path),
+        "-shortest",
         "-c:v",
         "libx264",
         "-pix_fmt",
         "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
         "-movflags",
         "+faststart",
         str(file_path),
     ]
+    timeout = get_video_generation_timeout(audio)
 
     try:
-        subprocess.run(command_with_text, check=True, capture_output=True, text=True, timeout=30)
+        subprocess.run(command_with_text, check=True, capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.SubprocessError) as exc:
         try:
             file_path.unlink(missing_ok=True)
-            subprocess.run(fallback_command, check=True, capture_output=True, text=True, timeout=30)
+            subprocess.run(fallback_command, check=True, capture_output=True, text=True, timeout=timeout)
         except (OSError, subprocess.SubprocessError) as fallback_exc:
             file_path.unlink(missing_ok=True)
             raise RuntimeError("Could not generate a valid MP4 mock video.") from fallback_exc
@@ -211,7 +258,8 @@ def create_mock_video_file(video_dir: Path, project_id: UUID, resolution: str) -
         file_path.unlink(missing_ok=True)
         raise RuntimeError("Generated mock video is not a valid MP4 file.")
 
-    return filename, file_path, file_path.stat().st_size
+    duration = get_media_duration_seconds(file_path) or audio.duration_seconds
+    return filename, file_path, file_path.stat().st_size, duration
 
 
 def generate_mock_video(
@@ -236,11 +284,12 @@ def generate_mock_video(
     file_name: str | None = None
     file_path: Path | None = None
     file_size: int | None = None
+    duration_seconds: float | None = None
     video_status = "completed"
     error_message: str | None = None
 
     try:
-        file_name, file_path, file_size = create_mock_video_file(video_dir, project.id, resolution)
+        file_name, file_path, file_size, duration_seconds = create_mock_video_file(video_dir, project.id, resolution, audio)
     except RuntimeError:
         video_status = "completed_mock"
         error_message = MOCK_VIDEO_UNAVAILABLE_MESSAGE
@@ -261,7 +310,7 @@ def generate_mock_video(
         file_path=str(file_path) if file_path else None,
         file_name=file_name,
         file_size_bytes=file_size,
-        duration_seconds=MOCK_VIDEO_DURATION_SECONDS,
+        duration_seconds=int(round(duration_seconds)) if duration_seconds else None,
         error_message=error_message,
         extra_metadata={
             "mock": True,

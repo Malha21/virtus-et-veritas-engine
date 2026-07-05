@@ -1661,13 +1661,13 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <label className="grid gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
             Áudio base
             <select
               value={selectedAudio?.id || ""}
               onChange={(event) => setSelectedAudioId(event.target.value)}
               disabled={!audios.length}
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full min-w-0 truncate overflow-hidden text-ellipsis rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {audios.length ? (
                 audios.map((audio) => (
@@ -1682,31 +1682,31 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
               )}
             </select>
           </label>
-          <label className="grid gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
             Avatar ID
             <input
               value={videoAvatarId}
               onChange={(event) => setVideoAvatarId(event.target.value)}
               placeholder="avatar_demo_01"
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
             />
           </label>
-          <label className="grid gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
             Nome do avatar
             <input
               value={videoAvatarName}
               onChange={(event) => setVideoAvatarName(event.target.value)}
               placeholder="Instrutor Virtus"
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
             />
           </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="grid gap-2 text-sm text-slate-300">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:col-span-2">
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
               Resolução
               <select
                 value={videoResolution}
                 onChange={(event) => setVideoResolution(event.target.value)}
-                className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
               >
                 <option value="1080p" className="bg-navy-950 text-slate-100">
                   1080p
@@ -1716,12 +1716,12 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
                 </option>
               </select>
             </label>
-            <label className="grid gap-2 text-sm text-slate-300">
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
               Formato
               <select
                 value={videoFormat}
                 onChange={(event) => setVideoFormat(event.target.value)}
-                className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
               >
                 <option value="mp4" className="bg-navy-950 text-slate-100">
                   mp4
