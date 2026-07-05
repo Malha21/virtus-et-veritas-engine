@@ -40,6 +40,13 @@ export type GeneratedAudio = {
   download_url: string;
 };
 
+export type NarrationAudiosZipParams = {
+  scope: "lesson" | "module" | "all";
+  generated_content_id?: string | null;
+  module_number?: number | null;
+  title_contains?: string | null;
+};
+
 export type InstructorProfilePayload = {
   display_name: string | null;
   bio: string | null;
@@ -405,6 +412,15 @@ export function getAudioDownloadUrl(projectId: string, audioId: string): string 
   return `${baseURL}/projects/${projectId}/audio/${audioId}/download`;
 }
 
+export function getAudiosZipExportUrl(projectId: string, params: NarrationAudiosZipParams): string {
+  const searchParams = new URLSearchParams();
+  searchParams.set("scope", params.scope);
+  if (params.generated_content_id) searchParams.set("generated_content_id", params.generated_content_id);
+  if (params.module_number) searchParams.set("module_number", String(params.module_number));
+  if (params.title_contains) searchParams.set("title_contains", params.title_contains);
+  return `${baseURL}/projects/${projectId}/audio/export.zip?${searchParams.toString()}`;
+}
+
 export async function generateNarrationAudio(
   projectId: string,
   payload: GenerateNarrationAudioPayload,
@@ -465,6 +481,45 @@ export async function fetchNarrationAudioBlob(projectId: string, audioId: string
 export async function downloadNarrationAudio(projectId: string, audio: GeneratedAudio): Promise<void> {
   const blob = await fetchNarrationAudioBlob(projectId, audio.id);
   const filename = `${audio.title || "narration-audio"}-${audio.id}.${audio.format || "mp3"}`;
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+function getFilenameFromContentDisposition(value: string | null, fallback: string): string {
+  if (!value) return fallback;
+  const match = value.match(/filename="?([^"]+)"?/i);
+  return match?.[1] || fallback;
+}
+
+export async function downloadNarrationAudiosZip(
+  projectId: string,
+  params: NarrationAudiosZipParams,
+  fallbackFilename = "audios.zip",
+): Promise<void> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  const response = await fetch(getAudiosZipExportUrl(projectId, params), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+    throw new ApiError(getApiErrorMessage(payload), response.status);
+  }
+
+  const blob = await response.blob();
+  const filename = getFilenameFromContentDisposition(response.headers.get("Content-Disposition"), fallbackFilename);
   const objectUrl = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = objectUrl;

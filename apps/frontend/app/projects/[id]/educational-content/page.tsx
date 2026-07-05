@@ -13,6 +13,7 @@ import {
   downloadComplementaryMaterialsPdf,
   downloadFullCoursePdf,
   downloadLessonScriptsPdf,
+  downloadNarrationAudiosZip,
   downloadNarrationAudio,
   downloadPresentationPdf,
   downloadPresentationPptx,
@@ -947,6 +948,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
   const [profileError, setProfileError] = useState("");
   const [audioMessage, setAudioMessage] = useState("");
   const [audioError, setAudioError] = useState("");
+  const [exportingAudioZip, setExportingAudioZip] = useState(false);
 
   useEffect(() => {
     if (!sortedContents.length) {
@@ -1160,6 +1162,50 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
       } else {
         setAudioError("Não foi possível excluir o áudio.");
       }
+    }
+  }
+
+  async function handleDownloadSelectedAudiosZip() {
+    if (!selectedAudios.length) {
+      setAudioError(mode === "module" ? "Nenhum audio gerado para este modulo ainda." : "Nenhum audio gerado para esta aula ainda.");
+      return;
+    }
+
+    setAudioError("");
+    setAudioMessage("");
+    setExportingAudioZip(true);
+    try {
+      if (mode === "module" && selectedModule) {
+        await downloadNarrationAudiosZip(
+          projectId,
+          {
+            scope: "module",
+            module_number: selectedModule.moduleNumber === 9999 ? null : selectedModule.moduleNumber,
+            title_contains: audioBaseTitle,
+          },
+          "audios-modulo.zip",
+        );
+      } else {
+        await downloadNarrationAudiosZip(
+          projectId,
+          {
+            scope: "lesson",
+            generated_content_id: selectedContent?.id || null,
+          },
+          "audios-aula.zip",
+        );
+      }
+      setAudioMessage("Exportacao de audios iniciada.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setAudioError("Sua sessÃ£o expirou. FaÃ§a login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setAudioError(err.message);
+      } else {
+        setAudioError("Nao foi possivel baixar os audios agora.");
+      }
+    } finally {
+      setExportingAudioZip(false);
     }
   }
 
@@ -1384,7 +1430,21 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
               {mode === "module" ? "Audios do modulo selecionado" : "Audios da aula selecionada"}
             </p>
           </div>
-          <p className="text-xs text-slate-500">{audios.length} audios no projeto</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-xs text-slate-500">{audios.length} audios no projeto</p>
+            <button
+              type="button"
+              onClick={handleDownloadSelectedAudiosZip}
+              disabled={!selectedAudios.length || exportingAudioZip}
+              className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {exportingAudioZip
+                ? "Preparando ZIP..."
+                : mode === "module"
+                  ? "Baixar audios do modulo"
+                  : "Baixar audios da aula"}
+            </button>
+          </div>
         </div>
 
         <NarrationAudioList

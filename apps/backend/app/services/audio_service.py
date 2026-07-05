@@ -1,7 +1,9 @@
 import uuid
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from uuid import UUID
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import httpx
 from fastapi import HTTPException, status
@@ -39,6 +41,12 @@ class VoiceSettings:
     output_format: str
     personalized_voice_used: bool
     notice: str | None = None
+
+
+@dataclass(frozen=True)
+class AudioZipExport:
+    filename: str
+    content: bytes
 
 
 def get_audio_storage_dir(settings: Settings | None = None) -> Path:
@@ -372,6 +380,194 @@ def list_project_audios(db: Session, current_user: User, project_id: UUID) -> li
         .scalars()
         .all()
     )
+
+
+def slugify_audio_part(value: object, fallback: str) -> str:
+    text = str(value or "").strip().lower()
+    replacements = {
+        "á": "a",
+        "à": "a",
+        "â": "a",
+        "ã": "a",
+        "é": "e",
+        "ê": "e",
+        "í": "i",
+        "ó": "o",
+        "ô": "o",
+        "õ": "o",
+        "ú": "u",
+        "ç": "c",
+    }
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    clean = "".join(char if char.isalnum() else "-" for char in text)
+    clean = "-".join(part for part in clean.split("-") if part)
+    return clean[:80] or fallback
+
+
+def format_audio_number(value: int | None, fallback: str) -> str:
+    if value is None or value >= 9999:
+        return fallback
+    return f"{value:02d}"
+
+
+def get_audio_file_path(audio: GeneratedAudio) -> Path | None:
+    audio_dir = get_audio_storage_dir().resolve()
+    file_path = Path(audio.file_path).resolve()
+    if audio_dir not in file_path.parents:
+        return None
+    if not file_path.exists() or not file_path.is_file():
+        return None
+    return file_path
+
+
+def get_content_metadata_number(content: GeneratedContent | None, field: str) -> int | None:
+    if content is None or not content.content_json:
+        return None
+    content_json = content.content_json
+    metadata = content_json.get("metadata") if isinstance(content_json.get("metadata"), dict) else {}
+    script = content_json.get("lesson_script") if isinstance(content_json.get("lesson_script"), dict) else {}
+    value = script.get(field) or metadata.get(field)
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def build_audio_zip_path(audio: GeneratedAudio, content_by_id: dict[UUID, GeneratedContent]) -> str:
+    content = content_by_id.get(audio.generated_content_id) if audio.generated_content_id else None
+    module_number = get_content_metadata_number(content, "module_number")
+    lesson_number = get_content_metadata_number(content, "lesson_number")
+    title = audio.title or ""
+    audio_format = slugify_audio_part(audio.format or "mp3", "mp3")
+
+    if content is not None:
+        module_part = f"modulo-{format_audio_number(module_number, 'sem-modulo')}"
+        lesson_part = f"aula-{format_audio_number(lesson_number, 'sem-aula')}"
+        return f"{module_part}/{lesson_part}/bloco-{format_audio_number(audio.block_index, 'sem-bloco')}.{audio_format}"
+
+    module_number_from_title: int | None = None
+    lowered_title = title.lower()
+    if "modulo " in lowered_title or "módulo " in lowered_title:
+        for token in lowered_title.replace("módulo", "modulo").replace("-", " ").split():
+            if token.isdigit():
+                module_number_from_title = int(token)
+                break
+
+    if "consolidado" in lowered_title:
+        module_part = f"modulo-{format_audio_number(module_number_from_title, 'sem-modulo')}"
+        return f"{module_part}/consolidado/bloco-{format_audio_number(audio.block_index, 'sem-bloco')}.{audio_format}"
+
+    return f"outros-audios/audio-{audio.id}.{audio_format}"
+
+
+def filter_audios_for_export(
+    audios: list[GeneratedAudio],
+    scope: str,
+    generated_content_id: UUID | None = None,
+    module_number: int | None = None,
+    title_contains: str | None = None,
+) -> list[GeneratedAudio]:
+    normalized_scope = (scope or "all").lower()
+    normalized_title = (title_contains or "").strip().lower()
+
+    if normalized_scope == "lesson":
+        if generated_content_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="generated_content_id é obrigatório para exportar áudios da aula.",
+            )
+        return [audio for audio in audios if audio.generated_content_id == generated_content_id]
+
+    if normalized_scope == "module":
+        if normalized_title:
+            return [audio for audio in audios if normalized_title in (audio.title or "").lower()]
+        if module_number is not None:
+            module_prefix = f"modulo {module_number}"
+            return [
+                audio
+                for audio in audios
+                if audio.generated_content_id is None
+                and "consolidado" in (audio.title or "").lower()
+                and module_prefix in (audio.title or "").lower()
+            ]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="module_number ou title_contains é obrigatório para exportar áudios do módulo.",
+        )
+
+    return audios
+
+
+def export_project_audios_zip(
+    db: Session,
+    current_user: User,
+    project_id: UUID,
+    scope: str = "all",
+    generated_content_id: UUID | None = None,
+    module_number: int | None = None,
+    title_contains: str | None = None,
+) -> AudioZipExport:
+    get_project_for_audio(db, current_user, project_id)
+    audios = list_project_audios(db, current_user, project_id)
+    selected_audios = filter_audios_for_export(audios, scope, generated_content_id, module_number, title_contains)
+
+    if not selected_audios:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nenhum áudio encontrado para exportação.",
+        )
+
+    content_ids = [audio.generated_content_id for audio in selected_audios if audio.generated_content_id]
+    contents = []
+    if content_ids:
+        contents = list(
+            db.execute(
+                select(GeneratedContent).where(
+                    GeneratedContent.id.in_(content_ids),
+                    GeneratedContent.project_id == project_id,
+                    GeneratedContent.organization_id == current_user.organization_id,
+                )
+            )
+            .scalars()
+            .all()
+        )
+    content_by_id = {content.id: content for content in contents}
+
+    zip_buffer = BytesIO()
+    files_added = 0
+    used_names: set[str] = set()
+    with ZipFile(zip_buffer, "w", ZIP_DEFLATED) as archive:
+        for audio in selected_audios:
+            file_path = get_audio_file_path(audio)
+            if file_path is None:
+                continue
+            archive_name = build_audio_zip_path(audio, content_by_id)
+            if archive_name in used_names:
+                stem = archive_name.rsplit(".", 1)[0]
+                suffix = archive_name.rsplit(".", 1)[1] if "." in archive_name else "mp3"
+                archive_name = f"{stem}-{audio.id}.{suffix}"
+            used_names.add(archive_name)
+            archive.write(file_path, archive_name)
+            files_added += 1
+
+    if files_added == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nenhum arquivo de áudio encontrado para exportação.",
+        )
+
+    normalized_scope = (scope or "all").lower()
+    if normalized_scope == "lesson":
+        filename = "audios-aula.zip"
+    elif normalized_scope == "module":
+        suffix = format_audio_number(module_number, "selecionado") if module_number else "selecionado"
+        filename = f"audios-modulo-{suffix}.zip"
+    else:
+        filename = "audios-projeto.zip"
+
+    return AudioZipExport(filename=filename, content=zip_buffer.getvalue())
 
 
 def get_audio_download_path(db: Session, current_user: User, project_id: UUID, audio_id: UUID) -> tuple[GeneratedAudio, Path]:
