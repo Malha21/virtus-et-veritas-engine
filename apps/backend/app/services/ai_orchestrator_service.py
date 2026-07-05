@@ -19,6 +19,7 @@ from app.models.user import User
 from app.prompts import (
     COURSE_STRUCTURE_PROMPT_VERSION,
     DOCUMENT_ANALYSIS_PROMPT_VERSION,
+    build_course_structure_expansion_prompt,
     build_course_structure_prompt,
     build_document_analysis_prompt,
 )
@@ -27,6 +28,72 @@ from app.services.processing_service import add_processing_log, update_processin
 from app.services.project_service import get_project_by_id
 
 MAX_INITIAL_TEXT_CHARS = 60000
+MEDIUM_LARGE_TEXT_CHARS = 45000
+MIN_MODULES_FOR_MEDIUM_LARGE_DOCUMENT = 5
+MIN_LESSONS_FOR_MEDIUM_LARGE_DOCUMENT = 15
+
+
+def as_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def get_document_analysis_payload(document_analysis: dict[str, Any]) -> dict[str, Any]:
+    payload = document_analysis.get("document_analysis")
+    return payload if isinstance(payload, dict) else document_analysis
+
+
+def count_course_structure_items(course_structure: dict[str, Any]) -> tuple[int, int]:
+    course = course_structure.get("course") if isinstance(course_structure, dict) else {}
+    modules = as_list(course.get("modules") if isinstance(course, dict) else [])
+    lesson_count = 0
+    for module in modules:
+        if not isinstance(module, dict):
+            continue
+        lesson_count += len(as_list(module.get("lessons")))
+    return len(modules), lesson_count
+
+
+def count_document_sequence_items(document_analysis: dict[str, Any]) -> int:
+    analysis = get_document_analysis_payload(document_analysis)
+    sequence_count = len(as_list(analysis.get("document_sequence")))
+    suggested_count = len(as_list(analysis.get("suggested_course_path")))
+    return max(sequence_count, suggested_count)
+
+
+def text_contains_table_of_contents(extracted_text: str) -> bool:
+    lowered = extracted_text[:12000].lower()
+    markers = [
+        "sumario",
+        "sumário",
+        "introducao",
+        "introdução",
+        "capitulo",
+        "capítulo",
+        "o primeiro compromisso",
+        "o segundo compromisso",
+        "o terceiro compromisso",
+        "o quarto compromisso",
+    ]
+    return sum(1 for marker in markers if marker in lowered) >= 3
+
+
+def is_medium_or_large_document(document_analysis: dict[str, Any], extracted_text: str) -> bool:
+    return (
+        len(extracted_text) >= MEDIUM_LARGE_TEXT_CHARS
+        or count_document_sequence_items(document_analysis) >= 5
+        or text_contains_table_of_contents(extracted_text)
+    )
+
+
+def is_course_structure_insufficient(
+    course_structure: dict[str, Any],
+    document_analysis: dict[str, Any],
+    extracted_text: str,
+) -> bool:
+    if not is_medium_or_large_document(document_analysis, extracted_text):
+        return False
+    module_count, lesson_count = count_course_structure_items(course_structure)
+    return module_count < MIN_MODULES_FOR_MEDIUM_LARGE_DOCUMENT or lesson_count < MIN_LESSONS_FOR_MEDIUM_LARGE_DOCUMENT
 
 
 def get_openai_provider_record(db: Session) -> AIProvider:
@@ -311,6 +378,64 @@ def generate_project_structure(
             raise RuntimeError(structure_response.error or "Falha ao gerar estrutura do curso com IA.")
 
         course_structure = parse_json_content(structure_response.content)
+        if is_course_structure_insufficient(course_structure, document_analysis, extracted_text):
+            module_count, lesson_count = count_course_structure_items(course_structure)
+            update_processing_job(
+                db,
+                job,
+                68,
+                "Estrutura superficial detectada",
+                "Reexecutando geracao para expandir modulos e aulas",
+            )
+            add_processing_log(
+                db,
+                project_id=project.id,
+                organization_id=current_user.organization_id,
+                job_id=job.id,
+                message="Estrutura inicial insuficiente; reexecutando geracao expandida",
+                context_json={"modules": module_count, "lessons": lesson_count},
+            )
+            expansion_system_prompt, expansion_user_prompt = build_course_structure_expansion_prompt(
+                project,
+                document_analysis,
+                extracted_text,
+                course_structure,
+                generation_language,
+            )
+            expansion_response = ai_provider.generate_text(
+                AIProviderRequest(
+                    system_prompt=expansion_system_prompt,
+                    user_prompt=expansion_user_prompt,
+                    model=settings.openai_default_model,
+                )
+            )
+            register_ai_request(
+                db,
+                project_id=project.id,
+                job_id=job.id,
+                provider_id=provider_record.id,
+                request_type="expand_course_structure",
+                prompt_version=COURSE_STRUCTURE_PROMPT_VERSION,
+                response=expansion_response,
+                model_name=settings.openai_default_model,
+                generation_language=generation_language,
+            )
+            if not expansion_response.success:
+                raise RuntimeError(expansion_response.error or "Falha ao expandir estrutura do curso com IA.")
+
+            expanded_structure = parse_json_content(expansion_response.content)
+            expanded_module_count, expanded_lesson_count = count_course_structure_items(expanded_structure)
+            if expanded_module_count >= module_count and expanded_lesson_count >= lesson_count:
+                course_structure = expanded_structure
+                add_processing_log(
+                    db,
+                    project_id=project.id,
+                    organization_id=current_user.organization_id,
+                    job_id=job.id,
+                    message="Estrutura expandida recebida da IA",
+                    context_json={"modules": expanded_module_count, "lessons": expanded_lesson_count},
+                )
+
         update_processing_job(db, job, 75, "Estrutura recebida", "Estrutura do curso recebida da IA")
         structure_content = save_generated_content(
             db,
