@@ -50,6 +50,12 @@ type LessonModuleGroup = {
   lessons: GeneratedContent[];
 };
 
+type NarrationAudioGroups = {
+  byLessonId: Record<string, GeneratedAudio[]>;
+  byModuleKey: Record<string, GeneratedAudio[]>;
+  others: GeneratedAudio[];
+};
+
 type PresentationSlideDraft = {
   slide_number: number;
   title: string;
@@ -1068,6 +1074,20 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
       ? getModuleNarrationLabel(selectedModule)
       : getLessonScriptLabel(selectedScript, selectedContent);
   const audioGeneratedContentId = mode === "module" ? null : selectedContent?.id || null;
+  const audioBaseTitle =
+    mode === "module" && selectedModule
+      ? getModuleAudioBaseTitle(selectedModule)
+      : getLessonAudioBaseTitle(selectedScript, selectedContent);
+  const groupedAudios = groupAudiosForNarration(audios, sortedContents, moduleGroups);
+  const selectedAudios =
+    mode === "module" && selectedModule
+      ? groupedAudios.byModuleKey[selectedModule.key] || []
+      : selectedContent
+        ? groupedAudios.byLessonId[selectedContent.id] || []
+        : [];
+  const otherAudios = audios
+    .filter((audio) => !selectedAudios.some((selectedAudio) => selectedAudio.id === audio.id))
+    .sort(sortAudiosByCreatedAtDesc);
 
   async function copyNarration(key: string, text: string) {
     setCopiedKey("");
@@ -1087,7 +1107,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
       const audio = await generateNarrationAudio(projectId, {
         generated_content_id: audioGeneratedContentId,
         block_index: blockIndex,
-        title: `${narrationTitle} - Bloco ${blockIndex}`,
+        title: `${audioBaseTitle} - Bloco ${blockIndex}`,
         text: block,
         format: "mp3",
       });
@@ -1278,7 +1298,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
           narrationBlocks.map((block, index) => {
             const blockKey = `block-${index}`;
             const blockIndex = index + 1;
-            const audioTitle = `${narrationTitle} - Bloco ${blockIndex}`;
+            const audioTitle = `${audioBaseTitle} - Bloco ${blockIndex}`;
             const audio = findAudioForBlock(audios, blockIndex, audioGeneratedContentId, audioTitle);
             const audioUrl = audio ? audioUrls[audio.id] : "";
             const isGeneratingAudio = Boolean(loadingAudioByBlock[blockIndex]);
@@ -1355,6 +1375,102 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
           <EmptyState text="Não foi possível dividir a narração em blocos." />
         )}
       </section>
+
+      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-slate-100">Audios gerados</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {mode === "module" ? "Audios do modulo selecionado" : "Audios da aula selecionada"}
+            </p>
+          </div>
+          <p className="text-xs text-slate-500">{audios.length} audios no projeto</p>
+        </div>
+
+        <NarrationAudioList
+          title={mode === "module" ? "Modulo selecionado" : "Aula selecionada"}
+          emptyText={mode === "module" ? "Nenhum audio gerado para este modulo ainda." : "Nenhum audio gerado para esta aula ainda."}
+          audios={selectedAudios}
+          audioUrls={audioUrls}
+          onDownload={handleDownloadAudio}
+          onDelete={handleDeleteAudio}
+        />
+
+        <NarrationAudioList
+          title="Outros audios do projeto"
+          emptyText="Nenhum outro audio gerado neste projeto."
+          audios={otherAudios}
+          audioUrls={audioUrls}
+          onDownload={handleDownloadAudio}
+          onDelete={handleDeleteAudio}
+        />
+      </section>
+    </div>
+  );
+}
+
+function NarrationAudioList({
+  title,
+  emptyText,
+  audios,
+  audioUrls,
+  onDownload,
+  onDelete,
+}: {
+  title: string;
+  emptyText: string;
+  audios: GeneratedAudio[];
+  audioUrls: Record<string, string>;
+  onDownload: (audio: GeneratedAudio) => void;
+  onDelete: (audio: GeneratedAudio) => void;
+}) {
+  return (
+    <div className="mt-6 grid gap-3">
+      <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">{title}</p>
+      {audios.length ? (
+        audios.map((audio) => (
+          <article key={audio.id} className="rounded-md border border-white/10 bg-black/20 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-100">{audio.title || `Audio do bloco ${audio.block_index}`}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Bloco {audio.block_index} - {formatAudioDate(audio.created_at)}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Provider {audio.voice_provider || "OpenAI"} - Voz {audio.voice || "padrao"} - Modelo {audio.model || "padrao"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {audio.personalized_voice_used ? "Voz personalizada configurada" : "Voz padrao do sistema"}
+                </p>
+                {audio.voice_notice ? <p className="mt-2 text-xs text-gold-300">{audio.voice_notice}</p> : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => onDownload(audio)}
+                  className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                >
+                  Baixar audio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(audio)}
+                  className="rounded-md border border-red-400/40 px-3 py-2 text-sm text-red-300 transition hover:border-red-300 hover:text-red-200"
+                >
+                  Excluir audio
+                </button>
+              </div>
+            </div>
+            {audioUrls[audio.id] ? (
+              <audio controls src={audioUrls[audio.id]} className="mt-4 w-full" />
+            ) : (
+              <p className="mt-4 text-sm text-slate-400">Carregando player de audio...</p>
+            )}
+          </article>
+        ))
+      ) : (
+        <p className="rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-400">{emptyText}</p>
+      )}
     </div>
   );
 }
@@ -2919,6 +3035,89 @@ function buildModuleNarrationText(group: LessonModuleGroup): string {
   });
 
   return cleanNarrationText(parts.join("\n\n---\n\n"));
+}
+
+function getLessonAudioBaseTitle(
+  script: LessonScriptContent["lesson_script"] | undefined,
+  content?: GeneratedContent,
+): string {
+  const moduleNumber = safeText(script?.module_number);
+  const lessonNumber = safeText(script?.lesson_number);
+  const moduleLabel = moduleNumber === "Nao informado" ? "Modulo" : `Modulo ${moduleNumber}`;
+  const lessonLabel = lessonNumber === "Nao informado" ? "Aula" : `Aula ${lessonNumber}`;
+  const lessonTitle = safeText(script?.lesson_title || content?.title);
+
+  return lessonTitle === "Nao informado" ? `${moduleLabel} - ${lessonLabel}` : `${moduleLabel} - ${lessonLabel}: ${lessonTitle}`;
+}
+
+function getModuleAudioBaseTitle(group: LessonModuleGroup): string {
+  const moduleLabel = group.moduleNumber === 9999 ? "Modulo" : `Modulo ${group.moduleNumber}`;
+  return `${moduleLabel} - Consolidado`;
+}
+
+function sortAudiosByCreatedAtDesc(first: GeneratedAudio, second: GeneratedAudio): number {
+  return new Date(second.created_at).getTime() - new Date(first.created_at).getTime();
+}
+
+function groupAudiosForNarration(
+  audios: GeneratedAudio[],
+  lessons: GeneratedContent[],
+  moduleGroups: LessonModuleGroup[],
+): NarrationAudioGroups {
+  const byLessonId: Record<string, GeneratedAudio[]> = {};
+  const byModuleKey: Record<string, GeneratedAudio[]> = {};
+  const others: GeneratedAudio[] = [];
+
+  const lessonIds = new Set(lessons.map((lesson) => lesson.id));
+  const lessonTitleMap = new Map<string, string>();
+  lessons.forEach((lesson) => {
+    const script = (lesson.content_json as LessonScriptContent | null)?.lesson_script;
+    lessonTitleMap.set(lesson.id, getLessonAudioBaseTitle(script, lesson));
+  });
+
+  audios.forEach((audio) => {
+    if (audio.generated_content_id && lessonIds.has(audio.generated_content_id)) {
+      byLessonId[audio.generated_content_id] = byLessonId[audio.generated_content_id] || [];
+      byLessonId[audio.generated_content_id].push(audio);
+      return;
+    }
+
+    const title = audio.title || "";
+    const titleLesson = lessons.find((lesson) => {
+      const baseTitle = lessonTitleMap.get(lesson.id) || "";
+      return Boolean(baseTitle && title.startsWith(baseTitle));
+    });
+    if (titleLesson) {
+      byLessonId[titleLesson.id] = byLessonId[titleLesson.id] || [];
+      byLessonId[titleLesson.id].push(audio);
+      return;
+    }
+
+    const titleModule = moduleGroups.find((group) => {
+      const baseTitle = getModuleAudioBaseTitle(group);
+      const legacyTitle = getModuleNarrationLabel(group);
+      return title.startsWith(baseTitle) || title.startsWith(legacyTitle);
+    });
+    if (titleModule) {
+      byModuleKey[titleModule.key] = byModuleKey[titleModule.key] || [];
+      byModuleKey[titleModule.key].push(audio);
+      return;
+    }
+
+    others.push(audio);
+  });
+
+  Object.values(byLessonId).forEach((items) => items.sort(sortAudiosByCreatedAtDesc));
+  Object.values(byModuleKey).forEach((items) => items.sort(sortAudiosByCreatedAtDesc));
+  others.sort(sortAudiosByCreatedAtDesc);
+
+  return { byLessonId, byModuleKey, others };
+}
+
+function formatAudioDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "data nao informada";
+  return date.toLocaleString("pt-BR");
 }
 
 function splitNarrationBlocks(text: string): string[] {
