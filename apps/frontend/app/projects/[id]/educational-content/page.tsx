@@ -9,8 +9,10 @@ import { AppShell } from "@/components/layout/AppShell";
 import {
   ApiError,
   apiFetch,
+  createProjectVideoAvatar,
   deleteProjectAudio,
   deleteProjectVideo,
+  deleteProjectVideoAvatar,
   downloadComplementaryMaterialsPdf,
   downloadFullCoursePdf,
   downloadLessonScriptsPdf,
@@ -27,17 +29,22 @@ import {
   getDocumentAnalysis,
   generateProjectVideo,
   listProjectAudios,
+  listProjectVideoAvatars,
   listProjectVideos,
   refreshProjectVideoStatus,
   type GeneratedAudio,
   type GeneratedVideo,
   type InstructorProfile,
+  type VideoAvatar,
+  type VideoAvatarCreatePayload,
+  type VideoAvatarUpdatePayload,
   type VideoProvider,
   type VideoReviewUpdatePayload,
   updateComplementaryMaterial,
   updateLessonScript,
   updateModuleQuiz,
   updatePresentationDeck,
+  updateProjectVideoAvatar,
   updateProjectVideoReview,
 } from "@/lib/api";
 import type { GeneratedContent } from "@/types/content";
@@ -1502,7 +1509,10 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
   const sortedContents = sortLessonScripts(contents);
   const [audios, setAudios] = useState<GeneratedAudio[]>([]);
   const [videos, setVideos] = useState<GeneratedVideo[]>([]);
+  const [avatars, setAvatars] = useState<VideoAvatar[]>([]);
+  const [avatarsError, setAvatarsError] = useState("");
   const [selectedAudioId, setSelectedAudioId] = useState("");
+  const [selectedVideoAvatarId, setSelectedVideoAvatarId] = useState("");
   const [videoProvider, setVideoProvider] = useState<VideoProvider>("mock");
   const [videoAvatarId, setVideoAvatarId] = useState("");
   const [videoAvatarName, setVideoAvatarName] = useState("");
@@ -1561,6 +1571,28 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
   }, [projectId]);
 
   useEffect(() => {
+    let isActive = true;
+    setAvatarsError("");
+    listProjectVideoAvatars(projectId)
+      .then((items) => {
+        if (isActive) setAvatars(items);
+      })
+      .catch((err) => {
+        if (!isActive) return;
+        if (err instanceof ApiError && err.status === 401) {
+          setAvatarsError("Sua sessão expirou. Faça login novamente.");
+        } else if (err instanceof Error && err.message) {
+          setAvatarsError(err.message);
+        } else {
+          setAvatarsError("Não foi possível carregar os avatares.");
+        }
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
     if (!audios.length) {
       setSelectedAudioId("");
       return;
@@ -1571,6 +1603,15 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
     }
   }, [audios, selectedAudioId]);
 
+  useEffect(() => {
+    const avatar = avatars.find((item) => item.id === selectedVideoAvatarId && item.is_active);
+    if (avatar) {
+      setVideoProvider(avatar.provider);
+    }
+  }, [selectedVideoAvatarId, avatars]);
+
+  const activeVideoAvatars = avatars.filter((avatar) => avatar.is_active);
+  const selectedVideoAvatar = activeVideoAvatars.find((avatar) => avatar.id === selectedVideoAvatarId) || null;
   const selectedAudio = audios.find((audio) => audio.id === selectedAudioId) || audios[0] || null;
   const selectedLesson = selectedAudio?.generated_content_id
     ? sortedContents.find((content) => content.id === selectedAudio.generated_content_id) || null
@@ -1594,6 +1635,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
         lesson_id: selectedLesson?.id || null,
         module_id: null,
         audio_id: selectedAudio.id,
+        video_avatar_id: selectedVideoAvatar?.id || null,
         provider: videoProvider,
         avatar_id: videoAvatarId.trim() || null,
         avatar_name: videoAvatarName.trim() || null,
@@ -1707,26 +1749,67 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
-            Provider
+            Avatar
             <select
-              value={videoProvider}
-              onChange={(event) => setVideoProvider(event.target.value as VideoProvider)}
+              value={selectedVideoAvatarId}
+              onChange={(event) => setSelectedVideoAvatarId(event.target.value)}
               className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
             >
-              <option value="mock" className="bg-navy-950 text-slate-100">
-                Mock
+              <option value="" className="bg-navy-950 text-slate-100">
+                Manual (preencher campos abaixo)
               </option>
-              <option value="heygen" className="bg-navy-950 text-slate-100">
-                HeyGen
-              </option>
-              <option value="did" className="bg-navy-950 text-slate-100">
-                D-ID
-              </option>
-              <option value="sync" className="bg-navy-950 text-slate-100">
-                Sync Labs
-              </option>
+              {activeVideoAvatars.map((avatar) => (
+                <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                  {getVideoProviderLabel(avatar.provider)} - {avatar.name}
+                  {avatar.is_default ? " (padrão)" : ""}
+                </option>
+              ))}
             </select>
           </label>
+          {!activeVideoAvatars.length ? (
+            <p className="-mt-2 text-xs text-slate-500 md:col-span-2">
+              Nenhum avatar cadastrado ainda. Use a Biblioteca de Avatares abaixo ou preencha os campos manualmente.
+            </p>
+          ) : null}
+          {selectedVideoAvatar ? (
+            <div className="min-w-0 rounded-md border border-white/10 bg-black/20 p-3 text-xs text-slate-300 md:col-span-2">
+              <p>
+                Provider: <span className="text-slate-100">{getVideoProviderLabel(selectedVideoAvatar.provider)}</span>
+              </p>
+              {selectedVideoAvatar.avatar_id ? (
+                <p className="mt-1 break-words">Avatar ID: {selectedVideoAvatar.avatar_id}</p>
+              ) : null}
+              {selectedVideoAvatar.source_image_url ? (
+                <p className="mt-1 break-words">Imagem: {selectedVideoAvatar.source_image_url}</p>
+              ) : null}
+              {selectedVideoAvatar.source_video_url ? (
+                <p className="mt-1 break-words">Vídeo base: {selectedVideoAvatar.source_video_url}</p>
+              ) : null}
+              {selectedVideoAvatar.default_model ? <p className="mt-1">Modelo: {selectedVideoAvatar.default_model}</p> : null}
+            </div>
+          ) : (
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+              Provider
+              <select
+                value={videoProvider}
+                onChange={(event) => setVideoProvider(event.target.value as VideoProvider)}
+                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              >
+                <option value="mock" className="bg-navy-950 text-slate-100">
+                  Mock
+                </option>
+                <option value="heygen" className="bg-navy-950 text-slate-100">
+                  HeyGen
+                </option>
+                <option value="did" className="bg-navy-950 text-slate-100">
+                  D-ID
+                </option>
+                <option value="sync" className="bg-navy-950 text-slate-100">
+                  Sync Labs
+                </option>
+              </select>
+            </label>
+          )}
           <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
             Áudio base
             <select
@@ -1748,7 +1831,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
               )}
             </select>
           </label>
-          {videoProvider === "heygen" ? (
+          {!selectedVideoAvatar && videoProvider === "heygen" ? (
             <>
               <label className="grid min-w-0 gap-2 text-sm text-slate-300">
                 Avatar ID
@@ -1770,7 +1853,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
               </label>
             </>
           ) : null}
-          {videoProvider === "did" ? (
+          {!selectedVideoAvatar && videoProvider === "did" ? (
             <>
               <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
                 Source image URL
@@ -1792,7 +1875,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
               </label>
             </>
           ) : null}
-          {videoProvider === "sync" ? (
+          {!selectedVideoAvatar && videoProvider === "sync" ? (
             <>
               <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
                 Source video URL
@@ -1856,6 +1939,46 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
 
         {videoMessage ? <p className="mt-4 text-sm text-gold-300">{videoMessage}</p> : null}
         {videoError ? <p className="mt-4 text-sm text-red-300">{videoError}</p> : null}
+      </section>
+
+      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Biblioteca de avatares</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Cadastre avatares reutilizáveis por provider para agilizar a geração de vídeo.
+        </p>
+
+        <VideoAvatarCreateForm
+          projectId={projectId}
+          onCreated={(avatar) => setAvatars((current) => [avatar, ...current])}
+        />
+
+        {avatarsError ? <p className="mt-4 text-sm text-red-300">{avatarsError}</p> : null}
+
+        <div className="mt-5 grid gap-3">
+          {avatars.length ? (
+            avatars.map((avatar) => (
+              <VideoAvatarRow
+                key={avatar.id}
+                avatar={avatar}
+                projectId={projectId}
+                onUpdated={(updated) =>
+                  setAvatars((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+                }
+                onDeactivated={(avatarId) =>
+                  setAvatars((current) =>
+                    current.map((item) =>
+                      item.id === avatarId ? { ...item, is_active: false, is_default: false } : item,
+                    ),
+                  )
+                }
+              />
+            ))
+          ) : (
+            <p className="rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+              Nenhum avatar cadastrado neste projeto.
+            </p>
+          )}
+        </div>
       </section>
 
       <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
@@ -1973,6 +2096,491 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
         )}
       </section>
     </div>
+  );
+}
+
+function validateVideoAvatarFields(
+  provider: VideoProvider,
+  avatarId: string,
+  sourceImageUrl: string,
+  sourceVideoUrl: string,
+): string {
+  if (provider === "heygen" && !avatarId.trim()) return "Avatar HeyGen precisa de Avatar ID.";
+  if (provider === "did" && !sourceImageUrl.trim()) return "Avatar D-ID precisa de Source Image URL.";
+  if (provider === "sync" && !sourceVideoUrl.trim() && !sourceImageUrl.trim()) {
+    return "Avatar Sync Labs precisa de Source Video URL ou Source Image URL.";
+  }
+  return "";
+}
+
+function videoAvatarErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError && err.status === 401) return "Sua sessão expirou. Faça login novamente.";
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
+
+function VideoAvatarCreateForm({
+  projectId,
+  onCreated,
+}: {
+  projectId: string;
+  onCreated: (avatar: VideoAvatar) => void;
+}) {
+  const [name, setName] = useState("");
+  const [provider, setProvider] = useState<VideoProvider>("mock");
+  const [avatarId, setAvatarId] = useState("");
+  const [sourceImageUrl, setSourceImageUrl] = useState("");
+  const [sourceVideoUrl, setSourceVideoUrl] = useState("");
+  const [defaultModel, setDefaultModel] = useState("");
+  const [description, setDescription] = useState("");
+  const [isDefault, setIsDefault] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleCreate() {
+    setError("");
+    if (!name.trim()) {
+      setError("Informe um nome para o avatar.");
+      return;
+    }
+    const validationError = validateVideoAvatarFields(provider, avatarId, sourceImageUrl, sourceVideoUrl);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload: VideoAvatarCreatePayload = {
+        name: name.trim(),
+        provider,
+        avatar_id: avatarId.trim() || null,
+        source_image_url: sourceImageUrl.trim() || null,
+        source_video_url: sourceVideoUrl.trim() || null,
+        default_model: defaultModel.trim() || null,
+        description: description.trim() || null,
+        is_active: true,
+        is_default: isDefault,
+      };
+      const avatar = await createProjectVideoAvatar(projectId, payload);
+      onCreated(avatar);
+      setName("");
+      setAvatarId("");
+      setSourceImageUrl("");
+      setSourceVideoUrl("");
+      setDefaultModel("");
+      setDescription("");
+      setIsDefault(false);
+    } catch (err) {
+      setError(videoAvatarErrorMessage(err, "Não foi possível criar o avatar."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-4">
+      <p className="text-sm font-medium text-slate-100">Novo avatar</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          Nome
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Instrutor Virtus"
+            className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+          />
+        </label>
+        <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          Provider
+          <select
+            value={provider}
+            onChange={(event) => setProvider(event.target.value as VideoProvider)}
+            className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+          >
+            <option value="mock" className="bg-navy-950 text-slate-100">
+              Mock
+            </option>
+            <option value="heygen" className="bg-navy-950 text-slate-100">
+              HeyGen
+            </option>
+            <option value="did" className="bg-navy-950 text-slate-100">
+              D-ID
+            </option>
+            <option value="sync" className="bg-navy-950 text-slate-100">
+              Sync Labs
+            </option>
+          </select>
+        </label>
+        {provider === "heygen" ? (
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+            Avatar ID
+            <input
+              value={avatarId}
+              onChange={(event) => setAvatarId(event.target.value)}
+              placeholder="ID do avatar na HeyGen"
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+            />
+          </label>
+        ) : null}
+        {provider === "did" ? (
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+            Source Image URL
+            <input
+              value={sourceImageUrl}
+              onChange={(event) => setSourceImageUrl(event.target.value)}
+              placeholder="https://..."
+              className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+            />
+          </label>
+        ) : null}
+        {provider === "sync" ? (
+          <>
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+              Source Video URL
+              <input
+                value={sourceVideoUrl}
+                onChange={(event) => setSourceVideoUrl(event.target.value)}
+                placeholder="https://..."
+                className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+              />
+            </label>
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              Source Image URL (opcional)
+              <input
+                value={sourceImageUrl}
+                onChange={(event) => setSourceImageUrl(event.target.value)}
+                placeholder="https://..."
+                className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+              />
+            </label>
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              Modelo (opcional)
+              <input
+                value={defaultModel}
+                onChange={(event) => setDefaultModel(event.target.value)}
+                placeholder="lipsync-2"
+                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+              />
+            </label>
+          </>
+        ) : null}
+        <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+          Descrição
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            rows={2}
+            placeholder="Observações sobre este avatar"
+            className="w-full min-w-0 resize-none rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-300 md:col-span-2">
+          <input type="checkbox" checked={isDefault} onChange={(event) => setIsDefault(event.target.checked)} />
+          Marcar como padrão para este provider
+        </label>
+      </div>
+      {error ? <p className="mt-3 text-xs text-red-300">{error}</p> : null}
+      <button
+        type="button"
+        onClick={handleCreate}
+        disabled={saving}
+        className="mt-3 rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {saving ? "Salvando..." : "Adicionar avatar"}
+      </button>
+    </div>
+  );
+}
+
+function VideoAvatarRow({
+  avatar,
+  projectId,
+  onUpdated,
+  onDeactivated,
+}: {
+  avatar: VideoAvatar;
+  projectId: string;
+  onUpdated: (avatar: VideoAvatar) => void;
+  onDeactivated: (avatarId: string) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [name, setName] = useState(avatar.name);
+  const [provider, setProvider] = useState<VideoProvider>(avatar.provider);
+  const [avatarIdField, setAvatarIdField] = useState(avatar.avatar_id || "");
+  const [sourceImageUrl, setSourceImageUrl] = useState(avatar.source_image_url || "");
+  const [sourceVideoUrl, setSourceVideoUrl] = useState(avatar.source_video_url || "");
+  const [defaultModel, setDefaultModel] = useState(avatar.default_model || "");
+  const [description, setDescription] = useState(avatar.description || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function startEditing() {
+    setName(avatar.name);
+    setProvider(avatar.provider);
+    setAvatarIdField(avatar.avatar_id || "");
+    setSourceImageUrl(avatar.source_image_url || "");
+    setSourceVideoUrl(avatar.source_video_url || "");
+    setDefaultModel(avatar.default_model || "");
+    setDescription(avatar.description || "");
+    setError("");
+    setIsEditing(true);
+  }
+
+  async function handleSaveEdit() {
+    setError("");
+    if (!name.trim()) {
+      setError("Informe um nome para o avatar.");
+      return;
+    }
+    const validationError = validateVideoAvatarFields(provider, avatarIdField, sourceImageUrl, sourceVideoUrl);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload: VideoAvatarUpdatePayload = {
+        name: name.trim(),
+        provider,
+        avatar_id: avatarIdField.trim() || null,
+        source_image_url: sourceImageUrl.trim() || null,
+        source_video_url: sourceVideoUrl.trim() || null,
+        default_model: defaultModel.trim() || null,
+        description: description.trim() || null,
+      };
+      const updated = await updateProjectVideoAvatar(projectId, avatar.id, payload);
+      onUpdated(updated);
+      setIsEditing(false);
+    } catch (err) {
+      setError(videoAvatarErrorMessage(err, "Não foi possível salvar o avatar."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleToggleDefault() {
+    setError("");
+    setSaving(true);
+    try {
+      const updated = await updateProjectVideoAvatar(projectId, avatar.id, { is_default: !avatar.is_default });
+      onUpdated(updated);
+    } catch (err) {
+      setError(videoAvatarErrorMessage(err, "Não foi possível atualizar o avatar padrão."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleToggleActive() {
+    setError("");
+    if (avatar.is_active) {
+      const confirmed = window.confirm("Desativar este avatar? Ele deixará de aparecer para novas gerações.");
+      if (!confirmed) return;
+      setSaving(true);
+      try {
+        await deleteProjectVideoAvatar(projectId, avatar.id);
+        onDeactivated(avatar.id);
+      } catch (err) {
+        setError(videoAvatarErrorMessage(err, "Não foi possível desativar o avatar."));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const updated = await updateProjectVideoAvatar(projectId, avatar.id, { is_active: true });
+      onUpdated(updated);
+    } catch (err) {
+      setError(videoAvatarErrorMessage(err, "Não foi possível reativar o avatar."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isEditing) {
+    return (
+      <article className="rounded-md border border-gold-500/30 bg-black/20 p-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            Nome
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            />
+          </label>
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            Provider
+            <select
+              value={provider}
+              onChange={(event) => setProvider(event.target.value as VideoProvider)}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="mock" className="bg-navy-950 text-slate-100">
+                Mock
+              </option>
+              <option value="heygen" className="bg-navy-950 text-slate-100">
+                HeyGen
+              </option>
+              <option value="did" className="bg-navy-950 text-slate-100">
+                D-ID
+              </option>
+              <option value="sync" className="bg-navy-950 text-slate-100">
+                Sync Labs
+              </option>
+            </select>
+          </label>
+          {provider === "heygen" ? (
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+              Avatar ID
+              <input
+                value={avatarIdField}
+                onChange={(event) => setAvatarIdField(event.target.value)}
+                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              />
+            </label>
+          ) : null}
+          {provider === "did" ? (
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+              Source Image URL
+              <input
+                value={sourceImageUrl}
+                onChange={(event) => setSourceImageUrl(event.target.value)}
+                className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              />
+            </label>
+          ) : null}
+          {provider === "sync" ? (
+            <>
+              <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+                Source Video URL
+                <input
+                  value={sourceVideoUrl}
+                  onChange={(event) => setSourceVideoUrl(event.target.value)}
+                  className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                />
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+                Source Image URL (opcional)
+                <input
+                  value={sourceImageUrl}
+                  onChange={(event) => setSourceImageUrl(event.target.value)}
+                  className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                />
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+                Modelo (opcional)
+                <input
+                  value={defaultModel}
+                  onChange={(event) => setDefaultModel(event.target.value)}
+                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                />
+              </label>
+            </>
+          ) : null}
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+            Descrição
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={2}
+              className="w-full min-w-0 resize-none rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            />
+          </label>
+        </div>
+        {error ? <p className="mt-3 text-xs text-red-300">{error}</p> : null}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleSaveEdit}
+            disabled={saving}
+            className="rounded-md bg-gold-500 px-3 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? "Salvando..." : "Salvar"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsEditing(false)}
+            disabled={saving}
+            className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancelar
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="rounded-md border border-white/10 bg-black/20 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <VideoProviderBadge provider={avatar.provider} />
+            <p className="text-sm font-medium text-slate-100">{avatar.name}</p>
+            {avatar.is_default ? (
+              <span className="inline-block whitespace-nowrap rounded-full border border-gold-400/40 bg-gold-400/10 px-2 py-0.5 text-xs font-medium text-gold-300">
+                Padrão
+              </span>
+            ) : null}
+            {!avatar.is_active ? (
+              <span className="inline-block whitespace-nowrap rounded-full border border-white/20 bg-white/5 px-2 py-0.5 text-xs font-medium text-slate-400">
+                Inativo
+              </span>
+            ) : null}
+          </div>
+          {avatar.avatar_id ? (
+            <p className="mt-1 max-w-full break-words text-xs text-slate-500">Avatar ID: {avatar.avatar_id}</p>
+          ) : null}
+          {avatar.source_image_url ? (
+            <p className="mt-1 max-w-full break-words text-xs text-slate-500">Imagem: {avatar.source_image_url}</p>
+          ) : null}
+          {avatar.source_video_url ? (
+            <p className="mt-1 max-w-full break-words text-xs text-slate-500">Vídeo base: {avatar.source_video_url}</p>
+          ) : null}
+          {avatar.default_model ? <p className="mt-1 text-xs text-slate-500">Modelo: {avatar.default_model}</p> : null}
+          {avatar.description ? (
+            <p className="mt-1 max-w-full break-words text-xs text-slate-400">{avatar.description}</p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={startEditing}
+            className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+          >
+            Editar
+          </button>
+          {avatar.is_active ? (
+            <button
+              type="button"
+              onClick={handleToggleDefault}
+              disabled={saving}
+              className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {avatar.is_default ? "Remover padrão" : "Marcar como padrão"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={handleToggleActive}
+            disabled={saving}
+            className={
+              avatar.is_active
+                ? "rounded-md border border-red-400/40 px-3 py-2 text-sm text-red-300 transition hover:border-red-300 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                : "rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            }
+          >
+            {avatar.is_active ? "Desativar" : "Reativar"}
+          </button>
+        </div>
+      </div>
+      {error ? <p className="mt-2 text-xs text-red-300">{error}</p> : null}
+    </article>
   );
 }
 

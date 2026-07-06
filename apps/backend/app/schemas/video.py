@@ -9,6 +9,7 @@ class GeneratedVideoGenerateRequest(BaseModel):
     lesson_id: UUID | None = None
     module_id: UUID | None = None
     audio_id: UUID | None = None
+    video_avatar_id: UUID | None = None
     provider: str | None = Field(default=None, max_length=50)
     avatar_id: str | None = Field(default=None, max_length=255)
     avatar_name: str | None = Field(default=None, max_length=255)

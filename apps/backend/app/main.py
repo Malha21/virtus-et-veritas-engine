@@ -16,6 +16,7 @@ from app.api.v1.jobs import router as jobs_router
 from app.api.v1.processing import router as processing_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.public_assets import router as public_assets_router
+from app.api.v1.video_avatars import router as video_avatars_router
 from app.api.v1.videos import router as videos_router
 from app.core.config import get_settings
 
@@ -59,4 +60,5 @@ app.include_router(educational_content_router, prefix=settings.api_prefix)
 app.include_router(jobs_router, prefix=settings.api_prefix)
 app.include_router(exports_router, prefix=settings.api_prefix)
 app.include_router(videos_router, prefix=settings.api_prefix)
+app.include_router(video_avatars_router, prefix=settings.api_prefix)
 app.include_router(public_assets_router, prefix=settings.api_prefix)

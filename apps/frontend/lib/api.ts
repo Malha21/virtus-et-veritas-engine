@@ -53,6 +53,7 @@ export type GenerateProjectVideoPayload = {
   lesson_id?: string | null;
   module_id?: string | null;
   audio_id?: string | null;
+  video_avatar_id?: string | null;
   provider?: VideoProvider | null;
   avatar_id?: string | null;
   avatar_name?: string | null;
@@ -62,6 +63,47 @@ export type GenerateProjectVideoPayload = {
   resolution?: string | null;
   format?: string | null;
   extra_metadata?: Record<string, unknown> | null;
+};
+
+export type VideoAvatar = {
+  id: string;
+  project_id: string | null;
+  name: string;
+  provider: VideoProvider;
+  avatar_id: string | null;
+  source_image_url: string | null;
+  source_video_url: string | null;
+  default_model: string | null;
+  description: string | null;
+  is_active: boolean;
+  is_default: boolean;
+  extra_metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type VideoAvatarCreatePayload = {
+  name: string;
+  provider: VideoProvider;
+  avatar_id?: string | null;
+  source_image_url?: string | null;
+  source_video_url?: string | null;
+  default_model?: string | null;
+  description?: string | null;
+  is_active?: boolean;
+  is_default?: boolean;
+};
+
+export type VideoAvatarUpdatePayload = {
+  name?: string;
+  provider?: VideoProvider;
+  avatar_id?: string | null;
+  source_image_url?: string | null;
+  source_video_url?: string | null;
+  default_model?: string | null;
+  description?: string | null;
+  is_active?: boolean;
+  is_default?: boolean;
 };
 
 export type GeneratedVideo = {
@@ -661,6 +703,60 @@ export async function deleteProjectVideo(projectId: string, videoId: string): Pr
   }
 
   return apiFetch<{ message: string }>(`/projects/${projectId}/videos/${videoId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export async function listProjectVideoAvatars(projectId: string): Promise<VideoAvatar[]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<VideoAvatar[]>(`/projects/${projectId}/video-avatars`, { token });
+}
+
+export async function createProjectVideoAvatar(
+  projectId: string,
+  payload: VideoAvatarCreatePayload,
+): Promise<VideoAvatar> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<VideoAvatar>(`/projects/${projectId}/video-avatars`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateProjectVideoAvatar(
+  projectId: string,
+  avatarId: string,
+  payload: VideoAvatarUpdatePayload,
+): Promise<VideoAvatar> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<VideoAvatar>(`/projects/${projectId}/video-avatars/${avatarId}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteProjectVideoAvatar(projectId: string, avatarId: string): Promise<{ message: string }> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<{ message: string }>(`/projects/${projectId}/video-avatars/${avatarId}`, {
     method: "DELETE",
     token,
   });

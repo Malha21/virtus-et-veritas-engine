@@ -20,6 +20,7 @@ from app.providers.video import sync as sync_provider
 from app.providers.video.base import VideoProviderError
 from app.schemas.video import GeneratedVideoGenerateRequest, GeneratedVideoReviewUpdateRequest
 from app.services.signed_url_service import generate_audio_asset_token
+from app.services.video_avatar_service import get_active_avatar_for_generation
 
 MOCK_VIDEO_UNAVAILABLE_MESSAGE = "Arquivo MP4 real ainda não disponível para este vídeo mock."
 VIDEO_FILE_UNAVAILABLE_MESSAGE = "Arquivo MP4 ainda não disponível para este vídeo."
@@ -293,6 +294,20 @@ def generate_video(
     settings: Settings | None = None,
 ) -> GeneratedVideo:
     active_settings = settings or get_settings()
+
+    if payload.video_avatar_id:
+        avatar = get_active_avatar_for_generation(db, project_id, payload.video_avatar_id)
+        payload = payload.model_copy(
+            update={
+                "provider": avatar.provider,
+                "avatar_id": avatar.avatar_id or payload.avatar_id,
+                "avatar_name": avatar.name,
+                "source_image_url": avatar.source_image_url or payload.source_image_url,
+                "source_video_url": avatar.source_video_url or payload.source_video_url,
+                "model": avatar.default_model or payload.model,
+            }
+        )
+
     provider = (payload.provider or active_settings.video_provider or "mock").lower().strip()
     if provider == "heygen":
         return generate_heygen_video(db, current_user, project_id, payload, active_settings)
