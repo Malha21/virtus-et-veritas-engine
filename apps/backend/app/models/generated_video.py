@@ -53,6 +53,8 @@ class GeneratedVideo(Base):
     remote_asset_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_status_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     provider_response: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    source_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_video_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -12,6 +12,9 @@ class GeneratedVideoGenerateRequest(BaseModel):
     provider: str | None = Field(default=None, max_length=50)
     avatar_id: str | None = Field(default=None, max_length=255)
     avatar_name: str | None = Field(default=None, max_length=255)
+    source_image_url: str | None = Field(default=None, max_length=2000)
+    source_video_url: str | None = Field(default=None, max_length=2000)
+    model: str | None = Field(default=None, max_length=100)
     resolution: str | None = Field(default=None, max_length=50)
     format: str | None = Field(default=None, max_length=20)
     extra_metadata: dict[str, Any] | None = None
@@ -36,6 +39,8 @@ class GeneratedVideoRead(BaseModel):
     extra_metadata: dict[str, Any] | None
     provider_job_id: str | None
     remote_video_url: str | None
+    source_image_url: str | None
+    source_video_url: str | None
     last_status_check_at: datetime | None
     created_at: datetime
     updated_at: datetime | None

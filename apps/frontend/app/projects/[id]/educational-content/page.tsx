@@ -1489,6 +1489,13 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
   );
 }
 
+const VIDEO_PROVIDER_LABELS: Record<VideoProvider, string> = {
+  mock: "Mock",
+  heygen: "HeyGen",
+  did: "D-ID",
+  sync: "Sync Labs",
+};
+
 function VideoView({ contents, projectId }: { contents: GeneratedContent[]; projectId: string }) {
   const sortedContents = sortLessonScripts(contents);
   const [audios, setAudios] = useState<GeneratedAudio[]>([]);
@@ -1497,6 +1504,9 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
   const [videoProvider, setVideoProvider] = useState<VideoProvider>("mock");
   const [videoAvatarId, setVideoAvatarId] = useState("");
   const [videoAvatarName, setVideoAvatarName] = useState("");
+  const [videoSourceImageUrl, setVideoSourceImageUrl] = useState("");
+  const [videoSourceVideoUrl, setVideoSourceVideoUrl] = useState("");
+  const [videoModel, setVideoModel] = useState("");
   const [videoResolution, setVideoResolution] = useState("1080p");
   const [videoFormat, setVideoFormat] = useState("mp4");
   const [generatingVideo, setGeneratingVideo] = useState(false);
@@ -1585,6 +1595,9 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
         provider: videoProvider,
         avatar_id: videoAvatarId.trim() || null,
         avatar_name: videoAvatarName.trim() || null,
+        source_image_url: videoSourceImageUrl.trim() || null,
+        source_video_url: videoSourceVideoUrl.trim() || null,
+        model: videoModel.trim() || null,
         resolution: videoResolution,
         format: videoFormat,
         extra_metadata: {
@@ -1595,9 +1608,9 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
       });
       setVideos((current) => [video, ...current.filter((item) => item.id !== video.id)]);
       setVideoMessage(
-        videoProvider === "heygen"
-          ? "Job de vídeo criado na HeyGen. Acompanhe o status abaixo."
-          : "Vídeo mock gerado com sucesso.",
+        videoProvider === "mock"
+          ? "Vídeo mock gerado com sucesso."
+          : `Job de vídeo criado na ${VIDEO_PROVIDER_LABELS[videoProvider]}. Acompanhe o status abaixo.`,
       );
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -1686,11 +1699,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
             disabled={!selectedAudio || generatingVideo}
             className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {generatingVideo
-              ? "Gerando vídeo..."
-              : videoProvider === "heygen"
-                ? "Gerar vídeo HeyGen"
-                : "Gerar vídeo mock"}
+            {generatingVideo ? "Gerando vídeo..." : `Gerar vídeo ${VIDEO_PROVIDER_LABELS[videoProvider]}`}
           </button>
         </div>
 
@@ -1703,10 +1712,16 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
               className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
             >
               <option value="mock" className="bg-navy-950 text-slate-100">
-                mock
+                Mock
               </option>
               <option value="heygen" className="bg-navy-950 text-slate-100">
-                heygen
+                HeyGen
+              </option>
+              <option value="did" className="bg-navy-950 text-slate-100">
+                D-ID
+              </option>
+              <option value="sync" className="bg-navy-950 text-slate-100">
+                Sync Labs
               </option>
             </select>
           </label>
@@ -1748,6 +1763,59 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
                   value={videoAvatarName}
                   onChange={(event) => setVideoAvatarName(event.target.value)}
                   placeholder="Instrutor Virtus"
+                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                />
+              </label>
+            </>
+          ) : null}
+          {videoProvider === "did" ? (
+            <>
+              <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+                Source image URL
+                <input
+                  value={videoSourceImageUrl}
+                  onChange={(event) => setVideoSourceImageUrl(event.target.value)}
+                  placeholder="Usar padrão (DID_DEFAULT_SOURCE_IMAGE_URL)"
+                  className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                />
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+                Nome do avatar (opcional)
+                <input
+                  value={videoAvatarName}
+                  onChange={(event) => setVideoAvatarName(event.target.value)}
+                  placeholder="Instrutor Virtus"
+                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                />
+              </label>
+            </>
+          ) : null}
+          {videoProvider === "sync" ? (
+            <>
+              <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+                Source video URL
+                <input
+                  value={videoSourceVideoUrl}
+                  onChange={(event) => setVideoSourceVideoUrl(event.target.value)}
+                  placeholder="Usar padrão (SYNC_DEFAULT_SOURCE_VIDEO_URL)"
+                  className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                />
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+                Source image URL (opcional)
+                <input
+                  value={videoSourceImageUrl}
+                  onChange={(event) => setVideoSourceImageUrl(event.target.value)}
+                  placeholder="Alternativa a um vídeo base"
+                  className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                />
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+                Model (opcional)
+                <input
+                  value={videoModel}
+                  onChange={(event) => setVideoModel(event.target.value)}
+                  placeholder="lipsync-2"
                   className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
                 />
               </label>
@@ -1803,13 +1871,15 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
                       {video.resolution} - {video.format.toUpperCase()} - {formatAudioDate(video.created_at)}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      Provider {video.provider} - Áudio {video.audio_id ? "vinculado" : "não informado"}
+                      Provider {getVideoProviderLabel(video.provider)} - Áudio{" "}
+                      {video.audio_id ? "vinculado" : "não informado"}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">Origem: {getVideoOriginLabel(video)}</p>
                     {video.error_message ? <p className="mt-2 text-xs text-red-300">{video.error_message}</p> : null}
                     {!video.download_url && (video.status === "pending" || video.status === "processing") ? (
                       <p className="mt-2 text-xs text-gold-300">
-                        Vídeo ainda em processamento na HeyGen. Atualize o status para acompanhar.
+                        Vídeo ainda em processamento na {getVideoProviderLabel(video.provider)}. Atualize o status
+                        para acompanhar.
                       </p>
                     ) : null}
                     {!video.download_url && video.status === "completed_mock" ? (
@@ -1817,7 +1887,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
                     ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {video.provider === "heygen" && video.status !== "completed" && video.status !== "failed" ? (
+                    {video.provider !== "mock" && video.status !== "completed" && video.status !== "failed" ? (
                       <button
                         type="button"
                         onClick={() => handleRefreshVideoStatus(video)}
@@ -3584,6 +3654,10 @@ function getVideoOriginLabel(video: GeneratedVideo): string {
   if (typeof title === "string" && title.trim()) return title;
   if (video.lesson_id) return "Aula vinculada";
   return "Origem nao informada";
+}
+
+function getVideoProviderLabel(provider: string): string {
+  return VIDEO_PROVIDER_LABELS[provider as VideoProvider] || provider;
 }
 
 function splitNarrationBlocks(text: string): string[] {

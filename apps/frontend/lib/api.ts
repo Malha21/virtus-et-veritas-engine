@@ -47,7 +47,7 @@ export type NarrationAudiosZipParams = {
   title_contains?: string | null;
 };
 
-export type VideoProvider = "mock" | "heygen";
+export type VideoProvider = "mock" | "heygen" | "did" | "sync";
 
 export type GenerateProjectVideoPayload = {
   lesson_id?: string | null;
@@ -56,6 +56,9 @@ export type GenerateProjectVideoPayload = {
   provider?: VideoProvider | null;
   avatar_id?: string | null;
   avatar_name?: string | null;
+  source_image_url?: string | null;
+  source_video_url?: string | null;
+  model?: string | null;
   resolution?: string | null;
   format?: string | null;
   extra_metadata?: Record<string, unknown> | null;
@@ -80,6 +83,8 @@ export type GeneratedVideo = {
   extra_metadata: Record<string, unknown> | null;
   provider_job_id: string | null;
   remote_video_url: string | null;
+  source_image_url: string | null;
+  source_video_url: string | null;
   last_status_check_at: string | null;
   created_at: string;
   updated_at: string | null;
