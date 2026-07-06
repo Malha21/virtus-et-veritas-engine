@@ -198,6 +198,11 @@ def create_mock_video_file(
         f"color=c=#050505:s={get_video_size(resolution)}:r=30,"
         "drawtext=text='VVE Engine - Video mock':fontcolor=white:fontsize=56:x=(w-text_w)/2:y=(h-text_h)/2"
     )
+    # -shortest alone can overshoot the audio by up to a couple of seconds
+    # (encoder buffering on the infinite lavfi source), so pin the exact
+    # duration with -t whenever ffprobe can read it from the source audio.
+    source_audio_duration = get_media_duration_seconds(audio_path)
+    duration_args = ["-t", f"{source_audio_duration:.3f}"] if source_audio_duration else []
     command_with_text = [
         ffmpeg_binary,
         "-y",
@@ -208,6 +213,7 @@ def create_mock_video_file(
         "-i",
         str(audio_path),
         "-shortest",
+        *duration_args,
         "-c:v",
         "libx264",
         "-pix_fmt",
@@ -230,6 +236,7 @@ def create_mock_video_file(
         "-i",
         str(audio_path),
         "-shortest",
+        *duration_args,
         "-c:v",
         "libx264",
         "-pix_fmt",
