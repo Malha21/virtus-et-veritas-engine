@@ -19,6 +19,7 @@ from app.providers.video import did, heygen
 from app.providers.video import sync as sync_provider
 from app.providers.video.base import VideoProviderError
 from app.schemas.video import GeneratedVideoGenerateRequest, GeneratedVideoReviewUpdateRequest
+from app.services.project_video_settings_service import get_project_video_settings_row, pick_default_avatar_id
 from app.services.signed_url_service import generate_audio_asset_token
 from app.services.video_avatar_service import get_active_avatar_for_generation
 
@@ -294,6 +295,34 @@ def generate_video(
     settings: Settings | None = None,
 ) -> GeneratedVideo:
     active_settings = settings or get_settings()
+    project = get_project_for_video(db, current_user, project_id)
+
+    if not payload.video_avatar_id:
+        project_video_settings = get_project_video_settings_row(db, project.id)
+        if project_video_settings:
+            if not payload.provider:
+                updates: dict[str, object] = {}
+                effective_provider = project_video_settings.default_provider or payload.provider
+                if project_video_settings.default_provider:
+                    updates["provider"] = project_video_settings.default_provider
+                if not payload.resolution and project_video_settings.default_resolution:
+                    updates["resolution"] = project_video_settings.default_resolution
+                if not payload.format and project_video_settings.default_format:
+                    updates["format"] = project_video_settings.default_format
+                if effective_provider:
+                    default_avatar_id = pick_default_avatar_id(
+                        project_video_settings, effective_provider.lower().strip()
+                    )
+                    if default_avatar_id:
+                        updates["video_avatar_id"] = default_avatar_id
+                if updates:
+                    payload = payload.model_copy(update=updates)
+            else:
+                default_avatar_id = pick_default_avatar_id(
+                    project_video_settings, payload.provider.lower().strip()
+                )
+                if default_avatar_id:
+                    payload = payload.model_copy(update={"video_avatar_id": default_avatar_id})
 
     if payload.video_avatar_id:
         avatar = get_active_avatar_for_generation(db, project_id, payload.video_avatar_id)

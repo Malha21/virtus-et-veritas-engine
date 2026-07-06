@@ -106,6 +106,32 @@ export type VideoAvatarUpdatePayload = {
   is_default?: boolean;
 };
 
+export type ProjectVideoSettings = {
+  id: string | null;
+  project_id: string;
+  default_provider: VideoProvider | null;
+  default_mock_avatar_id: string | null;
+  default_heygen_avatar_id: string | null;
+  default_did_avatar_id: string | null;
+  default_sync_avatar_id: string | null;
+  default_resolution: string;
+  default_format: string;
+  auto_download_completed_videos: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type ProjectVideoSettingsUpdatePayload = {
+  default_provider?: VideoProvider | null;
+  default_mock_avatar_id?: string | null;
+  default_heygen_avatar_id?: string | null;
+  default_did_avatar_id?: string | null;
+  default_sync_avatar_id?: string | null;
+  default_resolution?: string;
+  default_format?: string;
+  auto_download_completed_videos?: boolean;
+};
+
 export type GeneratedVideo = {
   id: string;
   project_id: string;
@@ -759,6 +785,31 @@ export async function deleteProjectVideoAvatar(projectId: string, avatarId: stri
   return apiFetch<{ message: string }>(`/projects/${projectId}/video-avatars/${avatarId}`, {
     method: "DELETE",
     token,
+  });
+}
+
+export async function getProjectVideoSettings(projectId: string): Promise<ProjectVideoSettings> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<ProjectVideoSettings>(`/projects/${projectId}/video-settings`, { token });
+}
+
+export async function updateProjectVideoSettings(
+  projectId: string,
+  payload: ProjectVideoSettingsUpdatePayload,
+): Promise<ProjectVideoSettings> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<ProjectVideoSettings>(`/projects/${projectId}/video-settings`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
   });
 }
 

@@ -28,6 +28,7 @@ import {
   getInstructorProfile,
   getDocumentAnalysis,
   generateProjectVideo,
+  getProjectVideoSettings,
   listProjectAudios,
   listProjectVideoAvatars,
   listProjectVideos,
@@ -35,6 +36,8 @@ import {
   type GeneratedAudio,
   type GeneratedVideo,
   type InstructorProfile,
+  type ProjectVideoSettings,
+  type ProjectVideoSettingsUpdatePayload,
   type VideoAvatar,
   type VideoAvatarCreatePayload,
   type VideoAvatarUpdatePayload,
@@ -46,6 +49,7 @@ import {
   updatePresentationDeck,
   updateProjectVideoAvatar,
   updateProjectVideoReview,
+  updateProjectVideoSettings,
 } from "@/lib/api";
 import type { GeneratedContent } from "@/types/content";
 import type {
@@ -1511,6 +1515,19 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
   const [videos, setVideos] = useState<GeneratedVideo[]>([]);
   const [avatars, setAvatars] = useState<VideoAvatar[]>([]);
   const [avatarsError, setAvatarsError] = useState("");
+  const [videoSettings, setVideoSettings] = useState<ProjectVideoSettings | null>(null);
+  const [videoSettingsError, setVideoSettingsError] = useState("");
+  const [videoSettingsMessage, setVideoSettingsMessage] = useState("");
+  const [savingVideoSettings, setSavingVideoSettings] = useState(false);
+  const [defaultsApplied, setDefaultsApplied] = useState(false);
+  const [settingsDefaultProvider, setSettingsDefaultProvider] = useState<VideoProvider | "">("");
+  const [settingsMockAvatarId, setSettingsMockAvatarId] = useState("");
+  const [settingsHeygenAvatarId, setSettingsHeygenAvatarId] = useState("");
+  const [settingsDidAvatarId, setSettingsDidAvatarId] = useState("");
+  const [settingsSyncAvatarId, setSettingsSyncAvatarId] = useState("");
+  const [settingsResolution, setSettingsResolution] = useState("1080p");
+  const [settingsFormat, setSettingsFormat] = useState("mp4");
+  const [settingsAutoDownload, setSettingsAutoDownload] = useState(true);
   const [selectedAudioId, setSelectedAudioId] = useState("");
   const [selectedVideoAvatarId, setSelectedVideoAvatarId] = useState("");
   const [videoProvider, setVideoProvider] = useState<VideoProvider>("mock");
@@ -1593,6 +1610,37 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
   }, [projectId]);
 
   useEffect(() => {
+    let isActive = true;
+    setVideoSettingsError("");
+    getProjectVideoSettings(projectId)
+      .then((data) => {
+        if (!isActive) return;
+        setVideoSettings(data);
+        setSettingsDefaultProvider(data.default_provider || "");
+        setSettingsMockAvatarId(data.default_mock_avatar_id || "");
+        setSettingsHeygenAvatarId(data.default_heygen_avatar_id || "");
+        setSettingsDidAvatarId(data.default_did_avatar_id || "");
+        setSettingsSyncAvatarId(data.default_sync_avatar_id || "");
+        setSettingsResolution(data.default_resolution || "1080p");
+        setSettingsFormat(data.default_format || "mp4");
+        setSettingsAutoDownload(data.auto_download_completed_videos);
+      })
+      .catch((err) => {
+        if (!isActive) return;
+        if (err instanceof ApiError && err.status === 401) {
+          setVideoSettingsError("Sua sessão expirou. Faça login novamente.");
+        } else if (err instanceof Error && err.message) {
+          setVideoSettingsError(err.message);
+        } else {
+          setVideoSettingsError("Não foi possível carregar as configurações padrão do projeto.");
+        }
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
     if (!audios.length) {
       setSelectedAudioId("");
       return;
@@ -1609,6 +1657,22 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
       setVideoProvider(avatar.provider);
     }
   }, [selectedVideoAvatarId, avatars]);
+
+  useEffect(() => {
+    if (!videoSettings || defaultsApplied) return;
+    if (videoSettings.default_provider) {
+      setVideoProvider(videoSettings.default_provider);
+    }
+    const effectiveProvider = videoSettings.default_provider || videoProvider;
+    const defaultAvatarId = pickDefaultAvatarIdForProvider(videoSettings, effectiveProvider);
+    if (defaultAvatarId) {
+      setSelectedVideoAvatarId(defaultAvatarId);
+    }
+    if (videoSettings.default_resolution) setVideoResolution(videoSettings.default_resolution);
+    if (videoSettings.default_format) setVideoFormat(videoSettings.default_format);
+    setDefaultsApplied(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoSettings, defaultsApplied]);
 
   const activeVideoAvatars = avatars.filter((avatar) => avatar.is_active);
   const selectedVideoAvatar = activeVideoAvatars.find((avatar) => avatar.id === selectedVideoAvatarId) || null;
@@ -1727,6 +1791,36 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
     }
   }
 
+  async function handleSaveVideoSettings() {
+    setVideoSettingsError("");
+    setVideoSettingsMessage("");
+    setSavingVideoSettings(true);
+    try {
+      const updated = await updateProjectVideoSettings(projectId, {
+        default_provider: settingsDefaultProvider || null,
+        default_mock_avatar_id: settingsMockAvatarId || null,
+        default_heygen_avatar_id: settingsHeygenAvatarId || null,
+        default_did_avatar_id: settingsDidAvatarId || null,
+        default_sync_avatar_id: settingsSyncAvatarId || null,
+        default_resolution: settingsResolution,
+        default_format: settingsFormat,
+        auto_download_completed_videos: settingsAutoDownload,
+      });
+      setVideoSettings(updated);
+      setVideoSettingsMessage("Configurações padrão salvas.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setVideoSettingsError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setVideoSettingsError(err.message);
+      } else {
+        setVideoSettingsError("Não foi possível salvar as configurações padrão.");
+      }
+    } finally {
+      setSavingVideoSettings(false);
+    }
+  }
+
   return (
     <div className="grid gap-6">
       <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
@@ -1771,6 +1865,22 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
               Nenhum avatar cadastrado ainda. Use a Biblioteca de Avatares abaixo ou preencha os campos manualmente.
             </p>
           ) : null}
+          {(() => {
+            const defaultAvatarId = videoSettings ? pickDefaultAvatarIdForProvider(videoSettings, videoProvider) : "";
+            if (selectedVideoAvatarId && selectedVideoAvatarId === defaultAvatarId) {
+              return (
+                <p className="-mt-2 text-xs text-gold-300 md:col-span-2">Usando avatar padrão do projeto.</p>
+              );
+            }
+            if (!defaultAvatarId) {
+              return (
+                <p className="-mt-2 text-xs text-slate-500 md:col-span-2">
+                  Nenhum avatar padrão configurado para este provider.
+                </p>
+              );
+            }
+            return null;
+          })()}
           {selectedVideoAvatar ? (
             <div className="min-w-0 rounded-md border border-white/10 bg-black/20 p-3 text-xs text-slate-300 md:col-span-2">
               <p>
@@ -1792,7 +1902,16 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
               Provider
               <select
                 value={videoProvider}
-                onChange={(event) => setVideoProvider(event.target.value as VideoProvider)}
+                onChange={(event) => {
+                  const nextProvider = event.target.value as VideoProvider;
+                  setVideoProvider(nextProvider);
+                  const defaultAvatarId = videoSettings
+                    ? pickDefaultAvatarIdForProvider(videoSettings, nextProvider)
+                    : "";
+                  if (defaultAvatarId) {
+                    setSelectedVideoAvatarId(defaultAvatarId);
+                  }
+                }}
                 className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
               >
                 <option value="mock" className="bg-navy-950 text-slate-100">
@@ -1939,6 +2058,165 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
 
         {videoMessage ? <p className="mt-4 text-sm text-gold-300">{videoMessage}</p> : null}
         {videoError ? <p className="mt-4 text-sm text-red-300">{videoError}</p> : null}
+      </section>
+
+      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Configurações padrão do projeto</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Defina o provider e os avatares padrão usados automaticamente ao gerar vídeos neste projeto.
+        </p>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            Provider padrão
+            <select
+              value={settingsDefaultProvider}
+              onChange={(event) => setSettingsDefaultProvider(event.target.value as VideoProvider | "")}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="" className="bg-navy-950 text-slate-100">
+                Nenhum (usar padrão do sistema)
+              </option>
+              <option value="mock" className="bg-navy-950 text-slate-100">
+                Mock
+              </option>
+              <option value="heygen" className="bg-navy-950 text-slate-100">
+                HeyGen
+              </option>
+              <option value="did" className="bg-navy-950 text-slate-100">
+                D-ID
+              </option>
+              <option value="sync" className="bg-navy-950 text-slate-100">
+                Sync Labs
+              </option>
+            </select>
+          </label>
+          <div className="grid min-w-0 grid-cols-2 gap-3">
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              Resolução padrão
+              <select
+                value={settingsResolution}
+                onChange={(event) => setSettingsResolution(event.target.value)}
+                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              >
+                <option value="1080p" className="bg-navy-950 text-slate-100">
+                  1080p
+                </option>
+                <option value="720p" className="bg-navy-950 text-slate-100">
+                  720p
+                </option>
+              </select>
+            </label>
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              Formato padrão
+              <select
+                value={settingsFormat}
+                onChange={(event) => setSettingsFormat(event.target.value)}
+                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              >
+                <option value="mp4" className="bg-navy-950 text-slate-100">
+                  mp4
+                </option>
+              </select>
+            </label>
+          </div>
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            Avatar padrão Mock
+            <select
+              value={settingsMockAvatarId}
+              onChange={(event) => setSettingsMockAvatarId(event.target.value)}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="" className="bg-navy-950 text-slate-100">
+                Nenhum
+              </option>
+              {avatars
+                .filter((avatar) => avatar.is_active && avatar.provider === "mock")
+                .map((avatar) => (
+                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                    {avatar.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            Avatar padrão HeyGen
+            <select
+              value={settingsHeygenAvatarId}
+              onChange={(event) => setSettingsHeygenAvatarId(event.target.value)}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="" className="bg-navy-950 text-slate-100">
+                Nenhum
+              </option>
+              {avatars
+                .filter((avatar) => avatar.is_active && avatar.provider === "heygen")
+                .map((avatar) => (
+                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                    {avatar.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            Avatar padrão D-ID
+            <select
+              value={settingsDidAvatarId}
+              onChange={(event) => setSettingsDidAvatarId(event.target.value)}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="" className="bg-navy-950 text-slate-100">
+                Nenhum
+              </option>
+              {avatars
+                .filter((avatar) => avatar.is_active && avatar.provider === "did")
+                .map((avatar) => (
+                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                    {avatar.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            Avatar padrão Sync Labs
+            <select
+              value={settingsSyncAvatarId}
+              onChange={(event) => setSettingsSyncAvatarId(event.target.value)}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="" className="bg-navy-950 text-slate-100">
+                Nenhum
+              </option>
+              {avatars
+                .filter((avatar) => avatar.is_active && avatar.provider === "sync")
+                .map((avatar) => (
+                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                    {avatar.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-300 md:col-span-2">
+            <input
+              type="checkbox"
+              checked={settingsAutoDownload}
+              onChange={(event) => setSettingsAutoDownload(event.target.checked)}
+            />
+            Baixar/salvar automaticamente vídeos concluídos
+          </label>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSaveVideoSettings}
+          disabled={savingVideoSettings}
+          className="mt-4 rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {savingVideoSettings ? "Salvando..." : "Salvar configurações padrão"}
+        </button>
+
+        {videoSettingsMessage ? <p className="mt-4 text-sm text-gold-300">{videoSettingsMessage}</p> : null}
+        {videoSettingsError ? <p className="mt-4 text-sm text-red-300">{videoSettingsError}</p> : null}
       </section>
 
       <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
@@ -4547,6 +4825,16 @@ function getVideoAudioBaseLabel(video: GeneratedVideo, audios: GeneratedAudio[],
   const audio = video.audio_id ? audios.find((item) => item.id === video.audio_id) : undefined;
   if (audio) return getVideoAudioLabel(audio, lessons);
   return getVideoOriginLabel(video);
+}
+
+function pickDefaultAvatarIdForProvider(settings: ProjectVideoSettings, provider: string): string {
+  const fieldByProvider: Record<string, string | null> = {
+    mock: settings.default_mock_avatar_id,
+    heygen: settings.default_heygen_avatar_id,
+    did: settings.default_did_avatar_id,
+    sync: settings.default_sync_avatar_id,
+  };
+  return fieldByProvider[provider] || "";
 }
 
 function splitNarrationBlocks(text: string): string[] {
