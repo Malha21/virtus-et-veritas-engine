@@ -45,8 +45,20 @@ class GeneratedVideoRead(BaseModel):
     created_at: datetime
     updated_at: datetime | None
     completed_at: datetime | None
+    generation_started_at: datetime | None
+    generation_completed_at: datetime | None
+    provider_latency_seconds: float | None
+    estimated_cost_usd: float | None
+    quality_rating: int | None
+    quality_notes: str | None
     download_url: str | None
 
 
 class GeneratedVideoListResponse(BaseModel):
     items: list[GeneratedVideoRead]
+
+
+class GeneratedVideoReviewUpdateRequest(BaseModel):
+    quality_rating: int | None = Field(default=None, ge=1, le=5)
+    quality_notes: str | None = Field(default=None, max_length=4000)
+    estimated_cost_usd: float | None = Field(default=None, ge=0)

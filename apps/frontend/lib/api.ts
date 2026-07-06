@@ -89,7 +89,19 @@ export type GeneratedVideo = {
   created_at: string;
   updated_at: string | null;
   completed_at: string | null;
+  generation_started_at: string | null;
+  generation_completed_at: string | null;
+  provider_latency_seconds: number | null;
+  estimated_cost_usd: number | null;
+  quality_rating: number | null;
+  quality_notes: string | null;
   download_url: string | null;
+};
+
+export type VideoReviewUpdatePayload = {
+  quality_rating?: number | null;
+  quality_notes?: string | null;
+  estimated_cost_usd?: number | null;
 };
 
 export type InstructorProfilePayload = {
@@ -622,6 +634,23 @@ export async function refreshProjectVideoStatus(projectId: string, videoId: stri
   return apiFetch<GeneratedVideo>(`/projects/${projectId}/videos/${videoId}/refresh-status`, {
     method: "POST",
     token,
+  });
+}
+
+export async function updateProjectVideoReview(
+  projectId: string,
+  videoId: string,
+  payload: VideoReviewUpdatePayload,
+): Promise<GeneratedVideo> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedVideo>(`/projects/${projectId}/videos/${videoId}/review`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
   });
 }
 

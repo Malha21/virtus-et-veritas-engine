@@ -18,7 +18,7 @@ from app.models.user import User
 from app.providers.video import did, heygen
 from app.providers.video import sync as sync_provider
 from app.providers.video.base import VideoProviderError
-from app.schemas.video import GeneratedVideoGenerateRequest
+from app.schemas.video import GeneratedVideoGenerateRequest, GeneratedVideoReviewUpdateRequest
 from app.services.signed_url_service import generate_audio_asset_token
 
 MOCK_VIDEO_UNAVAILABLE_MESSAGE = "Arquivo MP4 real ainda não disponível para este vídeo mock."
@@ -109,6 +109,12 @@ def video_to_response_data(video: GeneratedVideo) -> dict[str, object]:
         "created_at": video.created_at,
         "updated_at": video.updated_at,
         "completed_at": video.completed_at,
+        "generation_started_at": video.generation_started_at,
+        "generation_completed_at": video.generation_completed_at,
+        "provider_latency_seconds": video.provider_latency_seconds,
+        "estimated_cost_usd": video.estimated_cost_usd,
+        "quality_rating": video.quality_rating,
+        "quality_notes": video.quality_notes,
         "download_url": f"/api/v1/projects/{video.project_id}/videos/{video.id}/download" if has_download else None,
     }
 
@@ -323,6 +329,8 @@ def generate_mock_video(
     video_status = "completed"
     error_message: str | None = None
 
+    generation_started_at = datetime.now(UTC)
+
     try:
         file_name, file_path, file_size, duration_seconds = create_mock_video_file(video_dir, project.id, resolution, audio)
     except RuntimeError:
@@ -330,6 +338,7 @@ def generate_mock_video(
         error_message = MOCK_VIDEO_UNAVAILABLE_MESSAGE
 
     now = datetime.now(UTC)
+    provider_latency_seconds = (now - generation_started_at).total_seconds()
 
     video = GeneratedVideo(
         project_id=project.id,
@@ -355,6 +364,9 @@ def generate_mock_video(
             **(payload.extra_metadata or {}),
         },
         completed_at=now,
+        generation_started_at=generation_started_at,
+        generation_completed_at=now,
+        provider_latency_seconds=provider_latency_seconds,
     )
     db.add(video)
     db.commit()
@@ -470,6 +482,7 @@ def generate_heygen_video(
             "audio_title": audio.title if audio else None,
             **(payload.extra_metadata or {}),
         },
+        generation_started_at=now,
     )
     db.add(video)
     db.commit()
@@ -550,6 +563,7 @@ def generate_did_video(
             "audio_title": audio.title if audio else None,
             **(payload.extra_metadata or {}),
         },
+        generation_started_at=now,
     )
     db.add(video)
     db.commit()
@@ -634,6 +648,7 @@ def generate_sync_video(
             "model": payload.model or active_settings.sync_default_model,
             **(payload.extra_metadata or {}),
         },
+        generation_started_at=now,
     )
     db.add(video)
     db.commit()
@@ -702,6 +717,13 @@ def refresh_video_status(
     elif mapped_status == "completed" and not remote.video_url:
         video.error_message = f"{provider_label} marcou o vídeo como concluído, mas não retornou a URL final."
 
+    if mapped_status == "completed" and video.generation_completed_at is None:
+        video.generation_completed_at = video.completed_at or datetime.now(UTC)
+        if video.generation_started_at:
+            video.provider_latency_seconds = (
+                video.generation_completed_at - video.generation_started_at
+            ).total_seconds()
+
     db.add(video)
     db.commit()
     db.refresh(video)
@@ -725,6 +747,29 @@ def get_video_download_path(db: Session, current_user: User, project_id: UUID, v
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=VIDEO_FILE_UNAVAILABLE_MESSAGE)
 
     return video, file_path
+
+
+def update_video_review(
+    db: Session,
+    current_user: User,
+    project_id: UUID,
+    video_id: UUID,
+    payload: GeneratedVideoReviewUpdateRequest,
+) -> GeneratedVideo:
+    video = get_video_for_project(db, current_user, project_id, video_id)
+    updates = payload.model_dump(exclude_unset=True)
+
+    if "quality_rating" in updates:
+        video.quality_rating = updates["quality_rating"]
+    if "quality_notes" in updates:
+        video.quality_notes = updates["quality_notes"]
+    if "estimated_cost_usd" in updates:
+        video.estimated_cost_usd = updates["estimated_cost_usd"]
+
+    db.add(video)
+    db.commit()
+    db.refresh(video)
+    return video
 
 
 def delete_project_video(db: Session, current_user: User, project_id: UUID, video_id: UUID) -> None:

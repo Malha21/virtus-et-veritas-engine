@@ -33,10 +33,12 @@ import {
   type GeneratedVideo,
   type InstructorProfile,
   type VideoProvider,
+  type VideoReviewUpdatePayload,
   updateComplementaryMaterial,
   updateLessonScript,
   updateModuleQuiz,
   updatePresentationDeck,
+  updateProjectVideoReview,
 } from "@/lib/api";
 import type { GeneratedContent } from "@/types/content";
 import type {
@@ -1923,7 +1925,280 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
           )}
         </div>
       </section>
+
+      <section className="rounded-lg border border-white/10 bg-black/30 p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Comparação de providers</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Compare qualidade, custo e desempenho entre Mock, HeyGen, D-ID e Sync Labs.
+        </p>
+        {videos.length ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-left text-sm">
+              <thead>
+                <tr className="text-xs uppercase tracking-wide text-slate-500">
+                  <th className="border-b border-white/10 px-3 py-2">Provider</th>
+                  <th className="border-b border-white/10 px-3 py-2">Aula / áudio base</th>
+                  <th className="border-b border-white/10 px-3 py-2">Status</th>
+                  <th className="border-b border-white/10 px-3 py-2">Duração</th>
+                  <th className="border-b border-white/10 px-3 py-2">Tempo de geração</th>
+                  <th className="border-b border-white/10 px-3 py-2">Tamanho</th>
+                  <th className="border-b border-white/10 px-3 py-2">Custo estimado</th>
+                  <th className="border-b border-white/10 px-3 py-2">Nota</th>
+                  <th className="border-b border-white/10 px-3 py-2">Observações</th>
+                  <th className="border-b border-white/10 px-3 py-2">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {videos.map((video) => (
+                  <VideoComparisonRow
+                    key={video.id}
+                    video={video}
+                    audioLabel={getVideoAudioBaseLabel(video, audios, sortedContents)}
+                    projectId={projectId}
+                    refreshing={refreshingVideoId === video.id}
+                    onRefreshStatus={() => handleRefreshVideoStatus(video)}
+                    onDownload={() => handleDownloadVideo(video)}
+                    onUpdated={(updated) =>
+                      setVideos((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+                    }
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="mt-4 rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+            Gere vídeos para começar a comparar providers.
+          </p>
+        )}
+      </section>
     </div>
+  );
+}
+
+function VideoStatusBadge({ status }: { status: string }) {
+  const stylesByStatus: Record<string, string> = {
+    completed: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
+    completed_mock: "border-amber-400/40 bg-amber-400/10 text-amber-300",
+    processing: "border-sky-400/40 bg-sky-400/10 text-sky-300",
+    pending: "border-slate-400/40 bg-slate-400/10 text-slate-300",
+    failed: "border-red-400/40 bg-red-400/10 text-red-300",
+  };
+  const labelsByStatus: Record<string, string> = {
+    completed: "Concluído",
+    completed_mock: "Mock parcial",
+    processing: "Processando",
+    pending: "Pendente",
+    failed: "Falhou",
+  };
+  const style = stylesByStatus[status] || "border-white/20 bg-white/5 text-slate-300";
+  const label = labelsByStatus[status] || status;
+
+  return (
+    <span className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium ${style}`}>
+      {label}
+    </span>
+  );
+}
+
+function VideoProviderBadge({ provider }: { provider: string }) {
+  const stylesByProvider: Record<string, string> = {
+    mock: "border-slate-400/40 bg-slate-400/10 text-slate-300",
+    heygen: "border-violet-400/40 bg-violet-400/10 text-violet-300",
+    did: "border-blue-400/40 bg-blue-400/10 text-blue-300",
+    sync: "border-teal-400/40 bg-teal-400/10 text-teal-300",
+  };
+  const style = stylesByProvider[provider] || "border-white/20 bg-white/5 text-slate-300";
+
+  return (
+    <span className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium ${style}`}>
+      {getVideoProviderLabel(provider)}
+    </span>
+  );
+}
+
+function formatSecondsLabel(value: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (value < 60) return `${value.toFixed(1)}s`;
+  const minutes = Math.floor(value / 60);
+  const seconds = Math.round(value % 60);
+  return `${minutes}m ${seconds}s`;
+}
+
+function formatBytesLabel(value: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(0)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function VideoComparisonRow({
+  video,
+  audioLabel,
+  projectId,
+  refreshing,
+  onRefreshStatus,
+  onDownload,
+  onUpdated,
+}: {
+  video: GeneratedVideo;
+  audioLabel: string;
+  projectId: string;
+  refreshing: boolean;
+  onRefreshStatus: () => void;
+  onDownload: () => void;
+  onUpdated: (video: GeneratedVideo) => void;
+}) {
+  const initialRating = video.quality_rating ? String(video.quality_rating) : "";
+  const initialNotes = video.quality_notes || "";
+  const initialCost =
+    video.estimated_cost_usd === null || video.estimated_cost_usd === undefined ? "" : String(video.estimated_cost_usd);
+
+  const [rating, setRating] = useState(initialRating);
+  const [notes, setNotes] = useState(initialNotes);
+  const [cost, setCost] = useState(initialCost);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setRating(initialRating);
+    setNotes(initialNotes);
+    setCost(initialCost);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [video.id, initialRating, initialNotes, initialCost]);
+
+  const isDirty = rating !== initialRating || notes !== initialNotes || cost !== initialCost;
+
+  async function handleSave() {
+    setError("");
+
+    const trimmedCost = cost.trim();
+    const parsedCost = trimmedCost ? Number(trimmedCost) : null;
+    if (trimmedCost && (Number.isNaN(parsedCost) || (parsedCost !== null && parsedCost < 0))) {
+      setError("Custo estimado inválido.");
+      return;
+    }
+
+    const trimmedRating = rating.trim();
+    const parsedRating = trimmedRating ? Number(trimmedRating) : null;
+    if (trimmedRating && (!Number.isInteger(parsedRating) || (parsedRating || 0) < 1 || (parsedRating || 0) > 5)) {
+      setError("Nota deve ser um número inteiro de 1 a 5.");
+      return;
+    }
+
+    const payload: VideoReviewUpdatePayload = {
+      quality_rating: parsedRating,
+      quality_notes: notes.trim() || null,
+      estimated_cost_usd: parsedCost,
+    };
+
+    setSaving(true);
+    try {
+      const updated = await updateProjectVideoReview(projectId, video.id, payload);
+      onUpdated(updated);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Não foi possível salvar a avaliação.");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <tr className="align-top text-slate-200">
+      <td className="border-b border-white/5 px-3 py-3">
+        <VideoProviderBadge provider={video.provider} />
+      </td>
+      <td className="max-w-[220px] border-b border-white/5 px-3 py-3 text-xs text-slate-300">
+        <span className="line-clamp-2 break-words">{audioLabel}</span>
+      </td>
+      <td className="border-b border-white/5 px-3 py-3">
+        <VideoStatusBadge status={video.status} />
+        {video.error_message ? (
+          <p className="mt-1 max-w-[160px] break-words text-xs text-red-300">{video.error_message}</p>
+        ) : null}
+      </td>
+      <td className="whitespace-nowrap border-b border-white/5 px-3 py-3 text-xs text-slate-300">
+        {formatSecondsLabel(video.duration_seconds)}
+      </td>
+      <td className="whitespace-nowrap border-b border-white/5 px-3 py-3 text-xs text-slate-300">
+        {formatSecondsLabel(video.provider_latency_seconds)}
+      </td>
+      <td className="whitespace-nowrap border-b border-white/5 px-3 py-3 text-xs text-slate-300">
+        {formatBytesLabel(video.file_size_bytes)}
+      </td>
+      <td className="border-b border-white/5 px-3 py-3">
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={cost}
+          onChange={(event) => setCost(event.target.value)}
+          placeholder="USD"
+          className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-slate-100 focus:border-gold-500/50 focus:outline-none"
+        />
+      </td>
+      <td className="border-b border-white/5 px-3 py-3">
+        <select
+          value={rating}
+          onChange={(event) => setRating(event.target.value)}
+          className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-slate-100 focus:border-gold-500/50 focus:outline-none"
+        >
+          <option value="">—</option>
+          {[1, 2, 3, 4, 5].map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+      </td>
+      <td className="border-b border-white/5 px-3 py-3">
+        <textarea
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          rows={2}
+          placeholder="Observações"
+          className="w-40 resize-none rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-slate-100 focus:border-gold-500/50 focus:outline-none"
+        />
+      </td>
+      <td className="border-b border-white/5 px-3 py-3">
+        <div className="flex flex-col gap-1.5">
+          {isDirty ? (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-md border border-gold-500/40 px-2 py-1 text-xs text-gold-300 transition hover:border-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Salvando..." : "Salvar avaliação"}
+            </button>
+          ) : null}
+          {video.provider !== "mock" && video.status !== "completed" && video.status !== "failed" ? (
+            <button
+              type="button"
+              onClick={onRefreshStatus}
+              disabled={refreshing}
+              className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {refreshing ? "Atualizando..." : "Atualizar status"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onDownload}
+            disabled={video.status !== "completed" || !video.download_url}
+            className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Baixar
+          </button>
+          {error ? <p className="max-w-[140px] break-words text-xs text-red-300">{error}</p> : null}
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -3658,6 +3933,12 @@ function getVideoOriginLabel(video: GeneratedVideo): string {
 
 function getVideoProviderLabel(provider: string): string {
   return VIDEO_PROVIDER_LABELS[provider as VideoProvider] || provider;
+}
+
+function getVideoAudioBaseLabel(video: GeneratedVideo, audios: GeneratedAudio[], lessons: GeneratedContent[]): string {
+  const audio = video.audio_id ? audios.find((item) => item.id === video.audio_id) : undefined;
+  if (audio) return getVideoAudioLabel(audio, lessons);
+  return getVideoOriginLabel(video);
 }
 
 function splitNarrationBlocks(text: string): string[] {

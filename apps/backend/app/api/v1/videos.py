@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
-from app.schemas.video import GeneratedVideoGenerateRequest
+from app.schemas.video import GeneratedVideoGenerateRequest, GeneratedVideoReviewUpdateRequest
 from app.services.video_service import (
     delete_project_video,
     generate_video,
@@ -16,6 +16,7 @@ from app.services.video_service import (
     get_video_for_project,
     list_project_videos,
     refresh_video_status,
+    update_video_review,
     video_to_response_data,
 )
 
@@ -51,6 +52,18 @@ def post_refresh_video_status(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, object]:
     video = refresh_video_status(db, current_user, project_id, video_id)
+    return {"success": True, "data": video_to_response_data(video)}
+
+
+@router.patch("/{video_id}/review")
+def patch_video_review(
+    project_id: UUID,
+    video_id: UUID,
+    payload: GeneratedVideoReviewUpdateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, object]:
+    video = update_video_review(db, current_user, project_id, video_id, payload)
     return {"success": True, "data": video_to_response_data(video)}
 
 
