@@ -15,9 +15,11 @@ from app.models.generated_content import GeneratedContent
 from app.models.generated_video import GeneratedVideo
 from app.models.project import Project
 from app.models.user import User
+from app.providers.video import heygen
 from app.schemas.video import GeneratedVideoGenerateRequest
 
 MOCK_VIDEO_UNAVAILABLE_MESSAGE = "Arquivo MP4 real ainda não disponível para este vídeo mock."
+VIDEO_FILE_UNAVAILABLE_MESSAGE = "Arquivo MP4 ainda não disponível para este vídeo."
 
 
 def get_video_storage_dir(settings: Settings | None = None) -> Path:
@@ -96,6 +98,9 @@ def video_to_response_data(video: GeneratedVideo) -> dict[str, object]:
         "duration_seconds": video.duration_seconds,
         "error_message": video.error_message,
         "extra_metadata": video.extra_metadata,
+        "provider_job_id": video.provider_job_id,
+        "remote_video_url": video.remote_video_url,
+        "last_status_check_at": video.last_status_check_at,
         "created_at": video.created_at,
         "updated_at": video.updated_at,
         "completed_at": video.completed_at,
@@ -269,6 +274,20 @@ def create_mock_video_file(
     return filename, file_path, file_path.stat().st_size, duration
 
 
+def generate_video(
+    db: Session,
+    current_user: User,
+    project_id: UUID,
+    payload: GeneratedVideoGenerateRequest,
+    settings: Settings | None = None,
+) -> GeneratedVideo:
+    active_settings = settings or get_settings()
+    provider = (payload.provider or active_settings.video_provider or "mock").lower().strip()
+    if provider == "heygen":
+        return generate_heygen_video(db, current_user, project_id, payload, active_settings)
+    return generate_mock_video(db, current_user, project_id, payload, active_settings)
+
+
 def generate_mock_video(
     db: Session,
     current_user: User,
@@ -334,21 +353,167 @@ def generate_mock_video(
     return video
 
 
+def map_heygen_status(remote_status: str) -> str:
+    mapping = {
+        "pending": "pending",
+        "waiting": "pending",
+        "processing": "processing",
+        "completed": "completed",
+        "failed": "failed",
+    }
+    return mapping.get(remote_status, "processing")
+
+
+def get_heygen_avatar_id(payload: GeneratedVideoGenerateRequest, settings: Settings) -> str:
+    avatar_id = (payload.avatar_id or "").strip() or (settings.heygen_default_avatar_id or "").strip()
+    if not avatar_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Informe um avatar_id da HeyGen ou configure HEYGEN_DEFAULT_AVATAR_ID.",
+        )
+    return avatar_id
+
+
+def generate_heygen_video(
+    db: Session,
+    current_user: User,
+    project_id: UUID,
+    payload: GeneratedVideoGenerateRequest,
+    settings: Settings | None = None,
+) -> GeneratedVideo:
+    active_settings = settings or get_settings()
+    if not active_settings.heygen_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="HEYGEN_API_KEY não configurada no servidor.",
+        )
+
+    project = get_project_for_video(db, current_user, project_id)
+    audio = get_audio_for_video(db, project.id, payload.audio_id)
+    if audio is None or not audio.file_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selecione um áudio já gerado para criar o vídeo com a HeyGen.",
+        )
+    validate_lesson_for_video(db, current_user, project.id, payload.lesson_id)
+    avatar_id = get_heygen_avatar_id(payload, active_settings)
+
+    audio_path = Path(audio.file_path)
+    if not audio_path.exists() or not audio_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Arquivo de áudio de origem não encontrado no storage.",
+        )
+
+    resolution = payload.resolution or active_settings.video_default_resolution or "1080p"
+
+    try:
+        asset = heygen.upload_audio_asset(audio_path, active_settings)
+        job = heygen.create_heygen_video(
+            avatar_id=avatar_id,
+            audio_asset_id=asset.asset_id,
+            resolution=resolution,
+            settings=active_settings,
+            title=f"VVE Engine - {audio.title}" if audio.title else None,
+        )
+    except heygen.HeyGenAPIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=exc.message) from exc
+
+    now = datetime.now(UTC)
+    video = GeneratedVideo(
+        project_id=project.id,
+        lesson_id=payload.lesson_id,
+        module_id=payload.module_id,
+        audio_id=audio.id,
+        avatar_id=avatar_id,
+        avatar_name=payload.avatar_name,
+        provider="heygen",
+        status=map_heygen_status(job.status),
+        resolution=resolution,
+        format="mp4",
+        provider_job_id=job.video_id,
+        remote_asset_id=asset.asset_id,
+        last_status_check_at=now,
+        provider_response=job.raw_response,
+        extra_metadata={
+            "audio_title": audio.title if audio else None,
+            **(payload.extra_metadata or {}),
+        },
+    )
+    db.add(video)
+    db.commit()
+    db.refresh(video)
+    return video
+
+
+def refresh_video_status(
+    db: Session,
+    current_user: User,
+    project_id: UUID,
+    video_id: UUID,
+    settings: Settings | None = None,
+) -> GeneratedVideo:
+    active_settings = settings or get_settings()
+    video = get_video_for_project(db, current_user, project_id, video_id)
+
+    if video.provider != "heygen" or not video.provider_job_id:
+        return video
+    if video.status in {"completed", "failed"}:
+        return video
+
+    try:
+        remote = heygen.get_heygen_video_status(video.provider_job_id, active_settings)
+    except heygen.HeyGenAPIError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=exc.message) from exc
+
+    video.status = map_heygen_status(remote.status)
+    video.provider_response = remote.raw_response
+    video.last_status_check_at = datetime.now(UTC)
+
+    if remote.status == "failed":
+        video.error_message = remote.failure_message or "Falha ao gerar vídeo na HeyGen."
+    elif remote.status == "completed" and remote.video_url:
+        video.remote_video_url = remote.video_url
+        try:
+            video_dir = get_video_storage_dir(active_settings)
+            filename = f"{project_id}-heygen-video-{uuid.uuid4().hex}.mp4"
+            file_path = video_dir / filename
+            heygen.download_heygen_video(remote.video_url, file_path)
+            if not is_valid_mp4_file(file_path):
+                file_path.unlink(missing_ok=True)
+                raise RuntimeError("Arquivo baixado da HeyGen não é um MP4 válido.")
+            video.file_path = str(file_path)
+            video.file_name = filename
+            video.file_size_bytes = file_path.stat().st_size
+            duration = get_media_duration_seconds(file_path) or remote.duration
+            video.duration_seconds = int(round(duration)) if duration else None
+            video.completed_at = datetime.now(UTC)
+        except (heygen.HeyGenAPIError, RuntimeError, OSError) as exc:
+            video.error_message = f"Vídeo concluído na HeyGen, mas falhou ao salvar localmente: {exc}"
+    elif remote.status == "completed" and not remote.video_url:
+        video.error_message = "HeyGen marcou o vídeo como concluído, mas não retornou video_url."
+
+    db.add(video)
+    db.commit()
+    db.refresh(video)
+    return video
+
+
 def get_video_download_path(db: Session, current_user: User, project_id: UUID, video_id: UUID) -> tuple[GeneratedVideo, Path]:
     video = get_video_for_project(db, current_user, project_id, video_id)
     if video.status != "completed":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=MOCK_VIDEO_UNAVAILABLE_MESSAGE)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=VIDEO_FILE_UNAVAILABLE_MESSAGE)
     if not video.file_path:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=MOCK_VIDEO_UNAVAILABLE_MESSAGE)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VIDEO_FILE_UNAVAILABLE_MESSAGE)
 
     video_dir = get_video_storage_dir().resolve()
     file_path = Path(video.file_path).resolve()
     if video_dir not in file_path.parents:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Caminho de video invalido.")
     if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=MOCK_VIDEO_UNAVAILABLE_MESSAGE)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=VIDEO_FILE_UNAVAILABLE_MESSAGE)
     if not is_valid_mp4_file(file_path):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=MOCK_VIDEO_UNAVAILABLE_MESSAGE)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=VIDEO_FILE_UNAVAILABLE_MESSAGE)
 
     return video, file_path
 

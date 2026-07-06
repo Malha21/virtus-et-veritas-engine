@@ -9,6 +9,7 @@ class GeneratedVideoGenerateRequest(BaseModel):
     lesson_id: UUID | None = None
     module_id: UUID | None = None
     audio_id: UUID | None = None
+    provider: str | None = Field(default=None, max_length=50)
     avatar_id: str | None = Field(default=None, max_length=255)
     avatar_name: str | None = Field(default=None, max_length=255)
     resolution: str | None = Field(default=None, max_length=50)
@@ -33,6 +34,9 @@ class GeneratedVideoRead(BaseModel):
     duration_seconds: int | None
     error_message: str | None
     extra_metadata: dict[str, Any] | None
+    provider_job_id: str | None
+    remote_video_url: str | None
+    last_status_check_at: datetime | None
     created_at: datetime
     updated_at: datetime | None
     completed_at: datetime | None

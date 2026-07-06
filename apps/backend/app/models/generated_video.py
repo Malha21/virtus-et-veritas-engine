@@ -48,6 +48,11 @@ class GeneratedVideo(Base):
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    provider_job_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    remote_video_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    remote_asset_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_status_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_response: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

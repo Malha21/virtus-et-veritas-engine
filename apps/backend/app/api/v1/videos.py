@@ -11,10 +11,11 @@ from app.models.user import User
 from app.schemas.video import GeneratedVideoGenerateRequest
 from app.services.video_service import (
     delete_project_video,
-    generate_mock_video,
+    generate_video,
     get_video_download_path,
     get_video_for_project,
     list_project_videos,
+    refresh_video_status,
     video_to_response_data,
 )
 
@@ -38,7 +39,18 @@ def post_generate_video(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, object]:
-    video = generate_mock_video(db, current_user, project_id, payload)
+    video = generate_video(db, current_user, project_id, payload)
+    return {"success": True, "data": video_to_response_data(video)}
+
+
+@router.post("/{video_id}/refresh-status")
+def post_refresh_video_status(
+    project_id: UUID,
+    video_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, object]:
+    video = refresh_video_status(db, current_user, project_id, video_id)
     return {"success": True, "data": video_to_response_data(video)}
 
 

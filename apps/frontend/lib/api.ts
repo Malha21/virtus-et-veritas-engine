@@ -47,10 +47,13 @@ export type NarrationAudiosZipParams = {
   title_contains?: string | null;
 };
 
+export type VideoProvider = "mock" | "heygen";
+
 export type GenerateProjectVideoPayload = {
   lesson_id?: string | null;
   module_id?: string | null;
   audio_id?: string | null;
+  provider?: VideoProvider | null;
   avatar_id?: string | null;
   avatar_name?: string | null;
   resolution?: string | null;
@@ -75,6 +78,9 @@ export type GeneratedVideo = {
   duration_seconds: number | null;
   error_message: string | null;
   extra_metadata: Record<string, unknown> | null;
+  provider_job_id: string | null;
+  remote_video_url: string | null;
+  last_status_check_at: string | null;
   created_at: string;
   updated_at: string | null;
   completed_at: string | null;
@@ -600,6 +606,18 @@ export async function getProjectVideo(projectId: string, videoId: string): Promi
   }
 
   return apiFetch<GeneratedVideo>(`/projects/${projectId}/videos/${videoId}`, { token });
+}
+
+export async function refreshProjectVideoStatus(projectId: string, videoId: string): Promise<GeneratedVideo> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessÃ£o expirou. FaÃ§a login novamente.", 401);
+  }
+
+  return apiFetch<GeneratedVideo>(`/projects/${projectId}/videos/${videoId}/refresh-status`, {
+    method: "POST",
+    token,
+  });
 }
 
 export async function deleteProjectVideo(projectId: string, videoId: string): Promise<{ message: string }> {

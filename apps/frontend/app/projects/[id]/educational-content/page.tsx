@@ -28,9 +28,11 @@ import {
   generateProjectVideo,
   listProjectAudios,
   listProjectVideos,
+  refreshProjectVideoStatus,
   type GeneratedAudio,
   type GeneratedVideo,
   type InstructorProfile,
+  type VideoProvider,
   updateComplementaryMaterial,
   updateLessonScript,
   updateModuleQuiz,
@@ -1492,11 +1494,13 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
   const [audios, setAudios] = useState<GeneratedAudio[]>([]);
   const [videos, setVideos] = useState<GeneratedVideo[]>([]);
   const [selectedAudioId, setSelectedAudioId] = useState("");
+  const [videoProvider, setVideoProvider] = useState<VideoProvider>("mock");
   const [videoAvatarId, setVideoAvatarId] = useState("");
   const [videoAvatarName, setVideoAvatarName] = useState("");
   const [videoResolution, setVideoResolution] = useState("1080p");
   const [videoFormat, setVideoFormat] = useState("mp4");
   const [generatingVideo, setGeneratingVideo] = useState(false);
+  const [refreshingVideoId, setRefreshingVideoId] = useState("");
   const [videoMessage, setVideoMessage] = useState("");
   const [videoError, setVideoError] = useState("");
 
@@ -1566,7 +1570,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
 
   async function handleGenerateVideo() {
     if (!selectedAudio) {
-      setVideoError("Selecione um áudio gerado antes de criar o vídeo mock.");
+      setVideoError("Selecione um áudio gerado antes de criar o vídeo.");
       return;
     }
 
@@ -1578,6 +1582,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
         lesson_id: selectedLesson?.id || null,
         module_id: null,
         audio_id: selectedAudio.id,
+        provider: videoProvider,
         avatar_id: videoAvatarId.trim() || null,
         avatar_name: videoAvatarName.trim() || null,
         resolution: videoResolution,
@@ -1589,17 +1594,42 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
         },
       });
       setVideos((current) => [video, ...current.filter((item) => item.id !== video.id)]);
-      setVideoMessage("Vídeo mock gerado com sucesso.");
+      setVideoMessage(
+        videoProvider === "heygen"
+          ? "Job de vídeo criado na HeyGen. Acompanhe o status abaixo."
+          : "Vídeo mock gerado com sucesso.",
+      );
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setVideoError("Sua sessão expirou. Faça login novamente.");
       } else if (err instanceof Error && err.message) {
         setVideoError(err.message);
       } else {
-        setVideoError("Não foi possível gerar o vídeo mock agora.");
+        setVideoError("Não foi possível gerar o vídeo agora.");
       }
     } finally {
       setGeneratingVideo(false);
+    }
+  }
+
+  async function handleRefreshVideoStatus(video: GeneratedVideo) {
+    setVideoError("");
+    setVideoMessage("");
+    setRefreshingVideoId(video.id);
+    try {
+      const updated = await refreshProjectVideoStatus(projectId, video.id);
+      setVideos((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setVideoMessage("Status do vídeo atualizado.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setVideoError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setVideoError(err.message);
+      } else {
+        setVideoError("Não foi possível atualizar o status do vídeo.");
+      }
+    } finally {
+      setRefreshingVideoId("");
     }
   }
 
@@ -1656,11 +1686,30 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
             disabled={!selectedAudio || generatingVideo}
             className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {generatingVideo ? "Gerando vídeo..." : "Gerar vídeo mock"}
+            {generatingVideo
+              ? "Gerando vídeo..."
+              : videoProvider === "heygen"
+                ? "Gerar vídeo HeyGen"
+                : "Gerar vídeo mock"}
           </button>
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+            Provider
+            <select
+              value={videoProvider}
+              onChange={(event) => setVideoProvider(event.target.value as VideoProvider)}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="mock" className="bg-navy-950 text-slate-100">
+                mock
+              </option>
+              <option value="heygen" className="bg-navy-950 text-slate-100">
+                heygen
+              </option>
+            </select>
+          </label>
           <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
             Áudio base
             <select
@@ -1682,24 +1731,28 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
               )}
             </select>
           </label>
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
-            Avatar ID
-            <input
-              value={videoAvatarId}
-              onChange={(event) => setVideoAvatarId(event.target.value)}
-              placeholder="avatar_demo_01"
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
-            />
-          </label>
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
-            Nome do avatar
-            <input
-              value={videoAvatarName}
-              onChange={(event) => setVideoAvatarName(event.target.value)}
-              placeholder="Instrutor Virtus"
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
-            />
-          </label>
+          {videoProvider === "heygen" ? (
+            <>
+              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+                Avatar ID
+                <input
+                  value={videoAvatarId}
+                  onChange={(event) => setVideoAvatarId(event.target.value)}
+                  placeholder="Usar avatar padrão (HEYGEN_DEFAULT_AVATAR_ID)"
+                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                />
+              </label>
+              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+                Nome do avatar
+                <input
+                  value={videoAvatarName}
+                  onChange={(event) => setVideoAvatarName(event.target.value)}
+                  placeholder="Instrutor Virtus"
+                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                />
+              </label>
+            </>
+          ) : null}
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:col-span-2">
             <label className="grid min-w-0 gap-2 text-sm text-slate-300">
               Resolução
@@ -1754,13 +1807,26 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
                     </p>
                     <p className="mt-1 text-xs text-slate-500">Origem: {getVideoOriginLabel(video)}</p>
                     {video.error_message ? <p className="mt-2 text-xs text-red-300">{video.error_message}</p> : null}
-                    {!video.download_url ? (
+                    {!video.download_url && (video.status === "pending" || video.status === "processing") ? (
                       <p className="mt-2 text-xs text-gold-300">
-                        Download de MP4 real disponível na próxima fase.
+                        Vídeo ainda em processamento na HeyGen. Atualize o status para acompanhar.
                       </p>
+                    ) : null}
+                    {!video.download_url && video.status === "completed_mock" ? (
+                      <p className="mt-2 text-xs text-gold-300">Não foi possível gerar o MP4 mock para este vídeo.</p>
                     ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    {video.provider === "heygen" && video.status !== "completed" && video.status !== "failed" ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRefreshVideoStatus(video)}
+                        disabled={refreshingVideoId === video.id}
+                        className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {refreshingVideoId === video.id ? "Atualizando..." : "Atualizar status"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => handleDownloadVideo(video)}
@@ -1782,7 +1848,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
             ))
           ) : (
             <p className="rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
-              Nenhum vídeo mock gerado neste projeto.
+              Nenhum vídeo gerado neste projeto.
             </p>
           )}
         </div>
