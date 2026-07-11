@@ -172,6 +172,96 @@ export type VideoReviewUpdatePayload = {
   estimated_cost_usd?: number | null;
 };
 
+export type VideoPipelineScope = "lesson" | "module" | "course";
+
+export type VideoPipelineJobCreatePayload = {
+  scope: VideoPipelineScope;
+  module_index?: number | null;
+  lesson_id?: string | null;
+  provider?: VideoProvider | null;
+  video_avatar_id?: string | null;
+  skip_existing_audio?: boolean;
+  skip_existing_video?: boolean;
+  force_regenerate_audio?: boolean;
+  force_regenerate_video?: boolean;
+};
+
+export type VideoPipelineJobItem = {
+  id: string;
+  job_id: string;
+  project_id: string;
+  lesson_content_id: string | null;
+  module_index: number | null;
+  lesson_index: number | null;
+  lesson_title: string | null;
+  status: string;
+  generated_audio_id: string | null;
+  generated_video_id: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type VideoPipelineJob = {
+  id: string;
+  project_id: string;
+  scope: VideoPipelineScope;
+  module_index: number | null;
+  lesson_id: string | null;
+  lesson_index: number | null;
+  status: string;
+  total_items: number;
+  completed_items: number;
+  failed_items: number;
+  current_item_label: string | null;
+  provider: string | null;
+  video_avatar_id: string | null;
+  skip_existing_audio: boolean;
+  skip_existing_video: boolean;
+  force_regenerate_audio: boolean;
+  force_regenerate_video: boolean;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string | null;
+  items: VideoPipelineJobItem[];
+};
+
+export type CourseExportTextFormat = "md" | "txt";
+
+export type CourseExportCreatePayload = {
+  include_document_base?: boolean;
+  include_course_summary?: boolean;
+  include_course_structure?: boolean;
+  include_lesson_scripts?: boolean;
+  include_quizzes?: boolean;
+  include_materials?: boolean;
+  include_presentation?: boolean;
+  include_teleprompter?: boolean;
+  include_audio?: boolean;
+  include_video?: boolean;
+  only_completed_video?: boolean;
+  format_text?: CourseExportTextFormat;
+};
+
+export type CourseExport = {
+  id: string;
+  project_id: string;
+  status: string;
+  export_type: string;
+  options_json: CourseExportCreatePayload | null;
+  file_size_bytes: number | null;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+  download_url: string | null;
+};
+
 export type InstructorProfilePayload = {
   display_name: string | null;
   bio: string | null;
@@ -732,6 +822,159 @@ export async function deleteProjectVideo(projectId: string, videoId: string): Pr
     method: "DELETE",
     token,
   });
+}
+
+export async function createVideoPipelineJob(
+  projectId: string,
+  payload: VideoPipelineJobCreatePayload,
+): Promise<VideoPipelineJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<VideoPipelineJob>(`/projects/${projectId}/video-pipeline/jobs`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listVideoPipelineJobs(projectId: string): Promise<VideoPipelineJob[]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<VideoPipelineJob[]>(`/projects/${projectId}/video-pipeline/jobs`, { token });
+}
+
+export async function getVideoPipelineJob(projectId: string, jobId: string): Promise<VideoPipelineJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<VideoPipelineJob>(`/projects/${projectId}/video-pipeline/jobs/${jobId}`, { token });
+}
+
+export async function runVideoPipelineJob(projectId: string, jobId: string): Promise<VideoPipelineJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<VideoPipelineJob>(`/projects/${projectId}/video-pipeline/jobs/${jobId}/run`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function retryFailedVideoPipelineJob(projectId: string, jobId: string): Promise<VideoPipelineJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<VideoPipelineJob>(`/projects/${projectId}/video-pipeline/jobs/${jobId}/retry-failed`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function cancelVideoPipelineJob(projectId: string, jobId: string): Promise<VideoPipelineJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<VideoPipelineJob>(`/projects/${projectId}/video-pipeline/jobs/${jobId}/cancel`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function createCourseExport(
+  projectId: string,
+  payload: CourseExportCreatePayload,
+): Promise<CourseExport> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<CourseExport>(`/projects/${projectId}/exports/course`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listCourseExports(projectId: string): Promise<CourseExport[]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<CourseExport[]>(`/projects/${projectId}/exports`, { token });
+}
+
+export async function getCourseExport(projectId: string, exportId: string): Promise<CourseExport> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<CourseExport>(`/projects/${projectId}/exports/${exportId}`, { token });
+}
+
+export async function deleteCourseExport(projectId: string, exportId: string): Promise<{ message: string }> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<{ message: string }>(`/projects/${projectId}/exports/${exportId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export function getCourseExportDownloadUrl(projectId: string, exportId: string): string {
+  return `${baseURL}/projects/${projectId}/exports/${exportId}/download`;
+}
+
+export async function downloadCourseExport(
+  projectId: string,
+  exportId: string,
+  fallbackFilename = "curso.zip",
+): Promise<void> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  const response = await fetch(getCourseExportDownloadUrl(projectId, exportId), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+    throw new ApiError(getApiErrorMessage(payload), response.status);
+  }
+
+  const blob = await response.blob();
+  const filename = getFilenameFromContentDisposition(response.headers.get("Content-Disposition"), fallbackFilename);
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
 }
 
 export async function listProjectVideoAvatars(projectId: string): Promise<VideoAvatar[]> {

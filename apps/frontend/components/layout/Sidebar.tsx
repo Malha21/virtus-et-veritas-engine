@@ -2,10 +2,30 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 
-const links = [
+function ShieldCheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M12 3l7 3v5c0 4.5-3 8.25-7 10-4-1.75-7-5.5-7-10V6l7-3z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+const links: { href: string; label: string; icon?: ReactNode }[] = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/projects", label: "Projetos" },
+  { href: "/fidelity-coverage", label: "Fidelidade e Cobertura", icon: <ShieldCheckIcon /> },
   { href: "/instructor-profile", label: "Perfil do Instrutor" },
 ];
 
@@ -26,12 +46,13 @@ export function Sidebar() {
             <Link
               key={link.href}
               href={link.href}
-              className={`rounded-md px-3 py-2 text-sm transition ${
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition ${
                 active
                   ? "bg-gold-500 text-navy-950"
                   : "text-slate-300 hover:bg-white/[0.05] hover:text-white"
               }`}
             >
+              {link.icon}
               {link.label}
             </Link>
           );

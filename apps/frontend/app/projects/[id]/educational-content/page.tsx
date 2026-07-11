@@ -9,11 +9,16 @@ import { AppShell } from "@/components/layout/AppShell";
 import {
   ApiError,
   apiFetch,
+  cancelVideoPipelineJob,
+  createCourseExport,
   createProjectVideoAvatar,
+  createVideoPipelineJob,
+  deleteCourseExport,
   deleteProjectAudio,
   deleteProjectVideo,
   deleteProjectVideoAvatar,
   downloadComplementaryMaterialsPdf,
+  downloadCourseExport,
   downloadFullCoursePdf,
   downloadLessonScriptsPdf,
   downloadNarrationAudiosZip,
@@ -26,13 +31,22 @@ import {
   generateNarrationAudio,
   generateDocumentAnalysis,
   getInstructorProfile,
+  getCourseExport,
   getDocumentAnalysis,
   generateProjectVideo,
   getProjectVideoSettings,
+  getVideoPipelineJob,
+  listCourseExports,
   listProjectAudios,
   listProjectVideoAvatars,
   listProjectVideos,
+  listVideoPipelineJobs,
   refreshProjectVideoStatus,
+  retryFailedVideoPipelineJob,
+  runVideoPipelineJob,
+  type CourseExport,
+  type CourseExportCreatePayload,
+  type CourseExportTextFormat,
   type GeneratedAudio,
   type GeneratedVideo,
   type InstructorProfile,
@@ -41,6 +55,8 @@ import {
   type VideoAvatar,
   type VideoAvatarCreatePayload,
   type VideoAvatarUpdatePayload,
+  type VideoPipelineJob,
+  type VideoPipelineScope,
   type VideoProvider,
   type VideoReviewUpdatePayload,
   updateComplementaryMaterial,
@@ -70,7 +86,8 @@ type Tab =
   | "presentation"
   | "teleprompter"
   | "narration"
-  | "video";
+  | "video"
+  | "export";
 type NarrationMode = "lesson" | "module";
 
 type LessonModuleGroup = {
@@ -388,6 +405,9 @@ export default function EducationalContentPage() {
             <TabButton active={activeTab === "video"} onClick={() => setActiveTab("video")}>
               Vídeo
             </TabButton>
+            <TabButton active={activeTab === "export"} onClick={() => setActiveTab("export")}>
+              Exportação
+            </TabButton>
           </div>
 
           {loading ? (
@@ -575,6 +595,7 @@ export default function EducationalContentPage() {
               {activeTab === "teleprompter" ? <TeleprompterView contents={data.lesson_scripts} /> : null}
               {activeTab === "narration" ? <NarrationView contents={data.lesson_scripts} projectId={params.id} /> : null}
               {activeTab === "video" ? <VideoView contents={data.lesson_scripts} projectId={params.id} /> : null}
+              {activeTab === "export" ? <ExportView projectId={params.id} /> : null}
             </div>
           ) : null}
         </section>
@@ -1543,6 +1564,23 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
   const [videoMessage, setVideoMessage] = useState("");
   const [videoError, setVideoError] = useState("");
 
+  const [pipelineScope, setPipelineScope] = useState<VideoPipelineScope>("lesson");
+  const [pipelineModuleIndex, setPipelineModuleIndex] = useState("");
+  const [pipelineLessonId, setPipelineLessonId] = useState("");
+  const [pipelineProvider, setPipelineProvider] = useState<VideoProvider | "">("");
+  const [pipelineAvatarId, setPipelineAvatarId] = useState("");
+  const [pipelineSkipExistingAudio, setPipelineSkipExistingAudio] = useState(true);
+  const [pipelineSkipExistingVideo, setPipelineSkipExistingVideo] = useState(true);
+  const [pipelineForceRegenerateAudio, setPipelineForceRegenerateAudio] = useState(false);
+  const [pipelineForceRegenerateVideo, setPipelineForceRegenerateVideo] = useState(false);
+  const [pipelineJobs, setPipelineJobs] = useState<VideoPipelineJob[]>([]);
+  const [currentPipelineJob, setCurrentPipelineJob] = useState<VideoPipelineJob | null>(null);
+  const [pipelineIsPolling, setPipelineIsPolling] = useState(false);
+  const [creatingPipeline, setCreatingPipeline] = useState(false);
+  const [pipelineActionLoading, setPipelineActionLoading] = useState(false);
+  const [pipelineMessage, setPipelineMessage] = useState("");
+  const [pipelineError, setPipelineError] = useState("");
+
   useEffect(() => {
     let isActive = true;
     setVideoError("");
@@ -1674,6 +1712,56 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoSettings, defaultsApplied]);
 
+  useEffect(() => {
+    let isActive = true;
+    listVideoPipelineJobs(projectId)
+      .then((jobs) => {
+        if (!isActive) return;
+        setPipelineJobs(jobs);
+        if (jobs.length) {
+          setCurrentPipelineJob(jobs[0]);
+          if (jobs[0].status === "running") setPipelineIsPolling(true);
+        }
+      })
+      .catch(() => {
+        // Silencioso: histórico de pipelines é informativo, não bloqueia a tela.
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!pipelineIsPolling || !currentPipelineJob) return;
+    let isActive = true;
+    let timeoutId: number | undefined;
+    const jobId = currentPipelineJob.id;
+
+    async function poll() {
+      try {
+        const job = await getVideoPipelineJob(projectId, jobId);
+        if (!isActive) return;
+        setCurrentPipelineJob(job);
+        setPipelineJobs((current) => current.map((item) => (item.id === job.id ? job : item)));
+        if (job.status === "pending" || job.status === "running") {
+          timeoutId = window.setTimeout(poll, 4000);
+        } else {
+          setPipelineIsPolling(false);
+        }
+      } catch {
+        if (isActive) setPipelineIsPolling(false);
+      }
+    }
+
+    poll();
+
+    return () => {
+      isActive = false;
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineIsPolling, currentPipelineJob?.id, projectId]);
+
   const activeVideoAvatars = avatars.filter((avatar) => avatar.is_active);
   const selectedVideoAvatar = activeVideoAvatars.find((avatar) => avatar.id === selectedVideoAvatarId) || null;
   const selectedAudio = audios.find((audio) => audio.id === selectedAudioId) || audios[0] || null;
@@ -1684,6 +1772,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
   const selectedAudioTitle = selectedAudio
     ? selectedAudio.title || getLessonAudioBaseTitle(selectedScript, selectedLesson || undefined)
     : "";
+  const pipelineModuleGroups = groupLessonsByModule(sortedContents).filter((group) => group.moduleNumber !== 9999);
 
   async function handleGenerateVideo() {
     if (!selectedAudio) {
@@ -1818,6 +1907,114 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
       }
     } finally {
       setSavingVideoSettings(false);
+    }
+  }
+
+  function reportPipelineError(err: unknown, fallback: string) {
+    if (err instanceof ApiError && err.status === 401) {
+      setPipelineError("Sua sessão expirou. Faça login novamente.");
+    } else if (err instanceof Error && err.message) {
+      setPipelineError(err.message);
+    } else {
+      setPipelineError(fallback);
+    }
+  }
+
+  async function handleCreatePipeline() {
+    setPipelineError("");
+    setPipelineMessage("");
+
+    if (pipelineScope === "module" && !pipelineModuleIndex) {
+      setPipelineError("Selecione um módulo.");
+      return;
+    }
+    if (pipelineScope === "lesson" && !pipelineLessonId) {
+      setPipelineError("Selecione uma aula.");
+      return;
+    }
+    if (pipelineScope === "course") {
+      const confirmed = window.confirm(
+        "Gerar áudio e vídeo para TODAS as aulas do curso pode consumir créditos da ElevenLabs e do provider de vídeo selecionado. Deseja continuar?",
+      );
+      if (!confirmed) return;
+    }
+
+    setCreatingPipeline(true);
+    try {
+      const job = await createVideoPipelineJob(projectId, {
+        scope: pipelineScope,
+        module_index: pipelineScope === "module" ? Number(pipelineModuleIndex) : null,
+        lesson_id: pipelineScope === "lesson" ? pipelineLessonId : null,
+        provider: pipelineProvider || null,
+        video_avatar_id: pipelineAvatarId || null,
+        skip_existing_audio: pipelineSkipExistingAudio,
+        skip_existing_video: pipelineSkipExistingVideo,
+        force_regenerate_audio: pipelineForceRegenerateAudio,
+        force_regenerate_video: pipelineForceRegenerateVideo,
+      });
+      setPipelineJobs((current) => [job, ...current]);
+      setCurrentPipelineJob(job);
+      setPipelineMessage(
+        `Pipeline criado com ${job.total_items} aula(s). Clique em "Iniciar geração" para começar.`,
+      );
+    } catch (err) {
+      reportPipelineError(err, "Não foi possível criar o pipeline agora.");
+    } finally {
+      setCreatingPipeline(false);
+    }
+  }
+
+  async function handleRunPipeline(job: VideoPipelineJob) {
+    setPipelineError("");
+    setPipelineMessage("");
+    setPipelineActionLoading(true);
+    try {
+      const updated = await runVideoPipelineJob(projectId, job.id);
+      setCurrentPipelineJob(updated);
+      setPipelineJobs((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setPipelineIsPolling(true);
+      setPipelineMessage("Geração iniciada. Acompanhe o progresso abaixo.");
+    } catch (err) {
+      reportPipelineError(err, "Não foi possível iniciar a geração agora.");
+    } finally {
+      setPipelineActionLoading(false);
+    }
+  }
+
+  async function handleRetryFailedPipeline(job: VideoPipelineJob) {
+    setPipelineError("");
+    setPipelineMessage("");
+    setPipelineActionLoading(true);
+    try {
+      const updated = await retryFailedVideoPipelineJob(projectId, job.id);
+      setCurrentPipelineJob(updated);
+      setPipelineJobs((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setPipelineIsPolling(true);
+      setPipelineMessage("Reprocessando itens com falha.");
+    } catch (err) {
+      reportPipelineError(err, "Não foi possível reprocessar as falhas agora.");
+    } finally {
+      setPipelineActionLoading(false);
+    }
+  }
+
+  async function handleCancelPipeline(job: VideoPipelineJob) {
+    const confirmed = window.confirm("Tem certeza que deseja cancelar este pipeline?");
+    if (!confirmed) return;
+
+    setPipelineError("");
+    setPipelineMessage("");
+    setPipelineActionLoading(true);
+    try {
+      const updated = await cancelVideoPipelineJob(projectId, job.id);
+      setCurrentPipelineJob(updated);
+      setPipelineJobs((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setPipelineIsPolling(false);
+      setPipelineMessage("Pipeline cancelado.");
+    } catch (err) {
+      reportPipelineError(err, "Não foi possível cancelar o pipeline agora.");
+    } finally {
+      setPipelineActionLoading(false);
     }
   }
 
@@ -2220,6 +2417,206 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
       </section>
 
       <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Pipeline automático</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Gere áudio e vídeo automaticamente a partir dos roteiros das aulas, para uma aula, um módulo inteiro ou o
+          curso inteiro.
+        </p>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            Escopo
+            <select
+              value={pipelineScope}
+              onChange={(event) => setPipelineScope(event.target.value as VideoPipelineScope)}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="lesson" className="bg-navy-950 text-slate-100">
+                Aula específica
+              </option>
+              <option value="module" className="bg-navy-950 text-slate-100">
+                Módulo inteiro
+              </option>
+              <option value="course" className="bg-navy-950 text-slate-100">
+                Curso inteiro
+              </option>
+            </select>
+          </label>
+
+          {pipelineScope === "module" ? (
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              Módulo
+              <select
+                value={pipelineModuleIndex}
+                onChange={(event) => setPipelineModuleIndex(event.target.value)}
+                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              >
+                <option value="" className="bg-navy-950 text-slate-100">
+                  Selecione um módulo
+                </option>
+                {pipelineModuleGroups.map((group) => (
+                  <option key={group.key} value={group.moduleNumber} className="bg-navy-950 text-slate-100">
+                    {getModuleNarrationLabel(group)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {pipelineScope === "lesson" ? (
+            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              Aula
+              <select
+                value={pipelineLessonId}
+                onChange={(event) => setPipelineLessonId(event.target.value)}
+                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              >
+                <option value="" className="bg-navy-950 text-slate-100">
+                  Selecione uma aula
+                </option>
+                {sortedContents.map((content) => {
+                  const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
+                  return (
+                    <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
+                      {getLessonAudioBaseTitle(script, content)}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+          ) : null}
+
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            Provider de vídeo
+            <select
+              value={pipelineProvider}
+              onChange={(event) => setPipelineProvider(event.target.value as VideoProvider | "")}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="" className="bg-navy-950 text-slate-100">
+                Usar padrão do projeto
+              </option>
+              <option value="mock" className="bg-navy-950 text-slate-100">
+                Mock
+              </option>
+              <option value="heygen" className="bg-navy-950 text-slate-100">
+                HeyGen
+              </option>
+              <option value="did" className="bg-navy-950 text-slate-100">
+                D-ID
+              </option>
+              <option value="sync" className="bg-navy-950 text-slate-100">
+                Sync Labs
+              </option>
+            </select>
+          </label>
+
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            Avatar
+            <select
+              value={pipelineAvatarId}
+              onChange={(event) => setPipelineAvatarId(event.target.value)}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="" className="bg-navy-950 text-slate-100">
+                Usar avatar padrão do projeto
+              </option>
+              {activeVideoAvatars
+                .filter((avatar) => !pipelineProvider || avatar.provider === pipelineProvider)
+                .map((avatar) => (
+                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                    {avatar.name} ({getVideoProviderLabel(avatar.provider)})
+                  </option>
+                ))}
+            </select>
+          </label>
+
+          <div className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={pipelineSkipExistingAudio}
+                onChange={(event) => setPipelineSkipExistingAudio(event.target.checked)}
+              />
+              Reaproveitar áudios já gerados
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={pipelineSkipExistingVideo}
+                onChange={(event) => setPipelineSkipExistingVideo(event.target.checked)}
+              />
+              Reaproveitar vídeos já gerados
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={pipelineForceRegenerateAudio}
+                onChange={(event) => setPipelineForceRegenerateAudio(event.target.checked)}
+              />
+              Forçar regeração de áudio
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={pipelineForceRegenerateVideo}
+                onChange={(event) => setPipelineForceRegenerateVideo(event.target.checked)}
+              />
+              Forçar regeração de vídeo
+            </label>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleCreatePipeline}
+          disabled={creatingPipeline}
+          className="mt-4 rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {creatingPipeline ? "Criando pipeline..." : "Criar pipeline"}
+        </button>
+
+        {pipelineMessage ? <p className="mt-4 text-sm text-gold-300">{pipelineMessage}</p> : null}
+        {pipelineError ? <p className="mt-4 text-sm text-red-300">{pipelineError}</p> : null}
+
+        {currentPipelineJob ? (
+          <PipelineJobCard
+            job={currentPipelineJob}
+            actionLoading={pipelineActionLoading}
+            onRun={() => handleRunPipeline(currentPipelineJob)}
+            onRetryFailed={() => handleRetryFailedPipeline(currentPipelineJob)}
+            onCancel={() => handleCancelPipeline(currentPipelineJob)}
+          />
+        ) : null}
+
+        {pipelineJobs.length > 1 ? (
+          <div className="mt-5">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Histórico de pipelines</p>
+            <div className="mt-3 grid gap-2">
+              {pipelineJobs
+                .filter((job) => job.id !== currentPipelineJob?.id)
+                .map((job) => (
+                  <button
+                    key={job.id}
+                    type="button"
+                    onClick={() => {
+                      setCurrentPipelineJob(job);
+                      setPipelineIsPolling(job.status === "running");
+                    }}
+                    className="flex items-center justify-between rounded-md border border-white/10 bg-black/20 px-4 py-2 text-left text-sm text-slate-300 transition hover:border-gold-500/40"
+                  >
+                    <span>
+                      {getPipelineScopeLabel(job)} - {job.completed_items}/{job.total_items} aula(s)
+                    </span>
+                    <PipelineStatusBadge status={job.status} />
+                  </button>
+                ))}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
         <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Biblioteca de avatares</p>
         <p className="mt-1 text-xs text-slate-500">
           Cadastre avatares reutilizáveis por provider para agilizar a geração de vídeo.
@@ -2372,6 +2769,353 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
             Gere vídeos para começar a comparar providers.
           </p>
         )}
+      </section>
+    </div>
+  );
+}
+
+const COURSE_EXPORT_STATUS_LABELS: Record<string, string> = {
+  pending: "Pendente",
+  running: "Gerando ZIP...",
+  completed: "Concluído",
+  failed: "Falhou",
+};
+
+function CourseExportStatusBadge({ status }: { status: string }) {
+  const stylesByStatus: Record<string, string> = {
+    pending: "border-slate-400/40 bg-slate-400/10 text-slate-300",
+    running: "border-sky-400/40 bg-sky-400/10 text-sky-300",
+    completed: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
+    failed: "border-red-400/40 bg-red-400/10 text-red-300",
+  };
+  const style = stylesByStatus[status] || "border-white/20 bg-white/5 text-slate-300";
+  return (
+    <span className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium ${style}`}>
+      {COURSE_EXPORT_STATUS_LABELS[status] || status}
+    </span>
+  );
+}
+
+function formatExportBytes(value: number | null): string {
+  if (!value) return "—";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function ExportView({ projectId }: { projectId: string }) {
+  const [includeDocumentBase, setIncludeDocumentBase] = useState(true);
+  const [includeCourseSummary, setIncludeCourseSummary] = useState(true);
+  const [includeCourseStructure, setIncludeCourseStructure] = useState(true);
+  const [includeLessonScripts, setIncludeLessonScripts] = useState(true);
+  const [includeQuizzes, setIncludeQuizzes] = useState(true);
+  const [includeMaterials, setIncludeMaterials] = useState(true);
+  const [includePresentation, setIncludePresentation] = useState(true);
+  const [includeTeleprompter, setIncludeTeleprompter] = useState(true);
+  const [includeAudio, setIncludeAudio] = useState(true);
+  const [includeVideo, setIncludeVideo] = useState(true);
+  const [onlyCompletedVideo, setOnlyCompletedVideo] = useState(true);
+  const [formatText, setFormatText] = useState<CourseExportTextFormat>("md");
+
+  const [exports, setExports] = useState<CourseExport[]>([]);
+  const [currentExport, setCurrentExport] = useState<CourseExport | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let isActive = true;
+    listCourseExports(projectId)
+      .then((items) => {
+        if (!isActive) return;
+        setExports(items);
+        if (items.length && items[0].status === "running") {
+          setCurrentExport(items[0]);
+          setIsPolling(true);
+        }
+      })
+      .catch(() => {
+        // Silencioso: historico de exports e informativo, nao bloqueia a tela.
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!isPolling || !currentExport) return;
+    let isActive = true;
+    let timeoutId: number | undefined;
+    const exportId = currentExport.id;
+
+    async function poll() {
+      try {
+        const item = await getCourseExport(projectId, exportId);
+        if (!isActive) return;
+        setCurrentExport(item);
+        setExports((current) => current.map((entry) => (entry.id === item.id ? item : entry)));
+        if (item.status === "pending" || item.status === "running") {
+          timeoutId = window.setTimeout(poll, 3000);
+        } else {
+          setIsPolling(false);
+        }
+      } catch {
+        if (isActive) setIsPolling(false);
+      }
+    }
+
+    poll();
+
+    return () => {
+      isActive = false;
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPolling, currentExport?.id, projectId]);
+
+  async function handleCreateExport() {
+    setError("");
+    setMessage("");
+
+    const confirmed = window.confirm(
+      "Gerar o ZIP do curso completo pode demorar alguns minutos, especialmente com muitos audios e videos. Deseja continuar?",
+    );
+    if (!confirmed) return;
+
+    setCreating(true);
+    try {
+      const payload: CourseExportCreatePayload = {
+        include_document_base: includeDocumentBase,
+        include_course_summary: includeCourseSummary,
+        include_course_structure: includeCourseStructure,
+        include_lesson_scripts: includeLessonScripts,
+        include_quizzes: includeQuizzes,
+        include_materials: includeMaterials,
+        include_presentation: includePresentation,
+        include_teleprompter: includeTeleprompter,
+        include_audio: includeAudio,
+        include_video: includeVideo,
+        only_completed_video: onlyCompletedVideo,
+        format_text: formatText,
+      };
+      const item = await createCourseExport(projectId, payload);
+      setExports((current) => [item, ...current]);
+      setCurrentExport(item);
+      setIsPolling(true);
+      setMessage("Exportação iniciada. Acompanhe o progresso abaixo.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Não foi possível iniciar a exportação agora.");
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleDownloadExport(item: CourseExport) {
+    setError("");
+    setMessage("");
+    try {
+      await downloadCourseExport(projectId, item.id, `curso-${item.id}.zip`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Não foi possível baixar a exportação.");
+      }
+    }
+  }
+
+  async function handleDeleteExport(item: CourseExport) {
+    const confirmed = window.confirm("Tem certeza que deseja excluir esta exportação?");
+    if (!confirmed) return;
+
+    setError("");
+    setMessage("");
+    try {
+      await deleteCourseExport(projectId, item.id);
+      setExports((current) => current.filter((entry) => entry.id !== item.id));
+      if (currentExport?.id === item.id) setCurrentExport(null);
+      setMessage("Exportação excluída com sucesso.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Sua sessão expirou. Faça login novamente.");
+      } else if (err instanceof Error && err.message) {
+        setError(err.message);
+      } else {
+        setError("Não foi possível excluir a exportação.");
+      }
+    }
+  }
+
+  return (
+    <div className="grid gap-6">
+      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Exportar curso completo</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Gere um ZIP organizado com os conteudos educacionais, roteiros, quizzes, materiais, apresentação, áudios e
+          vídeos deste projeto. Cursos grandes podem demorar alguns minutos.
+        </p>
+
+        <div className="mt-4 grid gap-2 text-sm text-slate-300 md:grid-cols-2">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={includeDocumentBase} onChange={(e) => setIncludeDocumentBase(e.target.checked)} />
+            Documento Base
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={includeCourseSummary} onChange={(e) => setIncludeCourseSummary(e.target.checked)} />
+            Resumo do Curso
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={includeCourseStructure}
+              onChange={(e) => setIncludeCourseStructure(e.target.checked)}
+            />
+            Estrutura do Curso
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={includeLessonScripts} onChange={(e) => setIncludeLessonScripts(e.target.checked)} />
+            Roteiros
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={includeQuizzes} onChange={(e) => setIncludeQuizzes(e.target.checked)} />
+            Quizzes
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={includeMaterials} onChange={(e) => setIncludeMaterials(e.target.checked)} />
+            Materiais Complementares
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={includePresentation} onChange={(e) => setIncludePresentation(e.target.checked)} />
+            Apresentação
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={includeTeleprompter} onChange={(e) => setIncludeTeleprompter(e.target.checked)} />
+            Teleprompter
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={includeAudio} onChange={(e) => setIncludeAudio(e.target.checked)} />
+            Áudios
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={includeVideo} onChange={(e) => setIncludeVideo(e.target.checked)} />
+            Vídeos
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input type="checkbox" checked={onlyCompletedVideo} onChange={(e) => setOnlyCompletedVideo(e.target.checked)} />
+            Exportar somente vídeos concluídos
+          </label>
+          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            Formato dos textos
+            <select
+              value={formatText}
+              onChange={(event) => setFormatText(event.target.value as CourseExportTextFormat)}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            >
+              <option value="md" className="bg-navy-950 text-slate-100">
+                Markdown
+              </option>
+              <option value="txt" className="bg-navy-950 text-slate-100">
+                TXT
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleCreateExport}
+          disabled={creating}
+          className="mt-4 rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {creating ? "Criando exportação..." : "Gerar ZIP do curso"}
+        </button>
+
+        {message ? <p className="mt-4 text-sm text-gold-300">{message}</p> : null}
+        {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
+
+        {currentExport ? (
+          <div className="mt-5 rounded-md border border-gold-500/20 bg-gold-500/5 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-medium text-slate-100">
+                Exportação de {formatAudioDate(currentExport.created_at)}
+              </p>
+              <CourseExportStatusBadge status={currentExport.status} />
+            </div>
+            {currentExport.status === "completed" ? (
+              <button
+                type="button"
+                onClick={() => handleDownloadExport(currentExport)}
+                className="mt-3 rounded-md bg-gold-500 px-3 py-1.5 text-xs font-semibold text-navy-950 transition hover:bg-gold-400"
+              >
+                Baixar ZIP ({formatExportBytes(currentExport.file_size_bytes)})
+              </button>
+            ) : null}
+            {currentExport.status === "failed" && currentExport.error_message ? (
+              <p className="mt-3 text-xs text-red-300">{currentExport.error_message}</p>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Exportações anteriores</p>
+        <div className="mt-4 grid gap-3">
+          {exports.length ? (
+            exports.map((item) => (
+              <article key={item.id} className="rounded-md border border-white/10 bg-black/20 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-slate-100">
+                      {item.export_type} - {formatAudioDate(item.created_at)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{formatExportBytes(item.file_size_bytes)}</p>
+                  </div>
+                  <CourseExportStatusBadge status={item.status} />
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {item.status === "completed" ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadExport(item)}
+                      className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400"
+                    >
+                      Baixar
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteExport(item)}
+                    className="rounded-md border border-red-400/30 px-3 py-1.5 text-xs text-red-300 transition hover:border-red-400/60"
+                  >
+                    Excluir
+                  </button>
+                </div>
+                {item.error_message ? <p className="mt-3 text-xs text-red-300">{item.error_message}</p> : null}
+              </article>
+            ))
+          ) : (
+            <p className="rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+              Nenhuma exportação gerada ainda.
+            </p>
+          )}
+        </div>
       </section>
     </div>
   );
@@ -2900,6 +3644,147 @@ function VideoProviderBadge({ provider }: { provider: string }) {
     <span className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium ${style}`}>
       {getVideoProviderLabel(provider)}
     </span>
+  );
+}
+
+const PIPELINE_JOB_STATUS_LABELS: Record<string, string> = {
+  pending: "Pendente",
+  running: "Em andamento",
+  completed: "Concluído",
+  failed: "Falhou",
+  partially_completed: "Concluído parcialmente",
+  cancelled: "Cancelado",
+};
+
+const PIPELINE_ITEM_STATUS_LABELS: Record<string, string> = {
+  pending: "Pendente",
+  generating_audio: "Gerando áudio",
+  audio_completed: "Áudio concluído",
+  generating_video: "Gerando vídeo",
+  video_processing: "Vídeo processando",
+  completed: "Concluído",
+  failed: "Falhou",
+  skipped: "Pulado",
+};
+
+function PipelineStatusBadge({ status }: { status: string }) {
+  const stylesByStatus: Record<string, string> = {
+    pending: "border-slate-400/40 bg-slate-400/10 text-slate-300",
+    running: "border-sky-400/40 bg-sky-400/10 text-sky-300",
+    generating_audio: "border-sky-400/40 bg-sky-400/10 text-sky-300",
+    audio_completed: "border-sky-400/40 bg-sky-400/10 text-sky-300",
+    generating_video: "border-sky-400/40 bg-sky-400/10 text-sky-300",
+    video_processing: "border-sky-400/40 bg-sky-400/10 text-sky-300",
+    completed: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
+    partially_completed: "border-amber-400/40 bg-amber-400/10 text-amber-300",
+    failed: "border-red-400/40 bg-red-400/10 text-red-300",
+    cancelled: "border-white/20 bg-white/5 text-slate-300",
+    skipped: "border-white/20 bg-white/5 text-slate-300",
+  };
+  const style = stylesByStatus[status] || "border-white/20 bg-white/5 text-slate-300";
+  const label = PIPELINE_JOB_STATUS_LABELS[status] || PIPELINE_ITEM_STATUS_LABELS[status] || status;
+
+  return (
+    <span className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium ${style}`}>
+      {label}
+    </span>
+  );
+}
+
+function getPipelineScopeLabel(job: VideoPipelineJob): string {
+  if (job.scope === "course") return "Curso inteiro";
+  if (job.scope === "module") return `Módulo ${job.module_index ?? "?"}`;
+  return `Aula ${job.lesson_index ?? "?"}`;
+}
+
+function PipelineJobCard({
+  job,
+  actionLoading,
+  onRun,
+  onRetryFailed,
+  onCancel,
+}: {
+  job: VideoPipelineJob;
+  actionLoading: boolean;
+  onRun: () => void;
+  onRetryFailed: () => void;
+  onCancel: () => void;
+}) {
+  const progressPercent = job.total_items > 0 ? Math.round((job.completed_items / job.total_items) * 100) : 0;
+  const canRun = job.status === "pending";
+  const canRetryFailed = (job.status === "failed" || job.status === "partially_completed") && job.failed_items > 0;
+  const canCancel = job.status === "pending" || job.status === "running";
+
+  return (
+    <div className="mt-5 rounded-md border border-gold-500/20 bg-gold-500/5 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-slate-100">{getPipelineScopeLabel(job)}</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {job.current_item_label ? `Processando: ${job.current_item_label}` : "Aguardando início"}
+          </p>
+        </div>
+        <PipelineStatusBadge status={job.status} />
+      </div>
+
+      <div className="mt-4 h-2 rounded-full bg-white/10">
+        <div className="h-2 rounded-full bg-gold-500 transition-all" style={{ width: `${progressPercent}%` }} />
+      </div>
+      <p className="mt-2 text-xs text-slate-400">
+        {job.completed_items}/{job.total_items} concluídas
+        {job.failed_items > 0 ? ` - ${job.failed_items} com falha` : ""} ({progressPercent}%)
+      </p>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {canRun ? (
+          <button
+            type="button"
+            onClick={onRun}
+            disabled={actionLoading}
+            className="rounded-md bg-gold-500 px-3 py-1.5 text-xs font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Iniciar geração
+          </button>
+        ) : null}
+        {canRetryFailed ? (
+          <button
+            type="button"
+            onClick={onRetryFailed}
+            disabled={actionLoading}
+            className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Tentar novamente falhas
+          </button>
+        ) : null}
+        {canCancel ? (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={actionLoading}
+            className="rounded-md border border-red-400/30 px-3 py-1.5 text-xs text-red-300 transition hover:border-red-400/60 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancelar
+          </button>
+        ) : null}
+      </div>
+
+      {job.error_message ? <p className="mt-3 text-xs text-red-300">{job.error_message}</p> : null}
+
+      <div className="mt-4 grid gap-2">
+        {job.items.map((item) => (
+          <div
+            key={item.id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-black/20 px-3 py-2"
+          >
+            <span className="text-xs text-slate-300">{item.lesson_title || "Aula"}</span>
+            <div className="flex items-center gap-2">
+              {item.error_message ? <span className="text-xs text-red-300">{item.error_message}</span> : null}
+              <PipelineStatusBadge status={item.status} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
