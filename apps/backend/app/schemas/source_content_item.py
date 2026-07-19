@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SOURCE_CONTENT_ITEM_CONTENT_TYPES = {
+    # fase 19.1
     "concept",
     "definition",
     "explanation",
@@ -19,11 +20,39 @@ SOURCE_CONTENT_ITEM_CONTENT_TYPES = {
     "image_caption",
     "quotation",
     "other",
+    # ampliado de forma nao destrutiva na fase 19.3
+    "fact",
+    "step",
+    "rule",
+    "exception",
+    "case",
+    "classification",
+    "comparison",
+    "distinction",
+    "cause",
+    "consequence",
+    "warning",
+    "recommendation",
+    "question",
+    "reference",
 }
 
 SOURCE_CONTENT_ITEM_IMPORTANCE_LEVELS = {"essential", "relevant", "complementary"}
 
-SOURCE_CONTENT_ITEM_STATUSES = {"pending", "mapped", "reviewed", "approved", "rejected"}
+SOURCE_CONTENT_ITEM_STATUSES = {
+    # fase 19.1
+    "pending",
+    "mapped",
+    "reviewed",
+    "approved",
+    "rejected",
+    # ampliado de forma nao destrutiva na fase 19.3
+    "generated",
+    "validated",
+    "possible_duplicate",
+    "fragmented",
+    "requires_review",
+}
 
 
 class SourceContentItemBase(BaseModel):

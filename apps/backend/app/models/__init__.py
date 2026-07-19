@@ -18,6 +18,8 @@ from app.models.project_video_settings import ProjectVideoSettings
 from app.models.processing_job import ProcessingJob
 from app.models.processing_log import ProcessingLog
 from app.models.source_content_item import SourceContentItem
+from app.models.source_content_item_block import SourceContentItemBlock
+from app.models.source_content_item_dependency import SourceContentItemDependency
 from app.models.user import User
 from app.models.video_avatar import GeneratedVideoAvatar
 from app.models.video_pipeline_job import VideoPipelineJob
@@ -45,6 +47,8 @@ __all__ = [
     "ProjectFile",
     "ProjectVideoSettings",
     "SourceContentItem",
+    "SourceContentItemBlock",
+    "SourceContentItemDependency",
     "User",
     "VideoPipelineJob",
     "VideoPipelineJobItem",

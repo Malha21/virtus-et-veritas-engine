@@ -19,6 +19,7 @@ from app.api.v1.processing import router as processing_router
 from app.api.v1.project_video_settings import router as project_video_settings_router
 from app.api.v1.projects import router as projects_router
 from app.api.v1.public_assets import router as public_assets_router
+from app.api.v1.source_inventory import router as source_inventory_router
 from app.api.v1.video_avatars import router as video_avatars_router
 from app.api.v1.video_pipeline import router as video_pipeline_router
 from app.api.v1.videos import router as videos_router
@@ -57,6 +58,7 @@ app.include_router(processing_router, prefix=settings.api_prefix)
 app.include_router(contents_router, prefix=settings.api_prefix)
 app.include_router(document_analysis_router, prefix=settings.api_prefix)
 app.include_router(document_extraction_router, prefix=settings.api_prefix)
+app.include_router(source_inventory_router, prefix=settings.api_prefix)
 app.include_router(ai_router, prefix=settings.api_prefix)
 app.include_router(audio_router, prefix=settings.api_prefix)
 app.include_router(instructor_assets_router, prefix=settings.api_prefix)
