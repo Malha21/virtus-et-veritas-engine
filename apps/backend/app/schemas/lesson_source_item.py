@@ -4,7 +4,18 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-LESSON_SOURCE_ITEM_COVERAGE_TYPES = {"planned", "full", "partial", "missing", "supplemental"}
+LESSON_SOURCE_ITEM_COVERAGE_TYPES = {
+    "planned",
+    "full",
+    "partial",
+    "missing",
+    "supplemental",
+    # ampliado de forma nao destrutiva na fase 19.4 (plano de cobertura): distingue a aula
+    # principal de um item de usos complementares/retomadas antes de qualquer roteiro existir.
+    "planned_primary",
+    "planned_supporting",
+    "planned_reference",
+}
 
 
 class LessonSourceItemBase(BaseModel):

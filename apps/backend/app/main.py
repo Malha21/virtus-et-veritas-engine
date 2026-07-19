@@ -17,6 +17,8 @@ from app.api.v1.health import router as health_router
 from app.api.v1.instructor_assets import router as instructor_assets_router
 from app.api.v1.instructor_profiles import router as instructor_profiles_router
 from app.api.v1.jobs import router as jobs_router
+from app.api.v1.lesson_generation import course_router as lesson_generation_course_router
+from app.api.v1.lesson_generation import lesson_router as lesson_generation_lesson_router
 from app.api.v1.processing import router as processing_router
 from app.api.v1.project_video_settings import router as project_video_settings_router
 from app.api.v1.projects import router as projects_router
@@ -63,6 +65,8 @@ app.include_router(document_extraction_router, prefix=settings.api_prefix)
 app.include_router(source_inventory_router, prefix=settings.api_prefix)
 app.include_router(coverage_plan_router, prefix=settings.api_prefix)
 app.include_router(coverage_plan_lessons_router, prefix=settings.api_prefix)
+app.include_router(lesson_generation_lesson_router, prefix=settings.api_prefix)
+app.include_router(lesson_generation_course_router, prefix=settings.api_prefix)
 app.include_router(ai_router, prefix=settings.api_prefix)
 app.include_router(audio_router, prefix=settings.api_prefix)
 app.include_router(instructor_assets_router, prefix=settings.api_prefix)

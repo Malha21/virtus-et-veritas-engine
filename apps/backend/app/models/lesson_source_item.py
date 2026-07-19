@@ -2,7 +2,18 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -10,12 +21,26 @@ from app.core.database import Base
 
 
 class LessonSourceItem(Base):
-    """Relaciona um source_content_item a uma aula (generated_contents.content_type='lesson_script')."""
+    """Relaciona um source_content_item a uma aula.
+
+    Duas gerações de "aula" podem ser referenciadas, nunca as duas ao mesmo tempo:
+    - lesson_content_id: aula do sistema legado (generated_contents.content_type='lesson_script');
+    - coverage_plan_lesson_id: aula planejada pelo Plano de Cobertura (fase 19.4), antes de
+      qualquer roteiro ser gerado (isso só acontece na fase 19.5).
+    """
 
     __tablename__ = "lesson_source_items"
     __table_args__ = (
         UniqueConstraint(
             "lesson_content_id", "source_item_id", name="uq_lesson_source_items_lesson_source"
+        ),
+        UniqueConstraint(
+            "coverage_plan_lesson_id", "source_item_id", name="uq_lesson_source_items_plan_lesson_source"
+        ),
+        CheckConstraint(
+            "(lesson_content_id IS NOT NULL AND coverage_plan_lesson_id IS NULL) "
+            "OR (lesson_content_id IS NULL AND coverage_plan_lesson_id IS NOT NULL)",
+            name="ck_lesson_source_items_lesson_ref_xor",
         ),
     )
 
@@ -24,10 +49,16 @@ class LessonSourceItem(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
-    lesson_content_id: Mapped[uuid.UUID] = mapped_column(
+    lesson_content_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("generated_contents.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
+        index=True,
+    )
+    coverage_plan_lesson_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("coverage_plan_lessons.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     source_item_id: Mapped[uuid.UUID] = mapped_column(
