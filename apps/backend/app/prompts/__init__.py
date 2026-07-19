@@ -1,4 +1,8 @@
-from app.prompts.course_structure_v1 import COURSE_STRUCTURE_PROMPT_VERSION, build_course_structure_prompt
+from app.prompts.course_structure_v1 import (
+    COURSE_STRUCTURE_PROMPT_VERSION,
+    build_course_structure_expansion_prompt,
+    build_course_structure_prompt,
+)
 from app.prompts.complementary_material_v1 import (
     COMPLEMENTARY_MATERIAL_PROMPT_VERSION,
     build_complementary_material_prompt,
@@ -33,6 +37,7 @@ __all__ = [
     "PRESENTATION_DECK_PROMPT_VERSION",
     "SOURCE_INVENTORY_PROMPT_VERSION",
     "build_complementary_material_prompt",
+    "build_course_structure_expansion_prompt",
     "build_course_summary_prompt",
     "build_course_structure_prompt",
     "build_coverage_check_prompt",
