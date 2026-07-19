@@ -8,11 +8,12 @@ from app.providers.ai.base import AIProviderRequest, AIProviderResponse
 
 
 class OpenAIProvider:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, api_key: str | None = None) -> None:
         self.settings = settings
+        self.api_key = api_key or settings.openai_api_key
 
     def generate_text(self, request: AIProviderRequest) -> AIProviderResponse:
-        if not self.settings.openai_api_key or self.settings.openai_api_key == "change_me_openai_api_key":
+        if not self.api_key or self.api_key == "change_me_openai_api_key":
             return AIProviderResponse(
                 success=False,
                 error="OPENAI_API_KEY nÃ£o configurada.",
@@ -34,7 +35,7 @@ class OpenAIProvider:
         return AIProviderResponse(success=False, error=last_error)
 
     def _call(self, request: AIProviderRequest) -> AIProviderResponse:
-        client_kwargs: dict[str, Any] = {"api_key": self.settings.openai_api_key}
+        client_kwargs: dict[str, Any] = {"api_key": self.api_key}
         if request.timeout is not None:
             client_kwargs["timeout"] = request.timeout
         client = OpenAI(**client_kwargs)

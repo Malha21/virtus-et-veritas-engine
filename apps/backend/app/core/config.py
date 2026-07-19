@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     )
     jwt_secret: str = Field(default="change_me_super_secret_key", alias="JWT_SECRET")
     jwt_expires_minutes: int = Field(default=1440, alias="JWT_EXPIRES_MINUTES")
+    api_encryption_key: str = Field(default="", alias="API_ENCRYPTION_KEY")
     seed_organization_name: str = Field(
         default="Virtus et Veritas Academy",
         alias="SEED_ORGANIZATION_NAME",

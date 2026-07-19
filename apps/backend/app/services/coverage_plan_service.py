@@ -61,6 +61,7 @@ from app.services.coverage_plan_validator import (
 from app.services.document_extraction_service import get_project_file_for_extraction
 from app.services.processing_service import add_processing_log
 from app.services.project_service import get_project_by_id
+from app.services.user_ai_credential_service import resolve_generation_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -668,7 +669,8 @@ def generate_coverage_plan(db: Session, current_user: User, job: ProcessingJob) 
     db.commit()
 
     provider_key = resolve_provider_key(settings, project.ai_provider)
-    ai_provider = get_ai_provider(settings, provider_key)
+    user_api_key = resolve_generation_api_key(db, current_user, provider_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key)
     provider_record = get_active_ai_provider_record(db, provider_key, resolve_provider_name(settings, provider_key))
 
     pending_modules: list[PendingModule] = []

@@ -39,6 +39,7 @@ from app.services.ai_orchestrator_service import get_active_ai_provider_record, 
 from app.services.document_extraction_service import get_project_file_for_extraction
 from app.services.processing_service import add_processing_log
 from app.services.project_service import get_project_by_id
+from app.services.user_ai_credential_service import resolve_generation_api_key
 from app.services.source_inventory_chunking import ChunkPlan, build_chunks
 from app.services.source_inventory_validator import anchor_item_to_blocks, are_likely_same_chunk_overlap_duplicate
 
@@ -762,7 +763,8 @@ def generate_inventory(db: Session, current_user: User, job: ProcessingJob) -> N
         return
 
     provider_key = resolve_provider_key(settings, project.ai_provider)
-    ai_provider = get_ai_provider(settings, provider_key)
+    user_api_key = resolve_generation_api_key(db, current_user, provider_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key)
     provider_record = get_active_ai_provider_record(db, provider_key, resolve_provider_name(settings, provider_key))
 
     all_items: list[ResolvedItem] = []

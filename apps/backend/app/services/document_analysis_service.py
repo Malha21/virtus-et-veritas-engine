@@ -29,6 +29,7 @@ from app.services.ai_orchestrator_service import (
     register_ai_request,
 )
 from app.services.project_service import get_project_by_id
+from app.services.user_ai_credential_service import resolve_generation_api_key
 
 
 def get_latest_document_analysis(
@@ -95,7 +96,8 @@ def generate_document_analysis(
     settings = get_settings()
     project = get_project_by_id(db, current_user.organization_id, project_id)
     provider_key = resolve_provider_key(settings, project.ai_provider)
-    api_key = resolve_api_key(settings, provider_key)
+    user_api_key = resolve_generation_api_key(db, current_user, provider_key)
+    api_key = user_api_key or resolve_api_key(settings, provider_key)
     if not api_key or api_key.startswith("change_me_"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -122,7 +124,7 @@ def generate_document_analysis(
     db.add(job)
     db.flush()
 
-    ai_provider = get_ai_provider(settings, provider_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key)
     system_prompt, user_prompt = build_document_analysis_prompt(project, extracted_text, generation_language)
     response = ai_provider.generate_text(
         AIProviderRequest(

@@ -49,7 +49,7 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <main className="flex min-h-screen bg-navy-950 text-white">
-      <Sidebar />
+      <Sidebar role={user.role} />
       <section className="min-w-0 flex-1">
         <Topbar userName={user.name} organizationName={user.organization.name} />
         <div className="p-6">{typeof children === "function" ? children(user) : children}</div>

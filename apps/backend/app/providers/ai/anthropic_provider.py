@@ -18,12 +18,14 @@ _RETRYABLE_EXCEPTIONS = (
 
 
 class AnthropicProvider:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, api_key: str | None = None) -> None:
         self.settings = settings
+        self.api_key = api_key or settings.anthropic_api_key
+        self.is_personal_key = api_key is not None
 
     def generate_text(self, request: AIProviderRequest) -> AIProviderResponse:
         model_name = request.model or self.settings.anthropic_default_model
-        if not self.settings.anthropic_api_key:
+        if not self.api_key:
             return self._failure(model_name, "ANTHROPIC_API_KEY nao configurada.")
         if not model_name:
             return self._failure(model_name, "ANTHROPIC_MODEL nao configurado.")
@@ -62,11 +64,13 @@ class AnthropicProvider:
         return f"{type(exc).__name__}: {exc}"
 
     def _call(self, request: AIProviderRequest, model_name: str) -> AIProviderResponse:
-        client_kwargs: dict[str, Any] = {"api_key": self.settings.anthropic_api_key}
+        client_kwargs: dict[str, Any] = {"api_key": self.api_key}
         timeout = request.timeout if request.timeout is not None else self.settings.anthropic_timeout_seconds
         if timeout is not None:
             client_kwargs["timeout"] = timeout
-        if self.settings.anthropic_base_url:
+        # Uma chave pessoal do usuario nunca deve ser roteada pelo gateway/base_url
+        # customizado configurado globalmente para a chave do admin.
+        if not self.is_personal_key and self.settings.anthropic_base_url:
             client_kwargs["base_url"] = self.settings.anthropic_base_url
         client = Anthropic(**client_kwargs)
 

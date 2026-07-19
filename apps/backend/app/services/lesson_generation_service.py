@@ -64,6 +64,7 @@ from app.services.coverage_plan_service import get_latest_plan, get_lesson_for_u
 from app.services.coverage_plan_validator import EXCLUDED_ITEM_STATUSES, REVIEW_FLAG_STATUSES
 from app.services.processing_service import add_processing_log
 from app.services.project_service import get_project_by_id
+from app.services.user_ai_credential_service import resolve_generation_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -722,7 +723,8 @@ def generate_lesson(db: Session, current_user: User, job: ProcessingJob) -> None
     prepared_items = _prepare_items_for_prompt(db, pairs)
 
     provider_key = resolve_provider_key(settings, project.ai_provider)
-    ai_provider = get_ai_provider(settings, provider_key)
+    user_api_key = resolve_generation_api_key(db, current_user, provider_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key)
     provider_record = get_active_ai_provider_record(db, provider_key, resolve_provider_name(settings, provider_key))
 
     ai_response, warnings, usage = call_model(

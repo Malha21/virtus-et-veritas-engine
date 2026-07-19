@@ -22,15 +22,25 @@ function ShieldCheckIcon() {
   );
 }
 
-const links: { href: string; label: string; icon?: ReactNode }[] = [
+const baseLinks: { href: string; label: string; icon?: ReactNode }[] = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/projects", label: "Projetos" },
   { href: "/fidelity-coverage", label: "Fidelidade e Cobertura", icon: <ShieldCheckIcon /> },
   { href: "/instructor-profile", label: "Perfil do Instrutor" },
+  { href: "/account/api-keys", label: "Minhas APIs" },
 ];
 
-export function Sidebar() {
+const adminLinks: { href: string; label: string; icon?: ReactNode }[] = [
+  { href: "/admin/users", label: "Administração" },
+];
+
+type SidebarProps = {
+  role?: string;
+};
+
+export function Sidebar({ role }: SidebarProps) {
   const pathname = usePathname();
+  const links = role === "admin" ? [...baseLinks, ...adminLinks] : baseLinks;
 
   return (
     <aside className="flex min-h-screen w-64 flex-col border-r border-white/10 bg-navy-950 px-5 py-6">

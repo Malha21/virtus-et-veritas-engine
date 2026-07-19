@@ -55,14 +55,20 @@ def resolve_api_key(settings: Settings, provider_key: str) -> str:
     return settings.anthropic_api_key
 
 
-def get_ai_provider(settings: Settings, provider: str | None = None) -> AIProvider:
+def get_ai_provider(
+    settings: Settings, provider: str | None = None, api_key_override: str | None = None
+) -> AIProvider:
     """Retorna a implementacao de AIProvider para o provedor pedido (ex.: o
     ai_provider escolhido no projeto), caindo para o padrao do sistema
     (settings.ai_provider) quando nao especificado ou desconhecido.
+
+    api_key_override, quando informado, e a chave pessoal do usuario para o
+    provedor (cadastrada em /account/api-keys) e tem prioridade sobre a chave
+    global do .env.
     """
     key = resolve_provider_key(settings, provider)
     if key == "openai":
-        return OpenAIProvider(settings)
+        return OpenAIProvider(settings, api_key=api_key_override)
     if key == "gemini":
-        return GeminiProvider(settings)
-    return AnthropicProvider(settings)
+        return GeminiProvider(settings, api_key=api_key_override)
+    return AnthropicProvider(settings, api_key=api_key_override)

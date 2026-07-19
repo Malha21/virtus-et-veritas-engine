@@ -41,6 +41,7 @@ from app.services.ai_orchestrator_service import (
 )
 from app.services.processing_service import add_processing_log, update_processing_job
 from app.services.project_service import get_project_by_id
+from app.services.user_ai_credential_service import resolve_generation_api_key
 
 EXCERPT_CHARS = 20000
 MAX_COMPLEMENTARY_MATERIALS_PER_RUN = 1
@@ -842,7 +843,8 @@ def generate_educational_content(
             "course_structure_id": str(structure_content.id),
         }
 
-    ai_provider = get_ai_provider(settings, provider_key)
+    user_api_key = resolve_generation_api_key(db, current_user, provider_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key)
     counts = {
         "lesson_scripts": 0,
         "module_quizzes": 0,

@@ -24,6 +24,7 @@ from app.models.source_content_item import SourceContentItem
 from app.models.source_content_item_block import SourceContentItemBlock
 from app.models.source_content_item_dependency import SourceContentItemDependency
 from app.models.user import User
+from app.models.user_ai_credential import UserAICredential
 from app.models.video_avatar import GeneratedVideoAvatar
 from app.models.video_pipeline_job import VideoPipelineJob
 from app.models.video_pipeline_job_item import VideoPipelineJobItem
@@ -56,6 +57,7 @@ __all__ = [
     "SourceContentItemBlock",
     "SourceContentItemDependency",
     "User",
+    "UserAICredential",
     "VideoPipelineJob",
     "VideoPipelineJobItem",
 ]

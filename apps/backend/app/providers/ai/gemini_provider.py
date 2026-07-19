@@ -20,12 +20,13 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 class GeminiProvider:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, api_key: str | None = None) -> None:
         self.settings = settings
+        self.api_key = api_key or settings.gemini_api_key
 
     def generate_text(self, request: AIProviderRequest) -> AIProviderResponse:
         model_name = request.model or self.settings.gemini_default_model
-        if not self.settings.gemini_api_key:
+        if not self.api_key:
             return self._failure(model_name, "GEMINI_API_KEY nao configurada.")
         if not model_name:
             return self._failure(model_name, "GEMINI_DEFAULT_MODEL nao configurado.")
@@ -60,7 +61,7 @@ class GeminiProvider:
     def _call(self, request: AIProviderRequest, model_name: str) -> AIProviderResponse:
         timeout = request.timeout if request.timeout is not None else self.settings.gemini_timeout_seconds
         http_options = types.HttpOptions(timeout=int(timeout * 1000)) if timeout is not None else None
-        client = genai.Client(api_key=self.settings.gemini_api_key, http_options=http_options)
+        client = genai.Client(api_key=self.api_key, http_options=http_options)
 
         max_output_tokens = request.max_tokens or self.settings.gemini_max_output_tokens
         config = types.GenerateContentConfig(

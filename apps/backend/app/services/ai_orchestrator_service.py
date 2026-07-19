@@ -33,6 +33,7 @@ from app.providers.ai import (
 )
 from app.services.processing_service import add_processing_log, update_processing_job
 from app.services.project_service import get_project_by_id
+from app.services.user_ai_credential_service import resolve_generation_api_key
 
 MAX_INITIAL_TEXT_CHARS = 60000
 MEDIUM_LARGE_TEXT_CHARS = 45000
@@ -306,7 +307,8 @@ def generate_project_structure(
             "text_chars": len(extracted_text),
         }
 
-    ai_provider = get_ai_provider(settings, provider_key)
+    user_api_key = resolve_generation_api_key(db, current_user, provider_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key)
 
     try:
         job.status = "running"

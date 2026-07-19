@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.admin_users import router as admin_users_router
 from app.api.v1.ai import router as ai_router
 from app.api.v1.audio import router as audio_router
 from app.api.v1.auth import router as auth_router
@@ -24,6 +25,7 @@ from app.api.v1.project_video_settings import router as project_video_settings_r
 from app.api.v1.projects import router as projects_router
 from app.api.v1.public_assets import router as public_assets_router
 from app.api.v1.source_inventory import router as source_inventory_router
+from app.api.v1.user_ai_credentials import router as user_ai_credentials_router
 from app.api.v1.video_avatars import router as video_avatars_router
 from app.api.v1.video_pipeline import router as video_pipeline_router
 from app.api.v1.videos import router as videos_router
@@ -56,6 +58,8 @@ def public_health() -> dict[str, str]:
 
 app.include_router(health_router, prefix=settings.api_prefix)
 app.include_router(auth_router, prefix=settings.api_prefix)
+app.include_router(admin_users_router, prefix=settings.api_prefix)
+app.include_router(user_ai_credentials_router, prefix=settings.api_prefix)
 app.include_router(projects_router, prefix=settings.api_prefix)
 app.include_router(files_router, prefix=settings.api_prefix)
 app.include_router(processing_router, prefix=settings.api_prefix)

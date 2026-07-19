@@ -29,6 +29,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://vve_user:change_me_secure_password@postgres:5432/vve_engine}
       JWT_SECRET: ${JWT_SECRET:-change_me_super_secret_key}
       JWT_EXPIRES_MINUTES: ${JWT_EXPIRES_MINUTES:-1440}
+      API_ENCRYPTION_KEY: ${API_ENCRYPTION_KEY}
       SEED_ORGANIZATION_NAME: ${SEED_ORGANIZATION_NAME:-Virtus et Veritas Academy}
       SEED_ORGANIZATION_SLUG: ${SEED_ORGANIZATION_SLUG:-virtus-et-veritas-academy}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Leonardo Elias}

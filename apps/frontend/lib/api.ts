@@ -8,6 +8,7 @@ import type {
   PresentationDeckContent,
 } from "@/types/educational-content";
 import type { GeneratedContent } from "@/types/content";
+import type { AdminUser, AdminUserCreatePayload, UserAICredential } from "@/types/user-management";
 import type {
   CoveragePlan,
   CoveragePlanLessonMergeRequest,
@@ -1875,6 +1876,83 @@ export async function removeCoveragePlanLessonSourceItem(
   }
 
   return apiFetch(`/coverage-plan/lessons/${lessonId}/source-items/${sourceItemId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export async function listAdminUsers(): Promise<AdminUser[]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<AdminUser[]>("/admin/users", { token });
+}
+
+export async function createAdminUser(payload: AdminUserCreatePayload): Promise<AdminUser> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<AdminUser>("/admin/users", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deactivateAdminUser(userId: string): Promise<AdminUser> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<AdminUser>(`/admin/users/${userId}/deactivate`, { method: "POST", token });
+}
+
+export async function reactivateAdminUser(userId: string): Promise<AdminUser> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<AdminUser>(`/admin/users/${userId}/reactivate`, { method: "POST", token });
+}
+
+export async function listMyApiKeys(): Promise<UserAICredential[]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<UserAICredential[]>("/account/api-keys", { token });
+}
+
+export async function putMyApiKey(
+  providerType: UserAICredential["provider_type"],
+  apiKey: string,
+): Promise<UserAICredential> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<UserAICredential>(`/account/api-keys/${providerType}`, {
+    method: "PUT",
+    token,
+    body: JSON.stringify({ api_key: apiKey }),
+  });
+}
+
+export async function deleteMyApiKey(providerType: UserAICredential["provider_type"]): Promise<{ message: string }> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<{ message: string }>(`/account/api-keys/${providerType}`, {
     method: "DELETE",
     token,
   });
