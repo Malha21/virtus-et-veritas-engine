@@ -3,6 +3,11 @@ from app.prompts.complementary_material_v1 import (
     COMPLEMENTARY_MATERIAL_PROMPT_VERSION,
     build_complementary_material_prompt,
 )
+from app.prompts.coverage_lesson_script_v1 import (
+    COVERAGE_LESSON_SCRIPT_PROMPT_VERSION,
+    build_coverage_lesson_script_prompt,
+)
+from app.prompts.coverage_plan_v1 import COVERAGE_PLAN_PROMPT_VERSION, build_coverage_plan_prompt
 from app.prompts.course_summary_v1 import COURSE_SUMMARY_PROMPT_VERSION, build_course_summary_prompt
 from app.prompts.document_analysis_v1 import DOCUMENT_ANALYSIS_PROMPT_VERSION, build_document_analysis_prompt
 from app.prompts.lesson_script_v1 import LESSON_SCRIPT_PROMPT_VERSION, build_lesson_script_prompt
@@ -20,6 +25,8 @@ __all__ = [
     "COURSE_SUMMARY_PROMPT_VERSION",
     "COURSE_STRUCTURE_PROMPT_VERSION",
     "COVERAGE_CHECK_PROMPT_VERSION",
+    "COVERAGE_LESSON_SCRIPT_PROMPT_VERSION",
+    "COVERAGE_PLAN_PROMPT_VERSION",
     "DOCUMENT_ANALYSIS_PROMPT_VERSION",
     "LESSON_SCRIPT_PROMPT_VERSION",
     "MODULE_QUIZ_PROMPT_VERSION",
@@ -28,6 +35,9 @@ __all__ = [
     "build_complementary_material_prompt",
     "build_course_summary_prompt",
     "build_course_structure_prompt",
+    "build_coverage_check_prompt",
+    "build_coverage_lesson_script_prompt",
+    "build_coverage_plan_prompt",
     "build_document_analysis_prompt",
     "build_lesson_script_prompt",
     "build_module_quiz_prompt",

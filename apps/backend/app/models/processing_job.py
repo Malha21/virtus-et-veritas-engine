@@ -41,6 +41,12 @@ class ProcessingJob(Base):
         nullable=True,
         index=True,
     )
+    coverage_plan_lesson_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("coverage_plan_lessons.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     job_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     status: Mapped[str] = mapped_column(
         String(50),

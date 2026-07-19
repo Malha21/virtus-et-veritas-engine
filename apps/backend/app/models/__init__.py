@@ -2,6 +2,9 @@ from app.models.ai_provider import AIProvider
 from app.models.ai_request import AIRequest
 from app.models.course_coverage_report import CourseCoverageReport
 from app.models.course_export import CourseExport
+from app.models.coverage_plan import CoveragePlan
+from app.models.coverage_plan_lesson import CoveragePlanLesson
+from app.models.coverage_plan_module import CoveragePlanModule
 from app.models.document_block import DocumentBlock
 from app.models.document_page import DocumentPage
 from app.models.generated_audio import GeneratedAudio
@@ -30,6 +33,9 @@ __all__ = [
     "AIRequest",
     "CourseCoverageReport",
     "CourseExport",
+    "CoveragePlan",
+    "CoveragePlanLesson",
+    "CoveragePlanModule",
     "DocumentBlock",
     "DocumentPage",
     "GeneratedAudio",

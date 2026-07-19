@@ -6,6 +6,8 @@ from app.api.v1.audio import router as audio_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.contents import router as contents_router
 from app.api.v1.course_exports import router as course_exports_router
+from app.api.v1.coverage_plan import lessons_router as coverage_plan_lessons_router
+from app.api.v1.coverage_plan import router as coverage_plan_router
 from app.api.v1.document_analysis import router as document_analysis_router
 from app.api.v1.document_extraction import router as document_extraction_router
 from app.api.v1.educational_content import router as educational_content_router
@@ -59,6 +61,8 @@ app.include_router(contents_router, prefix=settings.api_prefix)
 app.include_router(document_analysis_router, prefix=settings.api_prefix)
 app.include_router(document_extraction_router, prefix=settings.api_prefix)
 app.include_router(source_inventory_router, prefix=settings.api_prefix)
+app.include_router(coverage_plan_router, prefix=settings.api_prefix)
+app.include_router(coverage_plan_lessons_router, prefix=settings.api_prefix)
 app.include_router(ai_router, prefix=settings.api_prefix)
 app.include_router(audio_router, prefix=settings.api_prefix)
 app.include_router(instructor_assets_router, prefix=settings.api_prefix)

@@ -9,6 +9,7 @@ class ProcessingJobResponse(BaseModel):
     project_id: UUID
     project_file_id: UUID | None = None
     lesson_content_id: UUID | None = None
+    coverage_plan_lesson_id: UUID | None = None
     job_type: str
     status: str
     progress: int
