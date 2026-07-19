@@ -51,6 +51,7 @@ def create_project(db: Session, current_user: User, payload: ProjectCreate) -> P
         tone_of_voice=payload.tone_of_voice,
         desired_duration=payload.desired_duration,
         description=payload.description,
+        ai_provider=payload.ai_provider,
         status="active",
         processing_status="draft",
         created_at=created_at,

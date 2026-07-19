@@ -1,7 +1,10 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+AIProviderChoice = Literal["openai", "anthropic", "gemini"]
 
 
 class ProjectCreate(BaseModel):
@@ -11,6 +14,7 @@ class ProjectCreate(BaseModel):
     tone_of_voice: str | None = None
     desired_duration: str | None = None
     description: str | None = None
+    ai_provider: AIProviderChoice | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -19,6 +23,7 @@ class ProjectUpdate(BaseModel):
     tone_of_voice: str | None = None
     desired_duration: str | None = None
     description: str | None = None
+    ai_provider: AIProviderChoice | None = None
 
 
 class ProjectResponse(BaseModel):
@@ -30,6 +35,7 @@ class ProjectResponse(BaseModel):
     tone_of_voice: str | None
     desired_duration: str | None
     description: str | None
+    ai_provider: str | None
     status: str
     processing_status: str
     created_at: datetime

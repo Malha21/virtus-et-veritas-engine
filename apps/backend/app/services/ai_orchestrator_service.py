@@ -22,24 +22,36 @@ from app.prompts import (
     build_course_structure_prompt,
     build_document_analysis_prompt,
 )
-from app.providers.ai import AIProviderRequest, AIProviderResponse, OpenAIProvider
+from app.providers.ai import (
+    AIProviderRequest,
+    AIProviderResponse,
+    get_ai_provider,
+    resolve_default_model,
+    resolve_provider_key,
+    resolve_provider_name,
+)
 from app.services.processing_service import add_processing_log, update_processing_job
 from app.services.project_service import get_project_by_id
 
 
-def get_openai_provider_record(db: Session) -> AIProvider:
-    settings = get_settings()
+def get_active_ai_provider_record(db: Session, provider_type: str, provider_name: str) -> AIProvider:
+    """Busca (ou cria) o registro de AIProvider correspondente ao provider_type
+    pedido (o provedor escolhido no projeto, ou o padrao do sistema). Registros
+    de provedores anteriores (ex.: uma geracao antiga feita com OpenAI) nao sao
+    alterados nem removidos - o historico permanece identificado com o
+    provider_type original.
+    """
     provider = db.execute(
         select(AIProvider).where(
-            AIProvider.provider_type == "openai",
+            AIProvider.provider_type == provider_type,
             AIProvider.status == "active",
         )
     ).scalar_one_or_none()
 
     if provider is None:
         provider = AIProvider(
-            name=settings.openai_provider_name,
-            provider_type="openai",
+            name=provider_name,
+            provider_type=provider_type,
             status="active",
         )
         db.add(provider)
@@ -184,7 +196,8 @@ def generate_project_structure(
     settings = get_settings()
     project = get_project_by_id(db, current_user.organization_id, project_id)
     project_file = get_latest_extracted_text_file(db, project)
-    provider_record = get_openai_provider_record(db)
+    provider_key = resolve_provider_key(settings, project.ai_provider)
+    provider_record = get_active_ai_provider_record(db, provider_key, resolve_provider_name(settings, provider_key))
     extracted_text = load_extracted_text(project_file)
 
     if job is None:
@@ -209,7 +222,7 @@ def generate_project_structure(
             "text_chars": len(extracted_text),
         }
 
-    ai_provider = OpenAIProvider(settings)
+    ai_provider = get_ai_provider(settings, provider_key)
 
     try:
         job.status = "running"
@@ -253,7 +266,8 @@ def generate_project_structure(
                 AIProviderRequest(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
-                    model=settings.openai_default_model,
+                    model=resolve_default_model(settings, provider_key),
+                    max_retries=3,
                 )
             )
             register_ai_request(
@@ -264,7 +278,7 @@ def generate_project_structure(
                 request_type="analyze_document",
                 prompt_version=DOCUMENT_ANALYSIS_PROMPT_VERSION,
                 response=analysis_response,
-                model_name=settings.openai_default_model,
+                model_name=resolve_default_model(settings, provider_key),
                 generation_language=generation_language,
             )
             if not analysis_response.success:
@@ -291,7 +305,8 @@ def generate_project_structure(
             AIProviderRequest(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                model=settings.openai_default_model,
+                model=resolve_default_model(settings, provider_key),
+                max_retries=3,
             )
         )
         register_ai_request(
@@ -302,7 +317,7 @@ def generate_project_structure(
             request_type="generate_course_structure",
             prompt_version=COURSE_STRUCTURE_PROMPT_VERSION,
             response=structure_response,
-            model_name=settings.openai_default_model,
+            model_name=resolve_default_model(settings, provider_key),
             generation_language=generation_language,
         )
         if not structure_response.success:

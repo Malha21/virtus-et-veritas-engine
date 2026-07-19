@@ -9,6 +9,9 @@ class AIProviderRequest:
     response_format: str = "json"
     temperature: float = 0.3
     model: str | None = None
+    timeout: float | None = None
+    max_retries: int = 0
+    max_tokens: int | None = None
 
 
 @dataclass
@@ -18,6 +21,10 @@ class AIProviderResponse:
     raw_response: dict[str, Any] | None = None
     usage: dict[str, int | None] = field(default_factory=dict)
     error: str | None = None
+    provider_name: str | None = None
+    model_name: str | None = None
+    stop_reason: str | None = None
+    truncated: bool = False
 
 
 class AIProvider(Protocol):

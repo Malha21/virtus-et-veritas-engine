@@ -41,6 +41,7 @@ class Project(Base):
     tone_of_voice: Mapped[str | None] = mapped_column(String(255), nullable=True)
     desired_duration: Mapped[str | None] = mapped_column(String(120), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[str] = mapped_column(
         String(50),
         nullable=False,

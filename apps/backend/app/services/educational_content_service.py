@@ -24,10 +24,17 @@ from app.prompts import (
     build_module_quiz_prompt,
     build_presentation_deck_prompt,
 )
-from app.providers.ai import AIProviderRequest, OpenAIProvider
+from app.providers.ai import (
+    AIProvider,
+    AIProviderRequest,
+    get_ai_provider,
+    resolve_default_model,
+    resolve_provider_key,
+    resolve_provider_name,
+)
 from app.services.ai_orchestrator_service import (
     get_latest_extracted_text_file,
-    get_openai_provider_record,
+    get_active_ai_provider_record,
     load_extracted_text,
     parse_json_content,
     register_ai_request,
@@ -731,7 +738,7 @@ def save_versioned_content(
 
 def call_ai_json(
     db: Session,
-    ai_provider: OpenAIProvider,
+    ai_provider: AIProvider,
     project: Project,
     job: ProcessingJob,
     provider_id: UUID,
@@ -742,11 +749,12 @@ def call_ai_json(
     generation_language: str,
 ) -> dict[str, Any]:
     settings = get_settings()
+    default_model = resolve_default_model(settings, resolve_provider_key(settings, project.ai_provider))
     response = ai_provider.generate_text(
         AIProviderRequest(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            model=settings.openai_default_model,
+            model=default_model,
         )
     )
     register_ai_request(
@@ -757,7 +765,7 @@ def call_ai_json(
         request_type=request_type,
         prompt_version=f"{prompt_version}:{generation_language}",
         response=response,
-        model_name=settings.openai_default_model,
+        model_name=default_model,
     )
     if not response.success:
         raise RuntimeError(response.error or f"Falha na chamada de IA: {request_type}.")
@@ -807,7 +815,9 @@ def generate_educational_content(
     modules = course_structure.get("course", {}).get("modules", [])
     total_lessons = sum(len(module.get("lessons", [])) for module in modules)
 
-    provider_record = get_openai_provider_record(db)
+    settings = get_settings()
+    provider_key = resolve_provider_key(settings, project.ai_provider)
+    provider_record = get_active_ai_provider_record(db, provider_key, resolve_provider_name(settings, provider_key))
     project_file = get_latest_extracted_text_file(db, project)
     extracted_excerpt = load_extracted_text(project_file)[:EXCERPT_CHARS]
 
@@ -832,7 +842,7 @@ def generate_educational_content(
             "course_structure_id": str(structure_content.id),
         }
 
-    ai_provider = OpenAIProvider(get_settings())
+    ai_provider = get_ai_provider(settings, provider_key)
     counts = {
         "lesson_scripts": 0,
         "module_quizzes": 0,

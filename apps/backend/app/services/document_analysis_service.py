@@ -13,9 +13,17 @@ from app.models.project import Project
 from app.models.project_file import ProjectFile
 from app.models.user import User
 from app.prompts import DOCUMENT_ANALYSIS_PROMPT_VERSION, build_document_analysis_prompt
-from app.providers.ai import AIProviderRequest, OpenAIProvider
+from app.providers.ai import (
+    AIProvider,
+    AIProviderRequest,
+    get_ai_provider,
+    resolve_api_key,
+    resolve_default_model,
+    resolve_provider_key,
+    resolve_provider_name,
+)
 from app.services.ai_orchestrator_service import (
-    get_openai_provider_record,
+    get_active_ai_provider_record,
     load_extracted_text,
     parse_json_content,
     register_ai_request,
@@ -85,16 +93,18 @@ def generate_document_analysis(
     generation_language: str = "pt-BR",
 ) -> GeneratedContent:
     settings = get_settings()
-    if not settings.openai_api_key or settings.openai_api_key == "change_me_openai_api_key":
+    project = get_project_by_id(db, current_user.organization_id, project_id)
+    provider_key = resolve_provider_key(settings, project.ai_provider)
+    api_key = resolve_api_key(settings, provider_key)
+    if not api_key or api_key.startswith("change_me_"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OPENAI_API_KEY nao configurada.",
+            detail=f"Chave de API nao configurada para o provedor {resolve_provider_name(settings, provider_key)}.",
         )
 
-    project = get_project_by_id(db, current_user.organization_id, project_id)
     project_file = get_latest_project_file_with_text(db, project)
     extracted_text = load_extracted_text(project_file)
-    provider_record = get_openai_provider_record(db)
+    provider_record = get_active_ai_provider_record(db, provider_key, resolve_provider_name(settings, provider_key))
 
     job = ProcessingJob(
         project_id=project.id,
@@ -112,13 +122,13 @@ def generate_document_analysis(
     db.add(job)
     db.flush()
 
-    ai_provider = OpenAIProvider(settings)
+    ai_provider = get_ai_provider(settings, provider_key)
     system_prompt, user_prompt = build_document_analysis_prompt(project, extracted_text, generation_language)
     response = ai_provider.generate_text(
         AIProviderRequest(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            model=settings.openai_default_model,
+            model=resolve_default_model(settings, provider_key),
             response_format="json",
         )
     )
@@ -130,7 +140,7 @@ def generate_document_analysis(
         request_type="generate_document_analysis",
         prompt_version=DOCUMENT_ANALYSIS_PROMPT_VERSION,
         response=response,
-        model_name=settings.openai_default_model,
+        model_name=resolve_default_model(settings, provider_key),
         generation_language=generation_language,
     )
 

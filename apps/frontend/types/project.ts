@@ -1,3 +1,5 @@
+export type AIProviderChoice = "openai" | "anthropic" | "gemini";
+
 export type Project = {
   id: string;
   title: string;
@@ -7,6 +9,7 @@ export type Project = {
   tone_of_voice: string | null;
   desired_duration: string | null;
   description: string | null;
+  ai_provider: AIProviderChoice | null;
   status: string;
   processing_status: string;
   created_at: string;
@@ -34,4 +37,5 @@ export type ProjectCreate = {
   tone_of_voice?: string;
   desired_duration?: string;
   description?: string;
+  ai_provider?: AIProviderChoice | "";
 };

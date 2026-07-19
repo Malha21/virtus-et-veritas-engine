@@ -16,6 +16,7 @@ export default function NewProjectPage() {
     tone_of_voice: "",
     desired_duration: "",
     description: "",
+    ai_provider: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,7 +33,7 @@ export default function NewProjectPage() {
     try {
       const project = await apiFetch<Project>("/projects", {
         method: "POST",
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, ai_provider: form.ai_provider || undefined }),
       });
       router.replace(`/projects/${project.id}`);
     } catch {
@@ -68,6 +69,20 @@ export default function NewProjectPage() {
               className="h-11 rounded-md border border-white/10 bg-navy-950 px-3 text-white outline-none focus:border-gold-500"
             >
               <option value="course">Curso</option>
+            </select>
+          </label>
+
+          <label className="grid gap-2 text-sm text-slate-200">
+            IA para geração de conteúdo
+            <select
+              value={form.ai_provider}
+              onChange={(event) => updateField("ai_provider", event.target.value)}
+              className="h-11 rounded-md border border-white/10 bg-navy-950 px-3 text-white outline-none focus:border-gold-500"
+            >
+              <option value="">Padrão do sistema</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="openai">OpenAI (GPT)</option>
+              {/* Gemini desativado: custo de créditos da API acima do esperado */}
             </select>
           </label>
 
