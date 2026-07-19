@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import ebooklib
+from bs4 import BeautifulSoup
+from ebooklib import epub
 from fastapi import HTTPException, status
 from pypdf import PdfReader
 from sqlalchemy import delete, func, select
@@ -64,10 +67,10 @@ def get_project_file_for_extraction(
     if project_file is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
 
-    if not project_file.original_filename.lower().endswith(".pdf"):
+    if not project_file.original_filename.lower().endswith((".pdf", ".epub")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Nesta fase, apenas documentos PDF são suportados para extração estruturada.",
+            detail="Nesta fase, apenas documentos PDF ou EPUB são suportados para extração estruturada.",
         )
 
     return project, project_file
@@ -266,6 +269,66 @@ def extract_page_raw(reader: PdfReader, page_number: int) -> dict[str, Any]:
         has_images = False
 
     return {"raw_text": raw_text, "spans": spans, "has_images": has_images}
+
+
+# --------------------------------------------------------------------------
+# Extracao por capitulo (ebooklib). EPUB nao tem "paginas" no sentido do PDF;
+# cada item do spine (ordem de leitura) vira uma "pagina" sequencial, para
+# reaproveitar sem alteracoes o restante do pipeline (normalizacao, segmentacao,
+# persistencia por page_number).
+# --------------------------------------------------------------------------
+
+EPUB_BLOCK_TAGS = ["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote", "td", "th"]
+EPUB_HEADING_FONT_SIZES = {"h1": 24.0, "h2": 22.0, "h3": 20.0, "h4": 18.0, "h5": 16.0, "h6": 14.0}
+EPUB_BASELINE_FONT_SIZE = 12.0
+
+
+def extract_epub_chapters(epub_path: Path) -> list[dict[str, Any]]:
+    book = epub.read_epub(str(epub_path))
+    chapters: list[dict[str, Any]] = []
+
+    for idref, _linear in book.spine:
+        item = book.get_item_with_id(idref)
+        if item is None or item.get_type() != ebooklib.ITEM_DOCUMENT:
+            continue
+
+        soup = BeautifulSoup(item.get_content(), "html.parser")
+        for tag in soup(["script", "style"]):
+            tag.decompose()
+
+        has_images = soup.find("img") is not None
+        body = soup.body or soup
+
+        # Extrai por elemento de bloco (h1..h6, p, li, ...), atribuindo um
+        # "font_size" sintetico por tag - reaproveita a mesma heuristica de
+        # deteccao de titulo/heading usada para PDF (baseada em tamanho de
+        # fonte), sem precisar de logica nova em classify_chunk.
+        text_parts: list[str] = []
+        spans: list[dict[str, Any]] = []
+        for element in body.find_all(EPUB_BLOCK_TAGS):
+            if element.find(EPUB_BLOCK_TAGS):
+                continue  # evita duplicar texto de elementos aninhados (ex.: <p> dentro de <blockquote>)
+            text = element.get_text(separator=" ", strip=True)
+            if not text:
+                continue
+            text_parts.append(text)
+            font_size = EPUB_HEADING_FONT_SIZES.get(element.name, EPUB_BASELINE_FONT_SIZE)
+            # Um span por palavra (nao um por elemento): reaproveita a mesma logica
+            # de "tamanho de fonte dominante por contagem" usada para PDF, que so
+            # funciona com uma amostragem densa (no PDF, o visitor_text do pypdf
+            # dispara varias vezes por linha).
+            for word in text.split():
+                spans.append({"text": word, "font_size": font_size})
+
+        if not text_parts:
+            fallback_text = soup.get_text(separator="\n").strip()
+            if fallback_text:
+                text_parts.append(fallback_text)
+
+        raw_text = "\n\n".join(text_parts)
+        chapters.append({"raw_text": raw_text, "spans": spans, "has_images": has_images})
+
+    return chapters
 
 
 def _font_size_for_text(spans: list[dict[str, Any]], text: str) -> float | None:
@@ -483,18 +546,30 @@ def extract_document(db: Session, current_user: User, job: ProcessingJob) -> Non
         raise DocumentExtractionError("Documento não encontrado para extração.")
 
     settings = get_settings()
-    pdf_path = Path(settings.storage_path) / project_file.storage_path
-    if not pdf_path.exists():
-        raise DocumentExtractionError("Arquivo PDF não encontrado no storage.")
+    document_path = Path(settings.storage_path) / project_file.storage_path
+    if not document_path.exists():
+        raise DocumentExtractionError("Arquivo não encontrado no storage.")
 
-    try:
-        reader = PdfReader(str(pdf_path))
-        total_pages = len(reader.pages)
-    except Exception as exc:  # noqa: BLE001 - abrangente: qualquer falha ao abrir o PDF e fatal para o job
-        raise DocumentExtractionError("Não foi possível abrir o PDF para extração.") from exc
+    is_epub = project_file.original_filename.lower().endswith(".epub")
+    reader: PdfReader | None = None
+    epub_chapters: list[dict[str, Any]] | None = None
+    extraction_method = "epub_chapter_text" if is_epub else "native_pdf_text"
+
+    if is_epub:
+        try:
+            epub_chapters = extract_epub_chapters(document_path)
+            total_pages = len(epub_chapters)
+        except Exception as exc:  # noqa: BLE001 - abrangente: qualquer falha ao abrir o EPUB e fatal para o job
+            raise DocumentExtractionError("Não foi possível abrir o EPUB para extração.") from exc
+    else:
+        try:
+            reader = PdfReader(str(document_path))
+            total_pages = len(reader.pages)
+        except Exception as exc:  # noqa: BLE001 - abrangente: qualquer falha ao abrir o PDF e fatal para o job
+            raise DocumentExtractionError("Não foi possível abrir o PDF para extração.") from exc
 
     if total_pages == 0:
-        raise DocumentExtractionError("O PDF não possui páginas.")
+        raise DocumentExtractionError("O documento não possui páginas/capítulos.")
 
     payload = job.payload_json or {}
     scope = payload.get("scope", "all")
@@ -523,17 +598,21 @@ def extract_document(db: Session, current_user: User, job: ProcessingJob) -> Non
 
     for page_number in target_pages:
         try:
-            raw = extract_page_raw(reader, page_number)
+            raw = extract_page_raw(reader, page_number) if reader is not None else epub_chapters[page_number - 1]
             raw_text = raw["raw_text"]
             normalized = normalize_text(raw_text)
             char_count = len(normalized)
             has_text = char_count > 0
             blocks = segment_page_blocks(raw_text, raw["spans"])
 
+            # EPUB e texto nativo por definicao: uma imagem no capitulo nunca
+            # indica necessidade de OCR (diferente de uma pagina de PDF escaneada).
+            image_suggests_ocr = raw["has_images"] and not is_epub
+
             if char_count == 0:
-                page_status = "requires_ocr" if raw["has_images"] else "empty"
-                requires_ocr = raw["has_images"]
-            elif char_count < MIN_CHARS_FOR_RELIABLE_TEXT and raw["has_images"]:
+                page_status = "requires_ocr" if image_suggests_ocr else "empty"
+                requires_ocr = image_suggests_ocr
+            elif char_count < MIN_CHARS_FOR_RELIABLE_TEXT and image_suggests_ocr:
                 page_status = "requires_ocr"
                 requires_ocr = True
             else:
@@ -547,7 +626,7 @@ def extract_document(db: Session, current_user: User, job: ProcessingJob) -> Non
                 raw_text=raw_text,
                 normalized_text=normalized,
                 extraction_status=page_status,
-                extraction_method="native_pdf_text",
+                extraction_method=extraction_method,
                 has_text=has_text,
                 requires_ocr=requires_ocr,
                 metadata_json={"has_images": raw["has_images"]},
@@ -569,7 +648,7 @@ def extract_document(db: Session, current_user: User, job: ProcessingJob) -> Non
                 raw_text="",
                 normalized_text="",
                 extraction_status="failed",
-                extraction_method="native_pdf_text",
+                extraction_method=extraction_method,
                 has_text=False,
                 requires_ocr=False,
                 metadata_json={"error": str(exc)[:500]},
@@ -729,7 +808,7 @@ def build_extraction_summary(db: Session, project_file: ProjectFile) -> Document
         total_words=sum(p.word_count for p in pages),
         total_blocks=total_blocks,
         blocks_by_type={block_type: count for block_type, count in block_type_rows},
-        extraction_method="native_pdf_text" if pages else None,
+        extraction_method=pages[0].extraction_method if pages else None,
         status=status_value,
         last_extracted_at=latest_job.finished_at if latest_job else None,
     )

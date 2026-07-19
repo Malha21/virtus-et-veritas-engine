@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from ebooklib import epub
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from sqlalchemy import event
@@ -48,6 +49,43 @@ def make_pdf_bytes(pages: list[str | None], heading_pages: set[int] | None = Non
         pdf_canvas.showPage()
 
     pdf_canvas.save()
+    return buffer.getvalue()
+
+
+def make_epub_bytes(chapters: list[str | None], heading_chapters: set[int] | None = None) -> bytes:
+    """Gera um EPUB real (via ebooklib) com um capitulo por item da lista (None = capitulo vazio).
+
+    Se o indice (1-based) do capitulo estiver em heading_chapters, a primeira linha
+    vira um <h1> (as demais continuam <p>), para testar deteccao de titulo/heading.
+    """
+    heading_chapters = heading_chapters or set()
+    book = epub.EpubBook()
+    book.set_identifier(uuid.uuid4().hex)
+    book.set_title("Documento de Teste")
+    book.set_language("pt")
+
+    chapter_items = []
+    for index, text in enumerate(chapters, start=1):
+        chapter = epub.EpubHtml(title=f"Capitulo {index}", file_name=f"chap_{index}.xhtml", lang="pt")
+        lines = (text or "").split("\n")
+        parts = []
+        for line_index, line in enumerate(lines):
+            tag = "h1" if line_index == 0 and index in heading_chapters else "p"
+            parts.append(f"<{tag}>{line}</{tag}>")
+        # Sempre gera ao menos um <p> (possivelmente vazio) para capitulos em branco (text=None):
+        # corpo totalmente vazio quebra o parser HTML do ebooklib ao gerar o nav.
+        paragraphs = "".join(parts) or "<p></p>"
+        chapter.content = f"<html><body>{paragraphs}</body></html>"
+        book.add_item(chapter)
+        chapter_items.append(chapter)
+
+    book.add_item(epub.EpubNcx())
+    book.add_item(epub.EpubNav())
+    book.toc = tuple(chapter_items)
+    book.spine = list(chapter_items)
+
+    buffer = io.BytesIO()
+    epub.write_epub(buffer, book)
     return buffer.getvalue()
 
 
@@ -210,6 +248,48 @@ def real_project_file(db_session, project, written_pdf_files):
 @pytest.fixture()
 def corrupted_project_file(db_session, project, written_pdf_files):
     return _write_real_project_file(db_session, project, b"not a real pdf file", written_pdf_files)
+
+
+def _write_real_epub_project_file(db_session, project, epub_bytes: bytes, written_pdf_files: list[Path]) -> ProjectFile:
+    settings = get_settings()
+    relative_path = Path("test-fixtures", f"{uuid.uuid4().hex}.epub")
+    absolute_path = Path(settings.storage_path) / relative_path
+    absolute_path.parent.mkdir(parents=True, exist_ok=True)
+    absolute_path.write_bytes(epub_bytes)
+    written_pdf_files.append(absolute_path)
+
+    project_file = ProjectFile(
+        project_id=project.id,
+        organization_id=project.organization_id,
+        file_type="source_epub",
+        original_filename="documento-teste.epub",
+        storage_path=relative_path.as_posix(),
+        mime_type="application/epub+zip",
+        file_size=len(epub_bytes),
+        checksum=hashlib.sha256(epub_bytes).hexdigest(),
+        status="uploaded",
+    )
+    db_session.add(project_file)
+    db_session.flush()
+    return project_file
+
+
+@pytest.fixture()
+def real_epub_project_file(db_session, project, written_pdf_files):
+    epub_bytes = make_epub_bytes(
+        [
+            "Introducao\nEste e o paragrafo inicial do documento de teste.\nEle contem numeros como 2026 e 42.",
+            "Capitulo dois\nSegundo capitulo com conteudo normal.",
+            None,
+            "Capitulo final\nUltimo capitulo do documento de teste.",
+        ]
+    )
+    return _write_real_epub_project_file(db_session, project, epub_bytes, written_pdf_files)
+
+
+@pytest.fixture()
+def corrupted_epub_project_file(db_session, project, written_pdf_files):
+    return _write_real_epub_project_file(db_session, project, b"not a real epub file", written_pdf_files)
 
 
 def _make_lesson_content(db_session, project, title="Aula 1"):

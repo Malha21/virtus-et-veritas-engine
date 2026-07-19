@@ -49,7 +49,7 @@ export default function ProjectUploadPage() {
       });
       router.push(`/projects/${params.id}/processing`);
     } catch {
-      setError("Não foi possível iniciar o processamento do PDF.");
+      setError("Não foi possível iniciar o processamento do documento.");
     } finally {
       setProcessing(false);
     }
@@ -69,10 +69,10 @@ export default function ProjectUploadPage() {
         ) : project ? (
           <div className="mt-6 grid gap-6">
             <section>
-              <p className="text-sm text-gold-400">Upload de PDF</p>
+              <p className="text-sm text-gold-400">Upload de documento</p>
               <h1 className="mt-2 text-3xl font-semibold">{project.title}</h1>
               <p className="mt-2 text-slate-400">
-                Envie o PDF-base que será usado para criar o curso.
+                Envie o PDF ou EPUB-base que será usado para criar o curso.
               </p>
             </section>
 
@@ -82,7 +82,7 @@ export default function ProjectUploadPage() {
               <h2 className="text-lg font-semibold text-white">Arquivos enviados</h2>
 
               {!files.length ? (
-                <p className="mt-4 text-sm text-slate-400">Nenhum PDF enviado ainda.</p>
+                <p className="mt-4 text-sm text-slate-400">Nenhum arquivo enviado ainda.</p>
               ) : (
                 <div className="mt-4 grid gap-3">
                   {files.map((file) => (
@@ -114,7 +114,7 @@ export default function ProjectUploadPage() {
               </button>
               {!files.length ? (
                 <p className="self-center text-sm text-slate-400">
-                  Envie um PDF antes de iniciar o processamento.
+                  Envie um PDF ou EPUB antes de iniciar o processamento.
                 </p>
               ) : null}
             </div>

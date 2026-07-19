@@ -16,14 +16,20 @@ export function FileUploader({ projectId, onUploaded }: FileUploaderProps) {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const ALLOWED_MIME_TYPES = ["application/pdf", "application/epub+zip"];
+  const ALLOWED_EXTENSIONS = [".pdf", ".epub"];
+
   function validateFile(file: File): boolean {
-    if (file.type && file.type !== "application/pdf") {
-      setError("Envie apenas arquivos PDF.");
+    const lowerName = file.name.toLowerCase();
+    const hasAllowedExtension = ALLOWED_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+
+    if (!hasAllowedExtension) {
+      setError("O arquivo precisa ter extensão .pdf ou .epub.");
       return false;
     }
 
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setError("O arquivo precisa ter extensão .pdf.");
+    if (file.type && !ALLOWED_MIME_TYPES.includes(file.type)) {
+      setError("Envie apenas arquivos PDF ou EPUB.");
       return false;
     }
 
@@ -55,7 +61,7 @@ export function FileUploader({ projectId, onUploaded }: FileUploaderProps) {
 
   async function uploadFile() {
     if (!selectedFile) {
-      setError("Selecione um PDF antes de enviar.");
+      setError("Selecione um PDF ou EPUB antes de enviar.");
       return;
     }
 
@@ -71,11 +77,11 @@ export function FileUploader({ projectId, onUploaded }: FileUploaderProps) {
         method: "POST",
         body: formData,
       });
-      setSuccess("PDF enviado com sucesso.");
+      setSuccess("Arquivo enviado com sucesso.");
       setSelectedFile(null);
       onUploaded?.(uploadedFile);
     } catch {
-      setError("Não foi possível enviar o PDF. Tente novamente.");
+      setError("Não foi possível enviar o arquivo. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -88,11 +94,16 @@ export function FileUploader({ projectId, onUploaded }: FileUploaderProps) {
         onDrop={handleDrop}
         className="flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-gold-500/35 bg-navy-950/60 px-5 py-8 text-center transition hover:border-gold-400"
       >
-        <span className="text-sm font-medium text-gold-400">Selecionar PDF</span>
+        <span className="text-sm font-medium text-gold-400">Selecionar PDF ou EPUB</span>
         <span className="mt-2 max-w-md text-sm text-slate-300">
-          Arraste o arquivo para esta área ou clique para escolher o PDF-base do curso.
+          Arraste o arquivo para esta área ou clique para escolher o PDF ou EPUB-base do curso.
         </span>
-        <input type="file" accept="application/pdf,.pdf" onChange={handleInputChange} className="hidden" />
+        <input
+          type="file"
+          accept="application/pdf,.pdf,application/epub+zip,.epub"
+          onChange={handleInputChange}
+          className="hidden"
+        />
       </label>
 
       {selectedFile ? (
@@ -110,7 +121,7 @@ export function FileUploader({ projectId, onUploaded }: FileUploaderProps) {
         disabled={loading || !selectedFile}
         className="mt-5 rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {loading ? "Enviando..." : "Enviar PDF"}
+        {loading ? "Enviando..." : "Enviar arquivo"}
       </button>
     </div>
   );

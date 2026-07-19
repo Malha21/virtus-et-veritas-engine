@@ -8,7 +8,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.file import ProjectFileResponse
-from app.services.file_service import list_project_files, save_project_pdf
+from app.services.file_service import list_project_files, save_project_file
 
 router = APIRouter(prefix="/projects/{project_id}/files", tags=["files"])
 
@@ -20,7 +20,7 @@ def upload_project_file(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, object]:
-    project_file = save_project_pdf(db, current_user, project_id, file)
+    project_file = save_project_file(db, current_user, project_id, file)
     data = ProjectFileResponse.model_validate(project_file)
     return {"success": True, "data": data.model_dump(mode="json")}
 
