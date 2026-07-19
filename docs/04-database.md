@@ -446,9 +446,13 @@ Usuário administrador:
 
 Provedor inicial de IA:
 
-- name: OpenAI
-- provider_type: openai
+- name: Anthropic
+- provider_type: anthropic
 - status: active
+
+(provedor determinado por `AI_PROVIDER`; registros de provedores anteriores,
+como um `provider_type: openai` de gerações antigas, não são alterados nem
+removidos — o histórico permanece identificado com o provedor original.)
 
 ## 17. Considerações para SaaS Futuro
 

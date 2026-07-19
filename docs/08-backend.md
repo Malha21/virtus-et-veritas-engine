@@ -43,7 +43,8 @@ Tecnologias principais:
 - pypdf ou pymupdf
 - python-docx
 - zipfile nativo
-- OpenAI SDK
+- Anthropic SDK (provedor de IA padrão)
+- OpenAI SDK (TTS e provedor de IA secundário/legado)
 
 ## 4. Responsabilidades do Backend
 
@@ -123,6 +124,7 @@ Estrutura sugerida:
     /providers
       /ai
         base.py
+        anthropic_provider.py
         openai_provider.py
       /storage
         base.py
@@ -336,7 +338,7 @@ O AI Orchestrator Service deverá coordenar:
 
 Ele deverá usar a camada AI Provider.
 
-Não deve chamar OpenAI diretamente em múltiplos pontos do sistema.
+Não deve chamar o provedor de IA diretamente em múltiplos pontos do sistema.
 
 ## 14. AI Provider
 
@@ -348,7 +350,10 @@ class AIProvider:
         pass
 ```
 
-OpenAIProvider implementa essa interface.
+`AnthropicProvider` (padrão, `AI_PROVIDER=anthropic`) e `OpenAIProvider`
+(secundário/legado, também usado para TTS) implementam essa interface. Os
+serviços não instanciam nenhum dos dois diretamente — consomem
+`get_ai_provider(settings)`, que resolve a implementação ativa.
 
 Entradas importantes:
 
@@ -492,7 +497,12 @@ Configurações via .env:
 - MINIO_BUCKET
 - JWT_SECRET
 - JWT_EXPIRES_MINUTES
-- OPENAI_API_KEY
+- AI_PROVIDER (anthropic | openai; padrão: anthropic)
+- ANTHROPIC_API_KEY
+- ANTHROPIC_MODEL
+- ANTHROPIC_MAX_TOKENS
+- ANTHROPIC_TIMEOUT_SECONDS
+- OPENAI_API_KEY (TTS e provedor de IA secundário/legado)
 - OPENAI_DEFAULT_MODEL
 - MAX_UPLOAD_SIZE_MB
 - CORS_ORIGINS
@@ -514,7 +524,7 @@ Usuário administrador:
 
 Provedor IA:
 
-- OpenAI
+- Anthropic (provedor ativo padrão, `AI_PROVIDER=anthropic`)
 - active
 
 ## 22. Testes

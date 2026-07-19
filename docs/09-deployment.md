@@ -178,7 +178,10 @@ Autenticação:
 
 IA:
 
-- OPENAI_API_KEY=definir
+- AI_PROVIDER=anthropic
+- ANTHROPIC_API_KEY=definir
+- ANTHROPIC_MODEL=definir
+- OPENAI_API_KEY=definir (TTS e provedor de IA secundário/legado)
 - OPENAI_DEFAULT_MODEL=definir
 
 Upload:
@@ -374,7 +377,8 @@ Para geração audiovisual futura, avaliar serviços externos ou workers dedicad
 Custos principais:
 
 - VPS
-- OpenAI API
+- Anthropic API (provedor de IA principal)
+- OpenAI API (TTS e provedor de IA secundário)
 - storage
 - avatar/voz no futuro
 - backups

@@ -17,10 +17,15 @@ export type ProcessingLog = {
 export type ProcessingJob = {
   id: string;
   project_id: string;
+  project_file_id?: string | null;
   job_type?: string;
   status?: string;
   progress: number;
   current_step: string | null;
+  total_items?: number | null;
+  processed_items?: number | null;
+  failed_items?: number | null;
+  current_item?: string | null;
   message: string | null;
   error_message?: string | null;
   created_at?: string;

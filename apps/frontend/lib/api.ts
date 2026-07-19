@@ -8,7 +8,34 @@ import type {
   PresentationDeckContent,
 } from "@/types/educational-content";
 import type { GeneratedContent } from "@/types/content";
+import type {
+  CoveragePlan,
+  CoveragePlanLessonMergeRequest,
+  CoveragePlanLessonSourceItemAddRequest,
+  CoveragePlanLessonSplitRequest,
+  CoveragePlanLessonUpdate,
+  CoveragePlanModuleUpdate,
+  CoveragePlanRegenerateMode,
+  CoveragePlanSummary,
+  CoveragePlanValidationResult,
+  CoveragePlanVersion,
+  UnmappedSourceItem,
+} from "@/types/coverage-plan";
+import type {
+  DocumentExtractionSummary,
+  DocumentPageDetail,
+  DocumentPageListResponse,
+  DocumentReprocessScope,
+} from "@/types/document-extraction";
 import type { ProcessingJob, StartAIJobResponse } from "@/types/processing";
+import type {
+  InventoryValidationResult,
+  SourceContentItemDetail,
+  SourceContentItemListResponse,
+  SourceInventoryItemManualUpdate,
+  SourceInventoryReprocessMode,
+  SourceInventorySummary,
+} from "@/types/source-inventory";
 
 export type GenerationLanguage = "pt-BR" | "en-US";
 
@@ -1352,6 +1379,502 @@ export async function deleteProject(projectId: string): Promise<{ message: strin
   }
 
   return apiFetch<{ message: string }>(`/projects/${projectId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
+export async function startDocumentExtraction(
+  projectId: string,
+  fileId: string,
+  force = false,
+): Promise<ProcessingJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob>(`/projects/${projectId}/files/${fileId}/extraction`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ force }),
+  });
+}
+
+export async function getDocumentExtractionSummary(
+  projectId: string,
+  fileId: string,
+): Promise<DocumentExtractionSummary> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<DocumentExtractionSummary>(`/projects/${projectId}/files/${fileId}/extraction`, { token });
+}
+
+export async function getDocumentExtractionJob(projectId: string, fileId: string): Promise<ProcessingJob | null> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob | null>(`/projects/${projectId}/files/${fileId}/extraction/job`, { token });
+}
+
+export async function reprocessDocumentExtraction(
+  projectId: string,
+  fileId: string,
+  scope: DocumentReprocessScope,
+  pageNumber?: number,
+): Promise<ProcessingJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob>(`/projects/${projectId}/files/${fileId}/extraction/reprocess`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ scope, page_number: pageNumber ?? null }),
+  });
+}
+
+export async function listDocumentPages(
+  projectId: string,
+  fileId: string,
+  params: { page?: number; pageSize?: number; extractionStatus?: string; requiresOcr?: boolean } = {},
+): Promise<DocumentPageListResponse> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  const searchParams = new URLSearchParams();
+  searchParams.set("page", String(params.page ?? 1));
+  searchParams.set("page_size", String(params.pageSize ?? 100));
+  if (params.extractionStatus) searchParams.set("extraction_status", params.extractionStatus);
+  if (params.requiresOcr !== undefined) searchParams.set("requires_ocr", String(params.requiresOcr));
+
+  return apiFetch<DocumentPageListResponse>(
+    `/projects/${projectId}/files/${fileId}/pages?${searchParams.toString()}`,
+    { token },
+  );
+}
+
+export async function getDocumentPageDetail(
+  projectId: string,
+  fileId: string,
+  pageNumber: number,
+): Promise<DocumentPageDetail> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<DocumentPageDetail>(`/projects/${projectId}/files/${fileId}/pages/${pageNumber}`, { token });
+}
+
+export async function startSourceInventoryGeneration(
+  projectId: string,
+  fileId: string,
+  force = false,
+  continueWithAlerts = false,
+): Promise<ProcessingJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob>(`/projects/${projectId}/files/${fileId}/inventory/generate`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ force, continue_with_alerts: continueWithAlerts }),
+  });
+}
+
+export async function reprocessSourceInventory(
+  projectId: string,
+  fileId: string,
+  mode: SourceInventoryReprocessMode,
+  pageNumbers?: number[],
+  continueWithAlerts = false,
+): Promise<ProcessingJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob>(`/projects/${projectId}/files/${fileId}/inventory/reprocess`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ mode, page_numbers: pageNumbers ?? null, continue_with_alerts: continueWithAlerts }),
+  });
+}
+
+export async function getSourceInventorySummary(projectId: string, fileId: string): Promise<SourceInventorySummary> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<SourceInventorySummary>(`/projects/${projectId}/files/${fileId}/inventory/summary`, { token });
+}
+
+export async function getSourceInventoryJob(projectId: string, fileId: string): Promise<ProcessingJob | null> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob | null>(`/projects/${projectId}/files/${fileId}/inventory/job`, { token });
+}
+
+export async function validateSourceInventory(
+  projectId: string,
+  fileId: string,
+): Promise<InventoryValidationResult> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<InventoryValidationResult>(`/projects/${projectId}/files/${fileId}/inventory/validate`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function listSourceInventoryItems(
+  projectId: string,
+  fileId: string,
+  params: {
+    page?: number;
+    pageSize?: number;
+    contentType?: string;
+    importance?: string;
+    status?: string;
+    pageNumber?: number;
+    requiresReview?: boolean;
+    possibleDuplicate?: boolean;
+    search?: string;
+  } = {},
+): Promise<SourceContentItemListResponse> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  const searchParams = new URLSearchParams();
+  searchParams.set("page", String(params.page ?? 1));
+  searchParams.set("page_size", String(params.pageSize ?? 50));
+  if (params.contentType) searchParams.set("content_type", params.contentType);
+  if (params.importance) searchParams.set("importance", params.importance);
+  if (params.status) searchParams.set("status", params.status);
+  if (params.pageNumber !== undefined) searchParams.set("page_number", String(params.pageNumber));
+  if (params.requiresReview !== undefined) searchParams.set("requires_review", String(params.requiresReview));
+  if (params.possibleDuplicate !== undefined) {
+    searchParams.set("possible_duplicate", String(params.possibleDuplicate));
+  }
+  if (params.search) searchParams.set("search", params.search);
+
+  return apiFetch<SourceContentItemListResponse>(
+    `/projects/${projectId}/files/${fileId}/inventory?${searchParams.toString()}`,
+    { token },
+  );
+}
+
+export async function getSourceInventoryItemDetail(
+  projectId: string,
+  fileId: string,
+  sourceItemId: string,
+): Promise<SourceContentItemDetail> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<SourceContentItemDetail>(
+    `/projects/${projectId}/files/${fileId}/inventory/${sourceItemId}`,
+    { token },
+  );
+}
+
+export async function updateSourceInventoryItem(
+  projectId: string,
+  fileId: string,
+  sourceItemId: string,
+  payload: SourceInventoryItemManualUpdate,
+): Promise<SourceContentItemDetail> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<SourceContentItemDetail>(
+    `/projects/${projectId}/files/${fileId}/inventory/${sourceItemId}`,
+    { method: "PATCH", token, body: JSON.stringify(payload) },
+  );
+}
+
+export async function approveSourceInventoryItem(
+  projectId: string,
+  fileId: string,
+  sourceItemId: string,
+): Promise<SourceContentItemDetail> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<SourceContentItemDetail>(
+    `/projects/${projectId}/files/${fileId}/inventory/${sourceItemId}/approve`,
+    { method: "POST", token },
+  );
+}
+
+export async function rejectSourceInventoryItem(
+  projectId: string,
+  fileId: string,
+  sourceItemId: string,
+): Promise<SourceContentItemDetail> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<SourceContentItemDetail>(
+    `/projects/${projectId}/files/${fileId}/inventory/${sourceItemId}/reject`,
+    { method: "POST", token },
+  );
+}
+
+export async function startCoveragePlanGeneration(
+  projectId: string,
+  fileId: string,
+  force = false,
+  continueWithAlerts = false,
+): Promise<ProcessingJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob>(`/projects/${projectId}/files/${fileId}/coverage-plan/generate`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ force, continue_with_alerts: continueWithAlerts }),
+  });
+}
+
+export async function regenerateCoveragePlan(
+  projectId: string,
+  fileId: string,
+  mode: CoveragePlanRegenerateMode,
+): Promise<ProcessingJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob>(`/projects/${projectId}/files/${fileId}/coverage-plan/regenerate`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ mode }),
+  });
+}
+
+export async function getCoveragePlanSummary(projectId: string, fileId: string): Promise<CoveragePlanSummary> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<CoveragePlanSummary>(`/projects/${projectId}/files/${fileId}/coverage-plan/summary`, { token });
+}
+
+export async function getCoveragePlanJob(projectId: string, fileId: string): Promise<ProcessingJob | null> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob | null>(`/projects/${projectId}/files/${fileId}/coverage-plan/job`, { token });
+}
+
+export async function getCoveragePlan(projectId: string, fileId: string): Promise<CoveragePlan> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<CoveragePlan>(`/projects/${projectId}/files/${fileId}/coverage-plan`, { token });
+}
+
+export async function getCoveragePlanVersion(
+  projectId: string,
+  fileId: string,
+  version: number,
+): Promise<CoveragePlan> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<CoveragePlan>(`/projects/${projectId}/files/${fileId}/coverage-plan/versions/${version}`, {
+    token,
+  });
+}
+
+export async function listCoveragePlanVersions(projectId: string, fileId: string): Promise<CoveragePlanVersion[]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<CoveragePlanVersion[]>(`/projects/${projectId}/files/${fileId}/coverage-plan/versions`, {
+    token,
+  });
+}
+
+export async function validateCoveragePlan(projectId: string, fileId: string): Promise<CoveragePlanValidationResult> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<CoveragePlanValidationResult>(`/projects/${projectId}/files/${fileId}/coverage-plan/validate`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function recalculateCoveragePlan(
+  projectId: string,
+  fileId: string,
+): Promise<CoveragePlanValidationResult> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<CoveragePlanValidationResult>(`/projects/${projectId}/files/${fileId}/coverage-plan/recalculate`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function listUnmappedCoverageItems(projectId: string, fileId: string): Promise<UnmappedSourceItem[]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<UnmappedSourceItem[]>(`/projects/${projectId}/files/${fileId}/coverage-plan/unmapped-items`, {
+    token,
+  });
+}
+
+export async function approveCoveragePlan(projectId: string, fileId: string): Promise<CoveragePlan> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<CoveragePlan>(`/projects/${projectId}/files/${fileId}/coverage-plan/approve`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function updateCoveragePlanModule(
+  moduleId: string,
+  payload: CoveragePlanModuleUpdate,
+): Promise<CoveragePlan["modules"][number]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch(`/coverage-plan/modules/${moduleId}`, { method: "PATCH", token, body: JSON.stringify(payload) });
+}
+
+export async function updateCoveragePlanLesson(
+  lessonId: string,
+  payload: CoveragePlanLessonUpdate,
+): Promise<CoveragePlan["modules"][number]["lessons"][number]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch(`/coverage-plan/lessons/${lessonId}`, { method: "PATCH", token, body: JSON.stringify(payload) });
+}
+
+export async function recalculateCoveragePlanLesson(
+  lessonId: string,
+): Promise<CoveragePlan["modules"][number]["lessons"][number]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch(`/coverage-plan/lessons/${lessonId}/recalculate`, { method: "POST", token });
+}
+
+export async function splitCoveragePlanLesson(
+  lessonId: string,
+  payload: CoveragePlanLessonSplitRequest,
+): Promise<{ first: CoveragePlan["modules"][number]["lessons"][number]; second: CoveragePlan["modules"][number]["lessons"][number] }> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch(`/coverage-plan/lessons/${lessonId}/split`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function mergeCoveragePlanLessons(
+  payload: CoveragePlanLessonMergeRequest,
+): Promise<CoveragePlan["modules"][number]["lessons"][number]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch(`/coverage-plan/lessons/merge`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+export async function addCoveragePlanLessonSourceItem(
+  lessonId: string,
+  payload: CoveragePlanLessonSourceItemAddRequest,
+): Promise<CoveragePlan["modules"][number]["lessons"][number]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch(`/coverage-plan/lessons/${lessonId}/source-items`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function removeCoveragePlanLessonSourceItem(
+  lessonId: string,
+  sourceItemId: string,
+): Promise<CoveragePlan["modules"][number]["lessons"][number]> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch(`/coverage-plan/lessons/${lessonId}/source-items/${sourceItemId}`, {
     method: "DELETE",
     token,
   });
