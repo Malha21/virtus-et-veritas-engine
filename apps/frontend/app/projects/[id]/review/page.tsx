@@ -6,9 +6,11 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ApiError, apiFetch, getProjectJob, startEducationalContentJob } from "@/lib/api";
 import type { GenerationLanguage } from "@/lib/api";
+import { translateContentStatus, translateJobStatus } from "@/lib/status-labels";
 import type {
   CourseStructureContent,
   DocumentAnalysisContent,
@@ -102,17 +104,17 @@ export default function ReviewPage() {
     <AppShell>
       <div className="mx-auto max-w-6xl">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <Link href={`/projects/${params.id}`} className="text-sm text-gold-400 hover:text-gold-500">
+          <Link href={`/projects/${params.id}`} className="text-sm text-accent-400 hover:text-accent-500">
             Voltar ao projeto
           </Link>
           {courseStructure ? (
             <div className="flex flex-wrap items-end gap-3">
-              <label className="grid gap-2 text-sm text-slate-300">
+              <label className="grid gap-2 text-sm text-zinc-300">
                 Idioma dos conteúdos
                 <select
                   value={generationLanguage}
                   onChange={(event) => setGenerationLanguage(event.target.value as GenerationLanguage)}
-                  className="rounded-md border border-white/10 bg-navy-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                  className="rounded-md border border-white/5 bg-navy-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
                 >
                   <option value="pt-BR">Português do Brasil</option>
                   <option value="en-US">English</option>
@@ -122,7 +124,7 @@ export default function ReviewPage() {
                 type="button"
                 onClick={generateEducationalContent}
                 disabled={generatingEducationalContent}
-                className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {generatingEducationalContent ? "Gerando roteiros, quizzes e materiais..." : "Gerar conteúdos educacionais"}
               </button>
@@ -130,19 +132,19 @@ export default function ReviewPage() {
           ) : null}
         </div>
 
-        <section className="mt-6 rounded-lg border border-white/10 bg-white/[0.035] p-6">
+        <section className="mt-6 rounded-lg border border-white/5 bg-white/[0.035] p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm text-gold-400">Revisao humana</p>
+              <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Revisao humana</p>
               <h1 className="mt-2 text-3xl font-semibold">Estrutura gerada pela IA</h1>
-              <p className="mt-2 max-w-3xl text-slate-400">
+              <p className="mt-2 max-w-3xl text-zinc-400">
                 Confira a analise do documento e a arquitetura inicial do curso antes das proximas etapas.
               </p>
             </div>
-            {courseStructure ? <StatusBadge label={courseStructure.status} tone="success" /> : null}
+            {courseStructure ? <StatusBadge label={translateContentStatus(courseStructure.status)} tone="success" /> : null}
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-2 border-b border-white/10 pb-4">
+          <div className="mt-6 flex flex-wrap gap-2 border-b border-white/5 pb-4">
             <TabButton active={activeTab === "analysis"} onClick={() => setActiveTab("analysis")}>
               Analise do Documento
             </TabButton>
@@ -152,7 +154,9 @@ export default function ReviewPage() {
           </div>
 
           {loading ? (
-            <p className="mt-8 text-slate-300">Carregando revisao...</p>
+            <div className="mt-8">
+              <LoadingProgress label="Carregando revisão..." />
+            </div>
           ) : error ? (
             <p className="mt-8 text-red-300">{error}</p>
           ) : activeJob ? (
@@ -170,18 +174,21 @@ export default function ReviewPage() {
 
 function JobProgressCard({ job }: { job: ProcessingJob }) {
   return (
-    <div className="mt-8 rounded-md border border-gold-500/20 bg-gold-500/10 p-5">
+    <div className="mt-8 rounded-md border border-accent-500/20 bg-accent-500/10 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-gold-100">Processamento em andamento</p>
-          <p className="mt-2 text-sm text-slate-300">{job.current_step || "Preparando conteudos educacionais"}</p>
+          <p className="text-sm font-semibold text-accent-100">Processamento em andamento</p>
+          <p className="mt-2 text-sm text-zinc-300">{job.current_step || "Preparando conteudos educacionais"}</p>
         </div>
-        <StatusBadge label={job.status || "pending"} tone={job.status === "failed" ? "neutral" : "warning"} />
+        <StatusBadge
+          label={`${translateJobStatus(job.status || "pending")} · ${job.progress ?? 0}%`}
+          tone={job.status === "failed" ? "neutral" : "warning"}
+        />
       </div>
       <div className="mt-5 h-2 rounded-full bg-white/10">
-        <div className="h-2 rounded-full bg-gold-500 transition-all" style={{ width: `${job.progress || 0}%` }} />
+        <div className="h-2 rounded-full bg-accent-500 transition-all" style={{ width: `${job.progress || 0}%` }} />
       </div>
-      <p className="mt-2 text-sm text-slate-400">{job.message || `${job.progress || 0}% concluido`}</p>
+      <p className="mt-2 text-sm text-zinc-400">{job.message || `${job.progress || 0}% concluido`}</p>
     </div>
   );
 }
@@ -201,8 +208,8 @@ function TabButton({
       onClick={onClick}
       className={`rounded-md px-4 py-2 text-sm transition ${
         active
-          ? "bg-gold-500 text-navy-950"
-          : "border border-white/10 text-slate-300 hover:border-gold-500/40 hover:text-gold-400"
+          ? "bg-accent-500 text-navy-950"
+          : "border border-white/5 text-zinc-300 hover:border-accent-500/40 hover:text-accent-400"
       }`}
     >
       {children}
@@ -212,7 +219,7 @@ function TabButton({
 
 function DocumentAnalysisView({ content }: { content?: GeneratedContent }) {
   if (!content?.content_json) {
-    return <p className="mt-8 text-slate-400">Analise do documento ainda nao encontrada.</p>;
+    return <p className="mt-8 text-zinc-400">Analise do documento ainda nao encontrada.</p>;
   }
 
   const analysis = (content.content_json as DocumentAnalysisContent).document_analysis;
@@ -237,7 +244,7 @@ function DocumentAnalysisView({ content }: { content?: GeneratedContent }) {
 
 function CourseStructureView({ content }: { content?: GeneratedContent }) {
   if (!content?.content_json) {
-    return <p className="mt-8 text-slate-400">Estrutura do curso ainda nao encontrada.</p>;
+    return <p className="mt-8 text-zinc-400">Estrutura do curso ainda nao encontrada.</p>;
   }
 
   const course = (content.content_json as CourseStructureContent).course;
@@ -248,10 +255,10 @@ function CourseStructureView({ content }: { content?: GeneratedContent }) {
   return (
     <div className="mt-8 grid gap-6">
       <div>
-        <p className="text-sm text-gold-400">Curso</p>
-        <h2 className="mt-2 text-2xl font-semibold text-slate-50">{course.title || "Sem titulo"}</h2>
-        <p className="mt-3 text-lg text-slate-200">{course.promise}</p>
-        <p className="mt-3 leading-7 text-slate-400">{course.description}</p>
+        <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Curso</p>
+        <h2 className="mt-2 text-2xl font-semibold text-zinc-50">{course.title || "Sem titulo"}</h2>
+        <p className="mt-3 text-lg text-zinc-200">{course.promise}</p>
+        <p className="mt-3 leading-7 text-zinc-400">{course.description}</p>
       </div>
 
       <div className="grid gap-5 md:grid-cols-2">
@@ -260,28 +267,28 @@ function CourseStructureView({ content }: { content?: GeneratedContent }) {
       </div>
 
       <div className="grid gap-4">
-        <h3 className="text-lg font-semibold text-slate-100">Modulos</h3>
+        <h3 className="text-lg font-semibold text-zinc-100">Modulos</h3>
         {(course.modules || []).map((module) => (
-          <div key={`${module.module_number}-${module.title}`} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
-            <p className="text-xs font-medium text-gold-400">Modulo {module.module_number}</p>
-            <h4 className="mt-2 text-xl font-semibold text-slate-50">{module.title}</h4>
-            <p className="mt-2 text-sm leading-6 text-slate-400">{module.description}</p>
-            <p className="mt-3 text-sm text-slate-300">Objetivo: {module.learning_goal || "Nao informado"}</p>
+          <div key={`${module.module_number}-${module.title}`} className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
+            <p className="text-xs font-medium text-accent-400">Modulo {module.module_number}</p>
+            <h4 className="mt-2 text-xl font-semibold text-zinc-50">{module.title}</h4>
+            <p className="mt-2 text-sm leading-6 text-zinc-400">{module.description}</p>
+            <p className="mt-3 text-sm text-zinc-300">Objetivo: {module.learning_goal || "Nao informado"}</p>
 
             <div className="mt-5 grid gap-3">
               {(module.lessons || []).map((lesson) => (
                 <div
                   key={`${module.module_number}-${lesson.lesson_number}-${lesson.title}`}
-                  className="rounded-md border border-white/10 bg-black/20 p-4"
+                  className="rounded-md border border-white/5 bg-black/20 p-4"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-slate-100">
+                    <p className="text-sm font-semibold text-zinc-100">
                       Aula {lesson.lesson_number}: {lesson.title}
                     </p>
-                    <span className="text-xs text-gold-400">{lesson.estimated_duration_minutes || 10} min</span>
+                    <span className="text-xs text-accent-400">{lesson.estimated_duration_minutes || 10} min</span>
                   </div>
-                  <p className="mt-2 text-sm text-slate-400">{lesson.summary}</p>
-                  <p className="mt-2 text-xs text-slate-500">{lesson.learning_objective}</p>
+                  <p className="mt-2 text-sm text-zinc-400">{lesson.summary}</p>
+                  <p className="mt-2 text-xs text-zinc-500">{lesson.learning_objective}</p>
                 </div>
               ))}
             </div>
@@ -294,27 +301,27 @@ function CourseStructureView({ content }: { content?: GeneratedContent }) {
 
 function InfoBlock({ label, value }: { label: string; value?: string }) {
   return (
-    <div className="rounded-md border border-white/10 bg-navy-950/60 p-4">
-      <p className="text-sm text-slate-400">{label}</p>
-      <p className="mt-2 whitespace-pre-wrap text-slate-100">{value || "Nao informado"}</p>
+    <div className="rounded-md border border-white/5 bg-navy-950/60 p-4">
+      <p className="text-sm text-zinc-400">{label}</p>
+      <p className="mt-2 whitespace-pre-wrap text-zinc-100">{value || "Nao informado"}</p>
     </div>
   );
 }
 
 function ListBlock({ title, items }: { title: string; items?: string[] }) {
   return (
-    <div className="rounded-md border border-white/10 bg-navy-950/60 p-4">
-      <p className="text-sm text-slate-400">{title}</p>
+    <div className="rounded-md border border-white/5 bg-navy-950/60 p-4">
+      <p className="text-sm text-zinc-400">{title}</p>
       {items?.length ? (
-        <ul className="mt-3 grid gap-2 text-sm text-slate-100">
+        <ul className="mt-3 grid gap-2 text-sm text-zinc-100">
           {items.map((item) => (
-            <li key={item} className="rounded border border-white/10 bg-black/20 px-3 py-2">
+            <li key={item} className="rounded border border-white/5 bg-black/20 px-3 py-2">
               {item}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-slate-100">Nao informado</p>
+        <p className="mt-2 text-zinc-100">Nao informado</p>
       )}
     </div>
   );
@@ -322,7 +329,7 @@ function ListBlock({ title, items }: { title: string; items?: string[] }) {
 
 function RawJsonView({ value }: { value: Record<string, unknown> }) {
   return (
-    <pre className="mt-8 overflow-x-auto rounded-md border border-white/10 bg-navy-950/70 p-4 text-sm text-slate-200">
+    <pre className="mt-8 overflow-x-auto rounded-md border border-white/5 bg-navy-950/70 p-4 text-sm text-zinc-200">
       {JSON.stringify(value, null, 2)}
     </pre>
   );

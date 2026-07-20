@@ -23,7 +23,7 @@ def get_content_or_404(
     project_id: UUID,
     content_id: UUID,
 ) -> GeneratedContent:
-    get_project_by_id(db, current_user.organization_id, project_id)
+    get_project_by_id(db, current_user, project_id)
     content = db.execute(
         select(GeneratedContent).where(
             GeneratedContent.id == content_id,
@@ -49,7 +49,7 @@ def list_project_contents(
     content_type: str | None = None,
     status_filter: Annotated[str | None, Query(alias="status")] = None,
 ) -> dict[str, object]:
-    get_project_by_id(db, current_user.organization_id, project_id)
+    get_project_by_id(db, current_user, project_id)
     filters = [
         GeneratedContent.project_id == project_id,
         GeneratedContent.organization_id == current_user.organization_id,

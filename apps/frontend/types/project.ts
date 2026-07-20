@@ -1,4 +1,4 @@
-export type AIProviderChoice = "openai" | "anthropic" | "gemini";
+export type AIProviderChoice = "openai" | "gemini";
 
 export type Project = {
   id: string;

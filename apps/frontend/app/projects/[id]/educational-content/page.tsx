@@ -2,10 +2,23 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
+import {
+  BookOpen,
+  Download,
+  FileText,
+  FolderOpen,
+  HelpCircle,
+  Mic,
+  MonitorPlay,
+  Presentation as PresentationIcon,
+  ScrollText,
+  Video as VideoIcon,
+} from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { KpiActionCard } from "@/components/ui/KpiActionCard";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import {
   ApiError,
   apiFetch,
@@ -224,16 +237,6 @@ function sortSummaries(contents: GeneratedContent[]): GeneratedContent[] {
   );
 }
 
-function hasAnyEducationalContent(data: EducationalContentSummaryResponse): boolean {
-  return (
-    data.course_summaries.length > 0 ||
-    data.lesson_scripts.length > 0 ||
-    data.module_quizzes.length > 0 ||
-    data.complementary_materials.length > 0 ||
-    data.presentation_decks.length > 0
-  );
-}
-
 export default function EducationalContentPage() {
   const params = useParams<{ id: string }>();
   const [data, setData] = useState<EducationalContentSummaryResponse | null>(null);
@@ -333,85 +336,89 @@ export default function EducationalContentPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <Link href={`/projects/${params.id}`} className="text-sm text-gold-400 hover:text-gold-500">
-            Voltar ao projeto
-          </Link>
-          <button
-            type="button"
-            disabled
-            className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-500"
-          >
-            Exportar - Disponivel na proxima fase
-          </button>
-        </div>
+        <Link href={`/projects/${params.id}`} className="text-sm text-accent-400 hover:text-accent-500">
+          Voltar ao projeto
+        </Link>
 
-        <section className="mt-6 rounded-lg border border-white/10 bg-white/[0.035] p-6">
-          <p className="text-sm text-gold-400">Conteudos educacionais</p>
+        <section className="mt-6 rounded-lg border border-white/5 bg-white/[0.035] p-6">
+          <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Conteudos educacionais</p>
           <h1 className="mt-2 text-3xl font-semibold">Roteiros, quizzes e materiais</h1>
-          <p className="mt-2 max-w-3xl text-slate-400">
+          <p className="mt-2 max-w-3xl text-zinc-400">
             Revise os conteudos gerados para transformar a estrutura do curso em experiencia educacional.
           </p>
           {generationMessage ? (
-            <p className="mt-4 rounded-md border border-gold-500/20 bg-gold-500/10 px-4 py-3 text-sm text-gold-200">
+            <p className="mt-4 rounded-md border border-accent-500/20 bg-accent-500/10 px-4 py-3 text-sm text-accent-200">
               {generationMessage}
             </p>
           ) : null}
-          {data && hasAnyEducationalContent(data) ? (
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-navy-950/60 p-4">
-              <div>
-                <p className="text-sm font-medium text-slate-100">Exportacao completa</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Gere um PDF consolidado com resumo, estrutura, roteiros, quizzes, materiais e apresentacao.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleExportFullCourse}
-                disabled={exportingFullCourse}
-                className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {exportingFullCourse ? "Gerando PDF..." : "Exportar curso completo"}
-              </button>
-              {fullCourseExportError ? <p className="w-full text-sm text-red-300">{fullCourseExportError}</p> : null}
-            </div>
-          ) : null}
 
-          <div className="mt-6 flex flex-wrap gap-2 border-b border-white/10 pb-4">
-            <TabButton active={activeTab === "document-base"} onClick={() => setActiveTab("document-base")}>
-              Documento Base
-            </TabButton>
-            <TabButton active={activeTab === "summary"} onClick={() => setActiveTab("summary")}>
-              Resumo do Curso
-            </TabButton>
-            <TabButton active={activeTab === "scripts"} onClick={() => setActiveTab("scripts")}>
-              Roteiros de Aula
-            </TabButton>
-            <TabButton active={activeTab === "quizzes"} onClick={() => setActiveTab("quizzes")}>
-              Quizzes
-            </TabButton>
-            <TabButton active={activeTab === "materials"} onClick={() => setActiveTab("materials")}>
-              Materiais Complementares
-            </TabButton>
-            <TabButton active={activeTab === "presentation"} onClick={() => setActiveTab("presentation")}>
-              Apresentacao
-            </TabButton>
-            <TabButton active={activeTab === "teleprompter"} onClick={() => setActiveTab("teleprompter")}>
-              Teleprompter
-            </TabButton>
-            <TabButton active={activeTab === "narration"} onClick={() => setActiveTab("narration")}>
-              Narração
-            </TabButton>
-            <TabButton active={activeTab === "video"} onClick={() => setActiveTab("video")}>
-              Vídeo
-            </TabButton>
-            <TabButton active={activeTab === "export"} onClick={() => setActiveTab("export")}>
-              Exportação
-            </TabButton>
+          <div className="mt-6 grid grid-cols-2 gap-3 border-b border-white/5 pb-6 sm:grid-cols-3 lg:grid-cols-5">
+            <KpiActionCard
+              icon={FileText}
+              label="Documento Base"
+              active={activeTab === "document-base"}
+              onClick={() => setActiveTab("document-base")}
+            />
+            <KpiActionCard
+              icon={BookOpen}
+              label="Resumo do Curso"
+              active={activeTab === "summary"}
+              onClick={() => setActiveTab("summary")}
+            />
+            <KpiActionCard
+              icon={ScrollText}
+              label="Roteiros de Aula"
+              active={activeTab === "scripts"}
+              onClick={() => setActiveTab("scripts")}
+            />
+            <KpiActionCard
+              icon={HelpCircle}
+              label="Quizzes"
+              active={activeTab === "quizzes"}
+              onClick={() => setActiveTab("quizzes")}
+            />
+            <KpiActionCard
+              icon={FolderOpen}
+              label="Materiais Complementares"
+              active={activeTab === "materials"}
+              onClick={() => setActiveTab("materials")}
+            />
+            <KpiActionCard
+              icon={PresentationIcon}
+              label="Apresentação"
+              active={activeTab === "presentation"}
+              onClick={() => setActiveTab("presentation")}
+            />
+            <KpiActionCard
+              icon={MonitorPlay}
+              label="Teleprompter"
+              active={activeTab === "teleprompter"}
+              onClick={() => setActiveTab("teleprompter")}
+            />
+            <KpiActionCard
+              icon={Mic}
+              label="Narração"
+              active={activeTab === "narration"}
+              onClick={() => setActiveTab("narration")}
+            />
+            <KpiActionCard
+              icon={VideoIcon}
+              label="Vídeo"
+              active={activeTab === "video"}
+              onClick={() => setActiveTab("video")}
+            />
+            <KpiActionCard
+              icon={Download}
+              label="Exportação"
+              active={activeTab === "export"}
+              onClick={() => setActiveTab("export")}
+            />
           </div>
 
           {loading ? (
-            <p className="mt-8 text-slate-300">Carregando conteudos...</p>
+            <div className="mt-8">
+              <LoadingProgress label="Carregando conteúdos..." />
+            </div>
           ) : error ? (
             <p className="mt-8 text-red-300">{error}</p>
           ) : data ? (
@@ -595,28 +602,19 @@ export default function EducationalContentPage() {
               {activeTab === "teleprompter" ? <TeleprompterView contents={data.lesson_scripts} /> : null}
               {activeTab === "narration" ? <NarrationView contents={data.lesson_scripts} projectId={params.id} /> : null}
               {activeTab === "video" ? <VideoView contents={data.lesson_scripts} projectId={params.id} /> : null}
-              {activeTab === "export" ? <ExportView projectId={params.id} /> : null}
+              {activeTab === "export" ? (
+                <ExportView
+                  projectId={params.id}
+                  onExportFullCoursePdf={handleExportFullCourse}
+                  exportingFullCoursePdf={exportingFullCourse}
+                  fullCoursePdfError={fullCourseExportError}
+                />
+              ) : null}
             </div>
           ) : null}
         </section>
       </div>
     </AppShell>
-  );
-}
-
-function TabButton({ active, children, onClick }: { active: boolean; children: ReactNode; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-md px-4 py-2 text-sm transition ${
-        active
-          ? "bg-gold-500 text-navy-950"
-          : "border border-white/10 text-slate-300 hover:border-gold-500/40 hover:text-gold-400"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -645,12 +643,12 @@ function DocumentBaseView({
 
   return (
     <div className="grid gap-5">
-      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+      <section className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm text-gold-400">Documento Base</p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-50">Analise Inteligente do Documento Base</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+            <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Documento Base</p>
+            <h2 className="mt-2 text-2xl font-semibold text-zinc-50">Analise Inteligente do Documento Base</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
               Esta analise interpreta o PDF enviado com linguagem propria, sem inventar informacoes externas.
             </p>
           </div>
@@ -658,14 +656,14 @@ function DocumentBaseView({
             type="button"
             onClick={onGenerate}
             disabled={generating}
-            className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md border border-accent-500/30 px-4 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {generating ? "Gerando analise..." : "Gerar analise do documento"}
           </button>
         </div>
         {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
         {!analysis ? (
-          <p className="mt-4 rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+          <p className="mt-4 rounded-md border border-white/5 bg-black/20 p-4 text-sm text-zinc-300">
             A analise do documento base ainda nao foi gerada.
           </p>
         ) : null}
@@ -699,18 +697,18 @@ function DocumentBaseView({
 function DocumentSequenceBlock({ items }: { items: unknown[] }) {
   if (!items.length) return <ListBlock title="Sequencia do documento" items={[]} />;
   return (
-    <section className="rounded-md border border-white/10 bg-black/20 p-4">
-      <p className="text-sm text-slate-400">Sequencia do documento</p>
+    <section className="rounded-md border border-white/5 bg-black/20 p-4">
+      <p className="text-sm text-zinc-400">Sequencia do documento</p>
       <div className="mt-3 grid gap-3">
         {items.map((item, index) => {
           const record = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
           return (
-            <article key={itemKey(item, index)} className="rounded border border-white/10 bg-navy-950/60 px-3 py-2">
-              <p className="font-medium text-slate-100">
+            <article key={itemKey(item, index)} className="rounded border border-white/5 bg-navy-950/60 px-3 py-2">
+              <p className="font-medium text-zinc-100">
                 {safeText(record.order ?? index + 1)}. {safeText(record.topic)}
               </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{safeText(record.summary)}</p>
-              <p className="mt-2 whitespace-pre-wrap text-xs text-gold-300">{safeText(record.didactic_relevance)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">{safeText(record.summary)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-xs text-accent-300">{safeText(record.didactic_relevance)}</p>
             </article>
           );
         })}
@@ -722,15 +720,15 @@ function DocumentSequenceBlock({ items }: { items: unknown[] }) {
 function CoursePathBlock({ items }: { items: unknown[] }) {
   if (!items.length) return <ListBlock title="Caminho sugerido para o curso" items={[]} />;
   return (
-    <section className="rounded-md border border-white/10 bg-black/20 p-4">
-      <p className="text-sm text-slate-400">Caminho sugerido para o curso</p>
+    <section className="rounded-md border border-white/5 bg-black/20 p-4">
+      <p className="text-sm text-zinc-400">Caminho sugerido para o curso</p>
       <div className="mt-3 grid gap-3">
         {items.map((item, index) => {
           const record = typeof item === "object" && item !== null ? (item as Record<string, unknown>) : {};
           return (
-            <article key={itemKey(item, index)} className="rounded border border-white/10 bg-navy-950/60 px-3 py-2">
-              <p className="font-medium text-slate-100">{safeText(record.module_title ?? `Modulo ${index + 1}`)}</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{safeText(record.reason)}</p>
+            <article key={itemKey(item, index)} className="rounded border border-white/5 bg-navy-950/60 px-3 py-2">
+              <p className="font-medium text-zinc-100">{safeText(record.module_title ?? `Modulo ${index + 1}`)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">{safeText(record.reason)}</p>
               <ListBlock title="Possiveis aulas" items={Array.isArray(record.possible_lessons) ? record.possible_lessons : []} />
             </article>
           );
@@ -752,11 +750,11 @@ function SummaryView({ contents }: { contents: GeneratedContent[] }) {
   return (
     <div className="grid gap-5">
       <div>
-        <p className="text-sm text-gold-400">Resumo executivo</p>
-        <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-        <h2 className="mt-2 text-2xl font-semibold text-slate-50">{item.title}</h2>
-        <p className="mt-3 text-lg text-slate-200">{item.promise}</p>
-        <p className="mt-3 leading-7 text-slate-400">{item.long_description || item.short_description}</p>
+        <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Resumo executivo</p>
+        <p className="mt-1 text-xs text-zinc-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+        <h2 className="mt-2 text-2xl font-semibold text-zinc-50">{item.title}</h2>
+        <p className="mt-3 text-lg text-zinc-200">{item.promise}</p>
+        <p className="mt-3 leading-7 text-zinc-400">{item.long_description || item.short_description}</p>
       </div>
       <div className="grid gap-5 md:grid-cols-2">
         <InfoBlock label="Publico-alvo" value={item.target_audience} />
@@ -873,9 +871,9 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
 
   return (
     <div className="grid gap-5">
-      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+      <section className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <label className="grid min-w-[260px] flex-1 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-[260px] flex-1 gap-2 text-sm text-zinc-300">
             Aula para gravacao
             <select
               value={selectedContent?.id || ""}
@@ -883,12 +881,12 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
                 setSelectedId(event.target.value);
                 resetTeleprompter();
               }}
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
               {sortedContents.map((content) => {
                 const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
                 return (
-                  <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
+                  <option key={content.id} value={content.id} className="bg-navy-950 text-zinc-100">
                     {getLessonScriptLabel(script, content)}
                   </option>
                 );
@@ -899,35 +897,35 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
             <button
               type="button"
               onClick={() => setIsPlaying(true)}
-              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
+              className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow"
             >
               Iniciar
             </button>
             <button
               type="button"
               onClick={() => setIsPlaying(false)}
-              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+              className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
             >
               Pausar
             </button>
             <button
               type="button"
               onClick={resetTeleprompter}
-              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+              className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
             >
               Reiniciar
             </button>
             <button
               type="button"
               onClick={copyText}
-              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+              className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
             >
               Copiar texto
             </button>
             <button
               type="button"
               onClick={enterFullscreen}
-              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+              className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
             >
               Tela cheia
             </button>
@@ -935,12 +933,12 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-3">
-          <label className="grid gap-2 text-sm text-slate-300">
+          <label className="grid gap-2 text-sm text-zinc-300">
             Velocidade
             <select
               value={speed}
               onChange={(event) => setSpeed(Number(event.target.value))}
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
               <option value={0.5} className="bg-navy-950">0.5x</option>
               <option value={1} className="bg-navy-950">1x</option>
@@ -948,12 +946,12 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
               <option value={2} className="bg-navy-950">2x</option>
             </select>
           </label>
-          <label className="grid gap-2 text-sm text-slate-300">
+          <label className="grid gap-2 text-sm text-zinc-300">
             Tamanho da fonte
             <select
               value={fontSize}
               onChange={(event) => setFontSize(event.target.value as "small" | "medium" | "large" | "xlarge")}
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
               <option value="small" className="bg-navy-950">Pequeno</option>
               <option value="medium" className="bg-navy-950">Medio</option>
@@ -961,22 +959,22 @@ function TeleprompterView({ contents }: { contents: GeneratedContent[] }) {
               <option value="xlarge" className="bg-navy-950">Extra grande</option>
             </select>
           </label>
-          <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
-            <p className="text-sm text-slate-400">Tempo estimado</p>
-            <p className="mt-1 text-lg font-semibold text-gold-300">{estimatedTime}</p>
+          <div className="rounded-md border border-white/5 bg-black/20 px-3 py-2">
+            <p className="text-sm text-zinc-400">Tempo estimado</p>
+            <p className="mt-1 text-lg font-semibold text-accent-300">{estimatedTime}</p>
           </div>
         </div>
-        {copyMessage ? <p className="mt-4 text-sm text-gold-300">{copyMessage}</p> : null}
+        {copyMessage ? <p className="mt-4 text-sm text-accent-300">{copyMessage}</p> : null}
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-black/40 p-4">
+      <section className="rounded-lg border border-white/5 bg-black/40 p-4">
         <div className="mb-4">
-          <p className="text-xs font-medium text-gold-400">Modo teleprompter</p>
-          <h2 className="mt-1 text-2xl font-semibold text-slate-50">{getLessonScriptLabel(selectedScript, selectedContent)}</h2>
+          <p className="text-xs font-medium text-accent-400">Modo teleprompter</p>
+          <h2 className="mt-1 text-2xl font-semibold text-zinc-50">{getLessonScriptLabel(selectedScript, selectedContent)}</h2>
         </div>
         <div
           ref={teleprompterRef}
-          className="h-[620px] max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-navy-950 px-8 py-10 text-slate-50 outline-none"
+          className="h-[620px] max-h-[70vh] overflow-y-auto rounded-md border border-white/5 bg-navy-950 px-8 py-10 text-zinc-50 outline-none"
         >
           <div className={`${fontClass} mx-auto max-w-4xl whitespace-pre-wrap`}>
             {teleprompterText || "Nao foi possivel montar o texto deste roteiro."}
@@ -1266,16 +1264,16 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
 
   return (
     <div className="grid gap-6">
-      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+      <section className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="grid gap-2 text-sm text-slate-300">
+          <div className="grid gap-2 text-sm text-zinc-300">
             Modo de narracao
-            <div className="flex rounded-md border border-white/10 bg-black/20 p-1">
+            <div className="flex rounded-md border border-white/5 bg-black/20 p-1">
               <button
                 type="button"
                 onClick={() => setMode("lesson")}
                 className={`rounded px-4 py-2 text-sm font-semibold transition ${
-                  mode === "lesson" ? "bg-gold-500 text-navy-950" : "text-slate-300 hover:text-gold-300"
+                  mode === "lesson" ? "bg-accent-500 text-navy-950" : "text-zinc-300 hover:text-accent-300"
                 }`}
               >
                 Aula
@@ -1284,14 +1282,14 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
                 type="button"
                 onClick={() => setMode("module")}
                 className={`rounded px-4 py-2 text-sm font-semibold transition ${
-                  mode === "module" ? "bg-gold-500 text-navy-950" : "text-slate-300 hover:text-gold-300"
+                  mode === "module" ? "bg-accent-500 text-navy-950" : "text-zinc-300 hover:text-accent-300"
                 }`}
               >
                 Modulo
               </button>
             </div>
           </div>
-          <label className={`${mode === "module" ? "hidden " : ""}grid min-w-[260px] flex-1 gap-2 text-sm text-slate-300`}>
+          <label className={`${mode === "module" ? "hidden " : ""}grid min-w-[260px] flex-1 gap-2 text-sm text-zinc-300`}>
             Aula para narração
             <select
               value={selectedContent?.id || ""}
@@ -1299,12 +1297,12 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
                 setSelectedId(event.target.value);
                 setCopiedKey("");
               }}
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
               {sortedContents.map((content) => {
                 const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
                 return (
-                  <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
+                  <option key={content.id} value={content.id} className="bg-navy-950 text-zinc-100">
                     {getLessonScriptLabel(script, content)}
                   </option>
                 );
@@ -1312,15 +1310,15 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
             </select>
           </label>
           {mode === "module" ? (
-            <label className="grid min-w-[260px] flex-1 gap-2 text-sm text-slate-300">
+            <label className="grid min-w-[260px] flex-1 gap-2 text-sm text-zinc-300">
               Modulo para narracao
               <select
                 value={selectedModule?.key || ""}
                 onChange={(event) => setSelectedModuleKey(event.target.value)}
-                className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
               >
                 {moduleGroups.map((group) => (
-                  <option key={group.key} value={group.key} className="bg-navy-950 text-slate-100">
+                  <option key={group.key} value={group.key} className="bg-navy-950 text-zinc-100">
                     {getModuleNarrationLabel(group)} ({group.lessons.length} aulas)
                   </option>
                 ))}
@@ -1332,7 +1330,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
               type="button"
               onClick={() => copyNarration("full", narrationText)}
               disabled={!narrationText}
-              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
             >
               Copiar narração completa
             </button>
@@ -1340,7 +1338,7 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
               type="button"
               onClick={() => copyNarration("all-blocks", numberedBlocksText)}
               disabled={!numberedBlocksText}
-              className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-accent-500/30 px-4 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Copiar blocos numerados
             </button>
@@ -1348,48 +1346,48 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
         </div>
         <div className="mt-5 grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent-400">
               Pronta para geração de voz
             </p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-50">{narrationTitle}</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
+            <h2 className="mt-2 text-2xl font-semibold text-zinc-50">{narrationTitle}</h2>
+            <p className="mt-2 text-sm leading-6 text-zinc-400">
               A narracao e montada a partir do roteiro completo, sem reescrita por IA.
             </p>
           </div>
-          <div className="rounded-md border border-white/10 bg-black/20 px-4 py-3 text-right">
-            <p className="text-xs text-slate-500">Tempo estimado total</p>
-            <p className="mt-1 text-lg font-semibold text-gold-300">{formatSpeechTime(narrationText)}</p>
+          <div className="rounded-md border border-white/5 bg-black/20 px-4 py-3 text-right">
+            <p className="text-xs text-zinc-500">Tempo estimado total</p>
+            <p className="mt-1 text-lg font-semibold text-accent-300">{formatSpeechTime(narrationText)}</p>
           </div>
         </div>
         {copiedKey ? (
-          <p className={`mt-4 text-sm ${copiedKey === "error" ? "text-red-300" : "text-gold-300"}`}>
+          <p className={`mt-4 text-sm ${copiedKey === "error" ? "text-red-300" : "text-accent-300"}`}>
             {copiedKey === "error"
               ? "Não foi possível copiar automaticamente. Selecione o texto e copie manualmente."
               : "Copiado"}
           </p>
         ) : null}
-        {audioMessage ? <p className="mt-3 text-sm text-gold-300">{audioMessage}</p> : null}
+        {audioMessage ? <p className="mt-3 text-sm text-accent-300">{audioMessage}</p> : null}
         {audioError ? <p className="mt-3 text-sm text-red-300">{audioError}</p> : null}
       </section>
 
       <VoiceSettingsCard profile={instructorProfile} loaded={profileLoaded} error={profileError} />
 
-      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+      <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-slate-100">Narração completa</p>
-            <p className="mt-1 text-xs text-slate-500">{countWords(narrationText)} palavras</p>
+            <p className="text-sm font-medium text-zinc-100">Narração completa</p>
+            <p className="mt-1 text-xs text-zinc-500">{countWords(narrationText)} palavras</p>
           </div>
         </div>
-        <div className="mt-4 max-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/20 p-4 text-sm leading-7 text-slate-200">
+        <div className="mt-4 max-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-md border border-white/5 bg-black/20 p-4 text-sm leading-7 text-zinc-200">
           {narrationText || "Não foi possível montar a narração deste roteiro."}
         </div>
       </section>
 
       <section className="grid gap-4">
         <div>
-          <p className="text-sm font-medium text-slate-100">Blocos de narração</p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="text-sm font-medium text-zinc-100">Blocos de narração</p>
+          <p className="mt-1 text-xs text-zinc-500">
             {narrationBlocks.length} {narrationBlocks.length === 1 ? "bloco preparado" : "blocos preparados"}
           </p>
         </div>
@@ -1402,17 +1400,17 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
             const audioUrl = audio ? audioUrls[audio.id] : "";
             const isGeneratingAudio = Boolean(loadingAudioByBlock[blockIndex]);
             return (
-              <article key={blockKey} className="rounded-lg border border-white/10 bg-navy-950/50 p-5">
+              <article key={blockKey} className="rounded-lg border border-white/5 bg-navy-950/50 p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-50">Bloco {blockIndex}</h3>
-                    <p className="mt-1 text-xs text-slate-500">Tempo estimado: {formatSpeechTime(block)}</p>
+                    <h3 className="text-lg font-semibold text-zinc-50">Bloco {blockIndex}</h3>
+                    <p className="mt-1 text-xs text-zinc-500">Tempo estimado: {formatSpeechTime(block)}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => copyNarration(blockKey, block)}
-                      className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                      className="rounded-md border border-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
                     >
                       Copiar bloco
                     </button>
@@ -1420,34 +1418,34 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
                       type="button"
                       onClick={() => handleGenerateBlockAudio(blockIndex, block)}
                       disabled={isGeneratingAudio}
-                      className="rounded-md border border-gold-500/30 px-3 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-md border border-accent-500/30 px-3 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isGeneratingAudio ? "Gerando áudio..." : "Gerar áudio"}
                     </button>
                   </div>
                 </div>
-                <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-300">{block}</p>
-                {copiedKey === blockKey ? <p className="mt-3 text-sm text-gold-300">Copiado</p> : null}
+                <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-zinc-300">{block}</p>
+                {copiedKey === blockKey ? <p className="mt-3 text-sm text-accent-300">Copiado</p> : null}
                 {audio ? (
-                  <div className="mt-5 rounded-md border border-white/10 bg-black/20 p-4">
+                  <div className="mt-5 rounded-md border border-white/5 bg-black/20 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-medium text-slate-100">{audio.title || `Áudio do bloco ${blockIndex}`}</p>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="text-sm font-medium text-zinc-100">{audio.title || `Áudio do bloco ${blockIndex}`}</p>
+                        <p className="mt-1 text-xs text-zinc-500">
                           Voz {audio.voice || "padrão"} · {audio.format.toUpperCase()}
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="mt-1 text-xs text-zinc-500">
                           Provider {audio.voice_provider || "OpenAI"} ·{" "}
                           Modelo {audio.model || "padrão"} ·{" "}
                           {audio.personalized_voice_used ? "voz personalizada configurada" : "voz padrão do sistema"}
                         </p>
-                        {audio.voice_notice ? <p className="mt-2 text-xs text-gold-300">{audio.voice_notice}</p> : null}
+                        {audio.voice_notice ? <p className="mt-2 text-xs text-accent-300">{audio.voice_notice}</p> : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => handleDownloadAudio(audio)}
-                          className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                          className="rounded-md border border-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
                         >
                           Baixar áudio
                         </button>
@@ -1463,7 +1461,9 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
                     {audioUrl ? (
                       <audio controls src={audioUrl} className="mt-4 w-full" />
                     ) : (
-                      <p className="mt-4 text-sm text-slate-400">Carregando player de áudio...</p>
+                      <div className="mt-4">
+                        <LoadingProgress label="Carregando player de áudio..." size="inline" />
+                      </div>
                     )}
                   </div>
                 ) : null}
@@ -1475,21 +1475,21 @@ function NarrationView({ contents, projectId }: { contents: GeneratedContent[]; 
         )}
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+      <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-slate-100">Audios gerados</p>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="text-sm font-medium text-zinc-100">Audios gerados</p>
+            <p className="mt-1 text-xs text-zinc-500">
               {mode === "module" ? "Audios do modulo selecionado" : "Audios da aula selecionada"}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <p className="text-xs text-slate-500">{audios.length} audios no projeto</p>
+            <p className="text-xs text-zinc-500">{audios.length} audios no projeto</p>
             <button
               type="button"
               onClick={handleDownloadSelectedAudiosZip}
               disabled={!selectedAudios.length || exportingAudioZip}
-              className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-accent-500/30 px-4 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {exportingAudioZip
                 ? "Preparando ZIP..."
@@ -2020,11 +2020,11 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
 
   return (
     <div className="grid gap-6">
-      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+      <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-slate-100">Base de vídeo por aula</p>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="text-sm font-medium text-zinc-100">Base de vídeo por aula</p>
+            <p className="mt-1 text-xs text-zinc-500">
               Geração mock para preparar futuro avatar sincronizado com áudio.
             </p>
           </div>
@@ -2032,25 +2032,25 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
             type="button"
             onClick={handleGenerateVideo}
             disabled={!selectedAudio || generatingVideo}
-            className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
           >
             {generatingVideo ? "Gerando vídeo..." : `Gerar vídeo ${VIDEO_PROVIDER_LABELS[videoProvider]}`}
           </button>
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
             Avatar
             <select
               value={selectedVideoAvatarId}
               onChange={(event) => setSelectedVideoAvatarId(event.target.value)}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
-              <option value="" className="bg-navy-950 text-slate-100">
+              <option value="" className="bg-navy-950 text-zinc-100">
                 Manual (preencher campos abaixo)
               </option>
               {activeVideoAvatars.map((avatar) => (
-                <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-zinc-100">
                   {getVideoProviderLabel(avatar.provider)} - {avatar.name}
                   {avatar.is_default ? " (padrão)" : ""}
                 </option>
@@ -2058,7 +2058,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
             </select>
           </label>
           {!activeVideoAvatars.length ? (
-            <p className="-mt-2 text-xs text-slate-500 md:col-span-2">
+            <p className="-mt-2 text-xs text-zinc-500 md:col-span-2">
               Nenhum avatar cadastrado ainda. Use a Biblioteca de Avatares abaixo ou preencha os campos manualmente.
             </p>
           ) : null}
@@ -2066,12 +2066,12 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
             const defaultAvatarId = videoSettings ? pickDefaultAvatarIdForProvider(videoSettings, videoProvider) : "";
             if (selectedVideoAvatarId && selectedVideoAvatarId === defaultAvatarId) {
               return (
-                <p className="-mt-2 text-xs text-gold-300 md:col-span-2">Usando avatar padrão do projeto.</p>
+                <p className="-mt-2 text-xs text-accent-300 md:col-span-2">Usando avatar padrão do projeto.</p>
               );
             }
             if (!defaultAvatarId) {
               return (
-                <p className="-mt-2 text-xs text-slate-500 md:col-span-2">
+                <p className="-mt-2 text-xs text-zinc-500 md:col-span-2">
                   Nenhum avatar padrão configurado para este provider.
                 </p>
               );
@@ -2079,9 +2079,9 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
             return null;
           })()}
           {selectedVideoAvatar ? (
-            <div className="min-w-0 rounded-md border border-white/10 bg-black/20 p-3 text-xs text-slate-300 md:col-span-2">
+            <div className="min-w-0 rounded-md border border-white/5 bg-black/20 p-3 text-xs text-zinc-300 md:col-span-2">
               <p>
-                Provider: <span className="text-slate-100">{getVideoProviderLabel(selectedVideoAvatar.provider)}</span>
+                Provider: <span className="text-zinc-100">{getVideoProviderLabel(selectedVideoAvatar.provider)}</span>
               </p>
               {selectedVideoAvatar.avatar_id ? (
                 <p className="mt-1 break-words">Avatar ID: {selectedVideoAvatar.avatar_id}</p>
@@ -2095,7 +2095,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
               {selectedVideoAvatar.default_model ? <p className="mt-1">Modelo: {selectedVideoAvatar.default_model}</p> : null}
             </div>
           ) : (
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
               Provider
               <select
                 value={videoProvider}
@@ -2109,39 +2109,39 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
                     setSelectedVideoAvatarId(defaultAvatarId);
                   }
                 }}
-                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
               >
-                <option value="mock" className="bg-navy-950 text-slate-100">
+                <option value="mock" className="bg-navy-950 text-zinc-100">
                   Mock
                 </option>
-                <option value="heygen" className="bg-navy-950 text-slate-100">
+                <option value="heygen" className="bg-navy-950 text-zinc-100">
                   HeyGen
                 </option>
-                <option value="did" className="bg-navy-950 text-slate-100">
+                <option value="did" className="bg-navy-950 text-zinc-100">
                   D-ID
                 </option>
-                <option value="sync" className="bg-navy-950 text-slate-100">
+                <option value="sync" className="bg-navy-950 text-zinc-100">
                   Sync Labs
                 </option>
               </select>
             </label>
           )}
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
             Áudio base
             <select
               value={selectedAudio?.id || ""}
               onChange={(event) => setSelectedAudioId(event.target.value)}
               disabled={!audios.length}
-              className="w-full min-w-0 truncate overflow-hidden text-ellipsis rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full min-w-0 truncate overflow-hidden text-ellipsis rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {audios.length ? (
                 audios.map((audio) => (
-                  <option key={audio.id} value={audio.id} className="bg-navy-950 text-slate-100">
+                  <option key={audio.id} value={audio.id} className="bg-navy-950 text-zinc-100">
                     {getVideoAudioLabel(audio, sortedContents)}
                   </option>
                 ))
               ) : (
-                <option value="" className="bg-navy-950 text-slate-100">
+                <option value="" className="bg-navy-950 text-zinc-100">
                   Nenhum áudio disponível
                 </option>
               )}
@@ -2149,103 +2149,103 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
           </label>
           {!selectedVideoAvatar && videoProvider === "heygen" ? (
             <>
-              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
                 Avatar ID
                 <input
                   value={videoAvatarId}
                   onChange={(event) => setVideoAvatarId(event.target.value)}
                   placeholder="Usar avatar padrão (HEYGEN_DEFAULT_AVATAR_ID)"
-                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                  className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
                 />
               </label>
-              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
                 Nome do avatar
                 <input
                   value={videoAvatarName}
                   onChange={(event) => setVideoAvatarName(event.target.value)}
                   placeholder="Instrutor Virtus"
-                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                  className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
                 />
               </label>
             </>
           ) : null}
           {!selectedVideoAvatar && videoProvider === "did" ? (
             <>
-              <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+              <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
                 Source image URL
                 <input
                   value={videoSourceImageUrl}
                   onChange={(event) => setVideoSourceImageUrl(event.target.value)}
                   placeholder="Usar padrão (DID_DEFAULT_SOURCE_IMAGE_URL)"
-                  className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                  className="w-full min-w-0 truncate rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
                 />
               </label>
-              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
                 Nome do avatar (opcional)
                 <input
                   value={videoAvatarName}
                   onChange={(event) => setVideoAvatarName(event.target.value)}
                   placeholder="Instrutor Virtus"
-                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                  className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
                 />
               </label>
             </>
           ) : null}
           {!selectedVideoAvatar && videoProvider === "sync" ? (
             <>
-              <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+              <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
                 Source video URL
                 <input
                   value={videoSourceVideoUrl}
                   onChange={(event) => setVideoSourceVideoUrl(event.target.value)}
                   placeholder="Usar padrão (SYNC_DEFAULT_SOURCE_VIDEO_URL)"
-                  className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                  className="w-full min-w-0 truncate rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
                 />
               </label>
-              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
                 Source image URL (opcional)
                 <input
                   value={videoSourceImageUrl}
                   onChange={(event) => setVideoSourceImageUrl(event.target.value)}
                   placeholder="Alternativa a um vídeo base"
-                  className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                  className="w-full min-w-0 truncate rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
                 />
               </label>
-              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
                 Model (opcional)
                 <input
                   value={videoModel}
                   onChange={(event) => setVideoModel(event.target.value)}
                   placeholder="lipsync-2"
-                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                  className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
                 />
               </label>
             </>
           ) : null}
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:col-span-2">
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
               Resolução
               <select
                 value={videoResolution}
                 onChange={(event) => setVideoResolution(event.target.value)}
-                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
               >
-                <option value="1080p" className="bg-navy-950 text-slate-100">
+                <option value="1080p" className="bg-navy-950 text-zinc-100">
                   1080p
                 </option>
-                <option value="720p" className="bg-navy-950 text-slate-100">
+                <option value="720p" className="bg-navy-950 text-zinc-100">
                   720p
                 </option>
               </select>
             </label>
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
               Formato
               <select
                 value={videoFormat}
                 onChange={(event) => setVideoFormat(event.target.value)}
-                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
               >
-                <option value="mp4" className="bg-navy-950 text-slate-100">
+                <option value="mp4" className="bg-navy-950 text-zinc-100">
                   mp4
                 </option>
               </select>
@@ -2253,147 +2253,147 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
           </div>
         </div>
 
-        {videoMessage ? <p className="mt-4 text-sm text-gold-300">{videoMessage}</p> : null}
+        {videoMessage ? <p className="mt-4 text-sm text-accent-300">{videoMessage}</p> : null}
         {videoError ? <p className="mt-4 text-sm text-red-300">{videoError}</p> : null}
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Configurações padrão do projeto</p>
-        <p className="mt-1 text-xs text-slate-500">
+      <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent-400">Configurações padrão do projeto</p>
+        <p className="mt-1 text-xs text-zinc-500">
           Defina o provider e os avatares padrão usados automaticamente ao gerar vídeos neste projeto.
         </p>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
             Provider padrão
             <select
               value={settingsDefaultProvider}
               onChange={(event) => setSettingsDefaultProvider(event.target.value as VideoProvider | "")}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
-              <option value="" className="bg-navy-950 text-slate-100">
+              <option value="" className="bg-navy-950 text-zinc-100">
                 Nenhum (usar padrão do sistema)
               </option>
-              <option value="mock" className="bg-navy-950 text-slate-100">
+              <option value="mock" className="bg-navy-950 text-zinc-100">
                 Mock
               </option>
-              <option value="heygen" className="bg-navy-950 text-slate-100">
+              <option value="heygen" className="bg-navy-950 text-zinc-100">
                 HeyGen
               </option>
-              <option value="did" className="bg-navy-950 text-slate-100">
+              <option value="did" className="bg-navy-950 text-zinc-100">
                 D-ID
               </option>
-              <option value="sync" className="bg-navy-950 text-slate-100">
+              <option value="sync" className="bg-navy-950 text-zinc-100">
                 Sync Labs
               </option>
             </select>
           </label>
           <div className="grid min-w-0 grid-cols-2 gap-3">
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
               Resolução padrão
               <select
                 value={settingsResolution}
                 onChange={(event) => setSettingsResolution(event.target.value)}
-                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
               >
-                <option value="1080p" className="bg-navy-950 text-slate-100">
+                <option value="1080p" className="bg-navy-950 text-zinc-100">
                   1080p
                 </option>
-                <option value="720p" className="bg-navy-950 text-slate-100">
+                <option value="720p" className="bg-navy-950 text-zinc-100">
                   720p
                 </option>
               </select>
             </label>
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
               Formato padrão
               <select
                 value={settingsFormat}
                 onChange={(event) => setSettingsFormat(event.target.value)}
-                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
               >
-                <option value="mp4" className="bg-navy-950 text-slate-100">
+                <option value="mp4" className="bg-navy-950 text-zinc-100">
                   mp4
                 </option>
               </select>
             </label>
           </div>
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
             Avatar padrão Mock
             <select
               value={settingsMockAvatarId}
               onChange={(event) => setSettingsMockAvatarId(event.target.value)}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
-              <option value="" className="bg-navy-950 text-slate-100">
+              <option value="" className="bg-navy-950 text-zinc-100">
                 Nenhum
               </option>
               {avatars
                 .filter((avatar) => avatar.is_active && avatar.provider === "mock")
                 .map((avatar) => (
-                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-zinc-100">
                     {avatar.name}
                   </option>
                 ))}
             </select>
           </label>
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
             Avatar padrão HeyGen
             <select
               value={settingsHeygenAvatarId}
               onChange={(event) => setSettingsHeygenAvatarId(event.target.value)}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
-              <option value="" className="bg-navy-950 text-slate-100">
+              <option value="" className="bg-navy-950 text-zinc-100">
                 Nenhum
               </option>
               {avatars
                 .filter((avatar) => avatar.is_active && avatar.provider === "heygen")
                 .map((avatar) => (
-                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-zinc-100">
                     {avatar.name}
                   </option>
                 ))}
             </select>
           </label>
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
             Avatar padrão D-ID
             <select
               value={settingsDidAvatarId}
               onChange={(event) => setSettingsDidAvatarId(event.target.value)}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
-              <option value="" className="bg-navy-950 text-slate-100">
+              <option value="" className="bg-navy-950 text-zinc-100">
                 Nenhum
               </option>
               {avatars
                 .filter((avatar) => avatar.is_active && avatar.provider === "did")
                 .map((avatar) => (
-                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-zinc-100">
                     {avatar.name}
                   </option>
                 ))}
             </select>
           </label>
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
             Avatar padrão Sync Labs
             <select
               value={settingsSyncAvatarId}
               onChange={(event) => setSettingsSyncAvatarId(event.target.value)}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
-              <option value="" className="bg-navy-950 text-slate-100">
+              <option value="" className="bg-navy-950 text-zinc-100">
                 Nenhum
               </option>
               {avatars
                 .filter((avatar) => avatar.is_active && avatar.provider === "sync")
                 .map((avatar) => (
-                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-zinc-100">
                     {avatar.name}
                   </option>
                 ))}
             </select>
           </label>
-          <label className="flex items-center gap-2 text-sm text-slate-300 md:col-span-2">
+          <label className="flex items-center gap-2 text-sm text-zinc-300 md:col-span-2">
             <input
               type="checkbox"
               checked={settingsAutoDownload}
@@ -2407,55 +2407,55 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
           type="button"
           onClick={handleSaveVideoSettings}
           disabled={savingVideoSettings}
-          className="mt-4 rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-4 rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
         >
           {savingVideoSettings ? "Salvando..." : "Salvar configurações padrão"}
         </button>
 
-        {videoSettingsMessage ? <p className="mt-4 text-sm text-gold-300">{videoSettingsMessage}</p> : null}
+        {videoSettingsMessage ? <p className="mt-4 text-sm text-accent-300">{videoSettingsMessage}</p> : null}
         {videoSettingsError ? <p className="mt-4 text-sm text-red-300">{videoSettingsError}</p> : null}
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Pipeline automático</p>
-        <p className="mt-1 text-xs text-slate-500">
+      <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent-400">Pipeline automático</p>
+        <p className="mt-1 text-xs text-zinc-500">
           Gere áudio e vídeo automaticamente a partir dos roteiros das aulas, para uma aula, um módulo inteiro ou o
           curso inteiro.
         </p>
 
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
             Escopo
             <select
               value={pipelineScope}
               onChange={(event) => setPipelineScope(event.target.value as VideoPipelineScope)}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
-              <option value="lesson" className="bg-navy-950 text-slate-100">
+              <option value="lesson" className="bg-navy-950 text-zinc-100">
                 Aula específica
               </option>
-              <option value="module" className="bg-navy-950 text-slate-100">
+              <option value="module" className="bg-navy-950 text-zinc-100">
                 Módulo inteiro
               </option>
-              <option value="course" className="bg-navy-950 text-slate-100">
+              <option value="course" className="bg-navy-950 text-zinc-100">
                 Curso inteiro
               </option>
             </select>
           </label>
 
           {pipelineScope === "module" ? (
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
               Módulo
               <select
                 value={pipelineModuleIndex}
                 onChange={(event) => setPipelineModuleIndex(event.target.value)}
-                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
               >
-                <option value="" className="bg-navy-950 text-slate-100">
+                <option value="" className="bg-navy-950 text-zinc-100">
                   Selecione um módulo
                 </option>
                 {pipelineModuleGroups.map((group) => (
-                  <option key={group.key} value={group.moduleNumber} className="bg-navy-950 text-slate-100">
+                  <option key={group.key} value={group.moduleNumber} className="bg-navy-950 text-zinc-100">
                     {getModuleNarrationLabel(group)}
                   </option>
                 ))}
@@ -2464,20 +2464,20 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
           ) : null}
 
           {pipelineScope === "lesson" ? (
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
               Aula
               <select
                 value={pipelineLessonId}
                 onChange={(event) => setPipelineLessonId(event.target.value)}
-                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
               >
-                <option value="" className="bg-navy-950 text-slate-100">
+                <option value="" className="bg-navy-950 text-zinc-100">
                   Selecione uma aula
                 </option>
                 {sortedContents.map((content) => {
                   const script = (content.content_json as LessonScriptContent | null)?.lesson_script;
                   return (
-                    <option key={content.id} value={content.id} className="bg-navy-950 text-slate-100">
+                    <option key={content.id} value={content.id} className="bg-navy-950 text-zinc-100">
                       {getLessonAudioBaseTitle(script, content)}
                     </option>
                   );
@@ -2486,52 +2486,52 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
             </label>
           ) : null}
 
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
             Provider de vídeo
             <select
               value={pipelineProvider}
               onChange={(event) => setPipelineProvider(event.target.value as VideoProvider | "")}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
-              <option value="" className="bg-navy-950 text-slate-100">
+              <option value="" className="bg-navy-950 text-zinc-100">
                 Usar padrão do projeto
               </option>
-              <option value="mock" className="bg-navy-950 text-slate-100">
+              <option value="mock" className="bg-navy-950 text-zinc-100">
                 Mock
               </option>
-              <option value="heygen" className="bg-navy-950 text-slate-100">
+              <option value="heygen" className="bg-navy-950 text-zinc-100">
                 HeyGen
               </option>
-              <option value="did" className="bg-navy-950 text-slate-100">
+              <option value="did" className="bg-navy-950 text-zinc-100">
                 D-ID
               </option>
-              <option value="sync" className="bg-navy-950 text-slate-100">
+              <option value="sync" className="bg-navy-950 text-zinc-100">
                 Sync Labs
               </option>
             </select>
           </label>
 
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
             Avatar
             <select
               value={pipelineAvatarId}
               onChange={(event) => setPipelineAvatarId(event.target.value)}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
-              <option value="" className="bg-navy-950 text-slate-100">
+              <option value="" className="bg-navy-950 text-zinc-100">
                 Usar avatar padrão do projeto
               </option>
               {activeVideoAvatars
                 .filter((avatar) => !pipelineProvider || avatar.provider === pipelineProvider)
                 .map((avatar) => (
-                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-slate-100">
+                  <option key={avatar.id} value={avatar.id} className="bg-navy-950 text-zinc-100">
                     {avatar.name} ({getVideoProviderLabel(avatar.provider)})
                   </option>
                 ))}
             </select>
           </label>
 
-          <div className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+          <div className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -2571,12 +2571,12 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
           type="button"
           onClick={handleCreatePipeline}
           disabled={creatingPipeline}
-          className="mt-4 rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-4 rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
         >
           {creatingPipeline ? "Criando pipeline..." : "Criar pipeline"}
         </button>
 
-        {pipelineMessage ? <p className="mt-4 text-sm text-gold-300">{pipelineMessage}</p> : null}
+        {pipelineMessage ? <p className="mt-4 text-sm text-accent-300">{pipelineMessage}</p> : null}
         {pipelineError ? <p className="mt-4 text-sm text-red-300">{pipelineError}</p> : null}
 
         {currentPipelineJob ? (
@@ -2591,7 +2591,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
 
         {pipelineJobs.length > 1 ? (
           <div className="mt-5">
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Histórico de pipelines</p>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent-400">Histórico de pipelines</p>
             <div className="mt-3 grid gap-2">
               {pipelineJobs
                 .filter((job) => job.id !== currentPipelineJob?.id)
@@ -2603,7 +2603,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
                       setCurrentPipelineJob(job);
                       setPipelineIsPolling(job.status === "running");
                     }}
-                    className="flex items-center justify-between rounded-md border border-white/10 bg-black/20 px-4 py-2 text-left text-sm text-slate-300 transition hover:border-gold-500/40"
+                    className="flex items-center justify-between rounded-md border border-white/5 bg-black/20 px-4 py-2 text-left text-sm text-zinc-300 transition hover:border-accent-500/40"
                   >
                     <span>
                       {getPipelineScopeLabel(job)} - {job.completed_items}/{job.total_items} aula(s)
@@ -2616,9 +2616,9 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
         ) : null}
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Biblioteca de avatares</p>
-        <p className="mt-1 text-xs text-slate-500">
+      <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent-400">Biblioteca de avatares</p>
+        <p className="mt-1 text-xs text-zinc-500">
           Cadastre avatares reutilizáveis por provider para agilizar a geração de vídeo.
         </p>
 
@@ -2649,41 +2649,41 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
               />
             ))
           ) : (
-            <p className="rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+            <p className="rounded-md border border-white/5 bg-black/20 p-4 text-sm text-zinc-400">
               Nenhum avatar cadastrado neste projeto.
             </p>
           )}
         </div>
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Vídeos gerados</p>
+      <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent-400">Vídeos gerados</p>
         <div className="mt-4 grid gap-3">
           {videos.length ? (
             videos.map((video) => (
-              <article key={video.id} className="rounded-md border border-white/10 bg-black/20 p-4">
+              <article key={video.id} className="rounded-md border border-white/5 bg-black/20 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-slate-100">
+                    <p className="text-sm font-medium text-zinc-100">
                       {video.avatar_name || video.avatar_id || "Avatar mock"} - {video.status}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-zinc-500">
                       {video.resolution} - {video.format.toUpperCase()} - {formatAudioDate(video.created_at)}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-zinc-500">
                       Provider {getVideoProviderLabel(video.provider)} - Áudio{" "}
                       {video.audio_id ? "vinculado" : "não informado"}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">Origem: {getVideoOriginLabel(video)}</p>
+                    <p className="mt-1 text-xs text-zinc-500">Origem: {getVideoOriginLabel(video)}</p>
                     {video.error_message ? <p className="mt-2 text-xs text-red-300">{video.error_message}</p> : null}
                     {!video.download_url && (video.status === "pending" || video.status === "processing") ? (
-                      <p className="mt-2 text-xs text-gold-300">
+                      <p className="mt-2 text-xs text-accent-300">
                         Vídeo ainda em processamento na {getVideoProviderLabel(video.provider)}. Atualize o status
                         para acompanhar.
                       </p>
                     ) : null}
                     {!video.download_url && video.status === "completed_mock" ? (
-                      <p className="mt-2 text-xs text-gold-300">Não foi possível gerar o MP4 mock para este vídeo.</p>
+                      <p className="mt-2 text-xs text-accent-300">Não foi possível gerar o MP4 mock para este vídeo.</p>
                     ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -2692,7 +2692,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
                         type="button"
                         onClick={() => handleRefreshVideoStatus(video)}
                         disabled={refreshingVideoId === video.id}
-                        className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md border border-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {refreshingVideoId === video.id ? "Atualizando..." : "Atualizar status"}
                       </button>
@@ -2701,7 +2701,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
                       type="button"
                       onClick={() => handleDownloadVideo(video)}
                       disabled={video.status !== "completed" || !video.download_url}
-                      className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-md border border-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Baixar vídeo
                     </button>
@@ -2717,33 +2717,33 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
               </article>
             ))
           ) : (
-            <p className="rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+            <p className="rounded-md border border-white/5 bg-black/20 p-4 text-sm text-zinc-400">
               Nenhum vídeo gerado neste projeto.
             </p>
           )}
         </div>
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-black/30 p-5">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Comparação de providers</p>
-        <p className="mt-1 text-xs text-slate-500">
+      <section className="rounded-lg border border-white/5 bg-black/30 p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent-400">Comparação de providers</p>
+        <p className="mt-1 text-xs text-zinc-500">
           Compare qualidade, custo e desempenho entre Mock, HeyGen, D-ID e Sync Labs.
         </p>
         {videos.length ? (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-left text-sm">
               <thead>
-                <tr className="text-xs uppercase tracking-wide text-slate-500">
-                  <th className="border-b border-white/10 px-3 py-2">Provider</th>
-                  <th className="border-b border-white/10 px-3 py-2">Aula / áudio base</th>
-                  <th className="border-b border-white/10 px-3 py-2">Status</th>
-                  <th className="border-b border-white/10 px-3 py-2">Duração</th>
-                  <th className="border-b border-white/10 px-3 py-2">Tempo de geração</th>
-                  <th className="border-b border-white/10 px-3 py-2">Tamanho</th>
-                  <th className="border-b border-white/10 px-3 py-2">Custo estimado</th>
-                  <th className="border-b border-white/10 px-3 py-2">Nota</th>
-                  <th className="border-b border-white/10 px-3 py-2">Observações</th>
-                  <th className="border-b border-white/10 px-3 py-2">Ações</th>
+                <tr className="text-xs uppercase tracking-wide text-zinc-500">
+                  <th className="border-b border-white/5 px-3 py-2">Provider</th>
+                  <th className="border-b border-white/5 px-3 py-2">Aula / áudio base</th>
+                  <th className="border-b border-white/5 px-3 py-2">Status</th>
+                  <th className="border-b border-white/5 px-3 py-2">Duração</th>
+                  <th className="border-b border-white/5 px-3 py-2">Tempo de geração</th>
+                  <th className="border-b border-white/5 px-3 py-2">Tamanho</th>
+                  <th className="border-b border-white/5 px-3 py-2">Custo estimado</th>
+                  <th className="border-b border-white/5 px-3 py-2">Nota</th>
+                  <th className="border-b border-white/5 px-3 py-2">Observações</th>
+                  <th className="border-b border-white/5 px-3 py-2">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -2765,7 +2765,7 @@ function VideoView({ contents, projectId }: { contents: GeneratedContent[]; proj
             </table>
           </div>
         ) : (
-          <p className="mt-4 rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+          <p className="mt-4 rounded-md border border-white/5 bg-black/20 p-4 text-sm text-zinc-400">
             Gere vídeos para começar a comparar providers.
           </p>
         )}
@@ -2783,12 +2783,12 @@ const COURSE_EXPORT_STATUS_LABELS: Record<string, string> = {
 
 function CourseExportStatusBadge({ status }: { status: string }) {
   const stylesByStatus: Record<string, string> = {
-    pending: "border-slate-400/40 bg-slate-400/10 text-slate-300",
+    pending: "border-zinc-400/40 bg-zinc-400/10 text-zinc-300",
     running: "border-sky-400/40 bg-sky-400/10 text-sky-300",
     completed: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
     failed: "border-red-400/40 bg-red-400/10 text-red-300",
   };
-  const style = stylesByStatus[status] || "border-white/20 bg-white/5 text-slate-300";
+  const style = stylesByStatus[status] || "border-white/20 bg-white/5 text-zinc-300";
   return (
     <span className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium ${style}`}>
       {COURSE_EXPORT_STATUS_LABELS[status] || status}
@@ -2808,7 +2808,17 @@ function formatExportBytes(value: number | null): string {
   return `${size.toFixed(1)} ${units[unitIndex]}`;
 }
 
-function ExportView({ projectId }: { projectId: string }) {
+function ExportView({
+  projectId,
+  onExportFullCoursePdf,
+  exportingFullCoursePdf,
+  fullCoursePdfError,
+}: {
+  projectId: string;
+  onExportFullCoursePdf: () => void;
+  exportingFullCoursePdf: boolean;
+  fullCoursePdfError: string;
+}) {
   const [includeDocumentBase, setIncludeDocumentBase] = useState(true);
   const [includeCourseSummary, setIncludeCourseSummary] = useState(true);
   const [includeCourseStructure, setIncludeCourseStructure] = useState(true);
@@ -2962,14 +2972,30 @@ function ExportView({ projectId }: { projectId: string }) {
 
   return (
     <div className="grid gap-6">
-      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Exportar curso completo</p>
-        <p className="mt-1 text-xs text-slate-500">
+      <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent-400">Exportar em PDF</p>
+        <p className="mt-1 text-xs text-zinc-500">
+          Gere um PDF consolidado com resumo, estrutura, roteiros, quizzes, materiais e apresentação.
+        </p>
+        <button
+          type="button"
+          onClick={onExportFullCoursePdf}
+          disabled={exportingFullCoursePdf}
+          className="mt-4 rounded-md border border-accent-500/30 px-4 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {exportingFullCoursePdf ? "Gerando PDF..." : "Exportar curso completo em PDF"}
+        </button>
+        {fullCoursePdfError ? <p className="mt-3 text-sm text-red-300">{fullCoursePdfError}</p> : null}
+      </section>
+
+      <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent-400">Exportar curso completo</p>
+        <p className="mt-1 text-xs text-zinc-500">
           Gere um ZIP organizado com os conteudos educacionais, roteiros, quizzes, materiais, apresentação, áudios e
           vídeos deste projeto. Cursos grandes podem demorar alguns minutos.
         </p>
 
-        <div className="mt-4 grid gap-2 text-sm text-slate-300 md:grid-cols-2">
+        <div className="mt-4 grid gap-2 text-sm text-zinc-300 md:grid-cols-2">
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={includeDocumentBase} onChange={(e) => setIncludeDocumentBase(e.target.checked)} />
             Documento Base
@@ -3017,21 +3043,21 @@ function ExportView({ projectId }: { projectId: string }) {
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <label className="flex items-center gap-2 text-sm text-slate-300">
+          <label className="flex items-center gap-2 text-sm text-zinc-300">
             <input type="checkbox" checked={onlyCompletedVideo} onChange={(e) => setOnlyCompletedVideo(e.target.checked)} />
             Exportar somente vídeos concluídos
           </label>
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
             Formato dos textos
             <select
               value={formatText}
               onChange={(event) => setFormatText(event.target.value as CourseExportTextFormat)}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
-              <option value="md" className="bg-navy-950 text-slate-100">
+              <option value="md" className="bg-navy-950 text-zinc-100">
                 Markdown
               </option>
-              <option value="txt" className="bg-navy-950 text-slate-100">
+              <option value="txt" className="bg-navy-950 text-zinc-100">
                 TXT
               </option>
             </select>
@@ -3042,18 +3068,18 @@ function ExportView({ projectId }: { projectId: string }) {
           type="button"
           onClick={handleCreateExport}
           disabled={creating}
-          className="mt-4 rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-4 rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
         >
           {creating ? "Criando exportação..." : "Gerar ZIP do curso"}
         </button>
 
-        {message ? <p className="mt-4 text-sm text-gold-300">{message}</p> : null}
+        {message ? <p className="mt-4 text-sm text-accent-300">{message}</p> : null}
         {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
 
         {currentExport ? (
-          <div className="mt-5 rounded-md border border-gold-500/20 bg-gold-500/5 p-4">
+          <div className="mt-5 rounded-md border border-accent-500/20 bg-accent-500/5 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm font-medium text-slate-100">
+              <p className="text-sm font-medium text-zinc-100">
                 Exportação de {formatAudioDate(currentExport.created_at)}
               </p>
               <CourseExportStatusBadge status={currentExport.status} />
@@ -3062,7 +3088,7 @@ function ExportView({ projectId }: { projectId: string }) {
               <button
                 type="button"
                 onClick={() => handleDownloadExport(currentExport)}
-                className="mt-3 rounded-md bg-gold-500 px-3 py-1.5 text-xs font-semibold text-navy-950 transition hover:bg-gold-400"
+                className="mt-3 rounded-md bg-accent-500 px-3 py-1.5 text-xs font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow"
               >
                 Baixar ZIP ({formatExportBytes(currentExport.file_size_bytes)})
               </button>
@@ -3074,18 +3100,18 @@ function ExportView({ projectId }: { projectId: string }) {
         ) : null}
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">Exportações anteriores</p>
+      <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent-400">Exportações anteriores</p>
         <div className="mt-4 grid gap-3">
           {exports.length ? (
             exports.map((item) => (
-              <article key={item.id} className="rounded-md border border-white/10 bg-black/20 p-4">
+              <article key={item.id} className="rounded-md border border-white/5 bg-black/20 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-slate-100">
+                    <p className="text-sm font-medium text-zinc-100">
                       {item.export_type} - {formatAudioDate(item.created_at)}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">{formatExportBytes(item.file_size_bytes)}</p>
+                    <p className="mt-1 text-xs text-zinc-500">{formatExportBytes(item.file_size_bytes)}</p>
                   </div>
                   <CourseExportStatusBadge status={item.status} />
                 </div>
@@ -3094,7 +3120,7 @@ function ExportView({ projectId }: { projectId: string }) {
                     <button
                       type="button"
                       onClick={() => handleDownloadExport(item)}
-                      className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400"
+                      className="rounded-md border border-white/5 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-accent-500/40 hover:text-accent-400"
                     >
                       Baixar
                     </button>
@@ -3111,7 +3137,7 @@ function ExportView({ projectId }: { projectId: string }) {
               </article>
             ))
           ) : (
-            <p className="rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+            <p className="rounded-md border border-white/5 bg-black/20 p-4 text-sm text-zinc-400">
               Nenhuma exportação gerada ainda.
             </p>
           )}
@@ -3201,103 +3227,103 @@ function VideoAvatarCreateForm({
   }
 
   return (
-    <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-4">
-      <p className="text-sm font-medium text-slate-100">Novo avatar</p>
+    <div className="mt-4 rounded-md border border-white/5 bg-black/20 p-4">
+      <p className="text-sm font-medium text-zinc-100">Novo avatar</p>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+        <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
           Nome
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Instrutor Virtus"
-            className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+            className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
           />
         </label>
-        <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+        <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
           Provider
           <select
             value={provider}
             onChange={(event) => setProvider(event.target.value as VideoProvider)}
-            className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+            className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
           >
-            <option value="mock" className="bg-navy-950 text-slate-100">
+            <option value="mock" className="bg-navy-950 text-zinc-100">
               Mock
             </option>
-            <option value="heygen" className="bg-navy-950 text-slate-100">
+            <option value="heygen" className="bg-navy-950 text-zinc-100">
               HeyGen
             </option>
-            <option value="did" className="bg-navy-950 text-slate-100">
+            <option value="did" className="bg-navy-950 text-zinc-100">
               D-ID
             </option>
-            <option value="sync" className="bg-navy-950 text-slate-100">
+            <option value="sync" className="bg-navy-950 text-zinc-100">
               Sync Labs
             </option>
           </select>
         </label>
         {provider === "heygen" ? (
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
             Avatar ID
             <input
               value={avatarId}
               onChange={(event) => setAvatarId(event.target.value)}
               placeholder="ID do avatar na HeyGen"
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
             />
           </label>
         ) : null}
         {provider === "did" ? (
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
             Source Image URL
             <input
               value={sourceImageUrl}
               onChange={(event) => setSourceImageUrl(event.target.value)}
               placeholder="https://..."
-              className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+              className="w-full min-w-0 truncate rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
             />
           </label>
         ) : null}
         {provider === "sync" ? (
           <>
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
               Source Video URL
               <input
                 value={sourceVideoUrl}
                 onChange={(event) => setSourceVideoUrl(event.target.value)}
                 placeholder="https://..."
-                className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                className="w-full min-w-0 truncate rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
               />
             </label>
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
               Source Image URL (opcional)
               <input
                 value={sourceImageUrl}
                 onChange={(event) => setSourceImageUrl(event.target.value)}
                 placeholder="https://..."
-                className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                className="w-full min-w-0 truncate rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
               />
             </label>
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
               Modelo (opcional)
               <input
                 value={defaultModel}
                 onChange={(event) => setDefaultModel(event.target.value)}
                 placeholder="lipsync-2"
-                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+                className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
               />
             </label>
           </>
         ) : null}
-        <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+        <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
           Descrição
           <textarea
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             rows={2}
             placeholder="Observações sobre este avatar"
-            className="w-full min-w-0 resize-none rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-gold-500/60"
+            className="w-full min-w-0 resize-none rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-accent-500/60"
           />
         </label>
-        <label className="flex items-center gap-2 text-sm text-slate-300 md:col-span-2">
+        <label className="flex items-center gap-2 text-sm text-zinc-300 md:col-span-2">
           <input type="checkbox" checked={isDefault} onChange={(event) => setIsDefault(event.target.checked)} />
           Marcar como padrão para este provider
         </label>
@@ -3307,7 +3333,7 @@ function VideoAvatarCreateForm({
         type="button"
         onClick={handleCreate}
         disabled={saving}
-        className="mt-3 rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-3 rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
       >
         {saving ? "Salvando..." : "Adicionar avatar"}
       </button>
@@ -3425,92 +3451,92 @@ function VideoAvatarRow({
 
   if (isEditing) {
     return (
-      <article className="rounded-md border border-gold-500/30 bg-black/20 p-4">
+      <article className="rounded-md border border-accent-500/30 bg-black/20 p-4">
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
             Nome
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             />
           </label>
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
             Provider
             <select
               value={provider}
               onChange={(event) => setProvider(event.target.value as VideoProvider)}
-              className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             >
-              <option value="mock" className="bg-navy-950 text-slate-100">
+              <option value="mock" className="bg-navy-950 text-zinc-100">
                 Mock
               </option>
-              <option value="heygen" className="bg-navy-950 text-slate-100">
+              <option value="heygen" className="bg-navy-950 text-zinc-100">
                 HeyGen
               </option>
-              <option value="did" className="bg-navy-950 text-slate-100">
+              <option value="did" className="bg-navy-950 text-zinc-100">
                 D-ID
               </option>
-              <option value="sync" className="bg-navy-950 text-slate-100">
+              <option value="sync" className="bg-navy-950 text-zinc-100">
                 Sync Labs
               </option>
             </select>
           </label>
           {provider === "heygen" ? (
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
               Avatar ID
               <input
                 value={avatarIdField}
                 onChange={(event) => setAvatarIdField(event.target.value)}
-                className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
               />
             </label>
           ) : null}
           {provider === "did" ? (
-            <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+            <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
               Source Image URL
               <input
                 value={sourceImageUrl}
                 onChange={(event) => setSourceImageUrl(event.target.value)}
-                className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                className="w-full min-w-0 truncate rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
               />
             </label>
           ) : null}
           {provider === "sync" ? (
             <>
-              <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+              <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
                 Source Video URL
                 <input
                   value={sourceVideoUrl}
                   onChange={(event) => setSourceVideoUrl(event.target.value)}
-                  className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                  className="w-full min-w-0 truncate rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
                 />
               </label>
-              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
                 Source Image URL (opcional)
                 <input
                   value={sourceImageUrl}
                   onChange={(event) => setSourceImageUrl(event.target.value)}
-                  className="w-full min-w-0 truncate rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                  className="w-full min-w-0 truncate rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
                 />
               </label>
-              <label className="grid min-w-0 gap-2 text-sm text-slate-300">
+              <label className="grid min-w-0 gap-2 text-sm text-zinc-300">
                 Modelo (opcional)
                 <input
                   value={defaultModel}
                   onChange={(event) => setDefaultModel(event.target.value)}
-                  className="w-full min-w-0 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                  className="w-full min-w-0 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
                 />
               </label>
             </>
           ) : null}
-          <label className="grid min-w-0 gap-2 text-sm text-slate-300 md:col-span-2">
+          <label className="grid min-w-0 gap-2 text-sm text-zinc-300 md:col-span-2">
             Descrição
             <textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               rows={2}
-              className="w-full min-w-0 resize-none rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+              className="w-full min-w-0 resize-none rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
             />
           </label>
         </div>
@@ -3520,7 +3546,7 @@ function VideoAvatarRow({
             type="button"
             onClick={handleSaveEdit}
             disabled={saving}
-            className="rounded-md bg-gold-500 px-3 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md bg-accent-500 px-3 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? "Salvando..." : "Salvar"}
           </button>
@@ -3528,7 +3554,7 @@ function VideoAvatarRow({
             type="button"
             onClick={() => setIsEditing(false)}
             disabled={saving}
-            className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md border border-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Cancelar
           </button>
@@ -3538,42 +3564,42 @@ function VideoAvatarRow({
   }
 
   return (
-    <article className="rounded-md border border-white/10 bg-black/20 p-4">
+    <article className="rounded-md border border-white/5 bg-black/20 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <VideoProviderBadge provider={avatar.provider} />
-            <p className="text-sm font-medium text-slate-100">{avatar.name}</p>
+            <p className="text-sm font-medium text-zinc-100">{avatar.name}</p>
             {avatar.is_default ? (
-              <span className="inline-block whitespace-nowrap rounded-full border border-gold-400/40 bg-gold-400/10 px-2 py-0.5 text-xs font-medium text-gold-300">
+              <span className="inline-block whitespace-nowrap rounded-full border border-accent-400/40 bg-accent-400/10 px-2 py-0.5 text-xs font-medium text-accent-300">
                 Padrão
               </span>
             ) : null}
             {!avatar.is_active ? (
-              <span className="inline-block whitespace-nowrap rounded-full border border-white/20 bg-white/5 px-2 py-0.5 text-xs font-medium text-slate-400">
+              <span className="inline-block whitespace-nowrap rounded-full border border-white/20 bg-white/5 px-2 py-0.5 text-xs font-medium text-zinc-400">
                 Inativo
               </span>
             ) : null}
           </div>
           {avatar.avatar_id ? (
-            <p className="mt-1 max-w-full break-words text-xs text-slate-500">Avatar ID: {avatar.avatar_id}</p>
+            <p className="mt-1 max-w-full break-words text-xs text-zinc-500">Avatar ID: {avatar.avatar_id}</p>
           ) : null}
           {avatar.source_image_url ? (
-            <p className="mt-1 max-w-full break-words text-xs text-slate-500">Imagem: {avatar.source_image_url}</p>
+            <p className="mt-1 max-w-full break-words text-xs text-zinc-500">Imagem: {avatar.source_image_url}</p>
           ) : null}
           {avatar.source_video_url ? (
-            <p className="mt-1 max-w-full break-words text-xs text-slate-500">Vídeo base: {avatar.source_video_url}</p>
+            <p className="mt-1 max-w-full break-words text-xs text-zinc-500">Vídeo base: {avatar.source_video_url}</p>
           ) : null}
-          {avatar.default_model ? <p className="mt-1 text-xs text-slate-500">Modelo: {avatar.default_model}</p> : null}
+          {avatar.default_model ? <p className="mt-1 text-xs text-zinc-500">Modelo: {avatar.default_model}</p> : null}
           {avatar.description ? (
-            <p className="mt-1 max-w-full break-words text-xs text-slate-400">{avatar.description}</p>
+            <p className="mt-1 max-w-full break-words text-xs text-zinc-400">{avatar.description}</p>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={startEditing}
-            className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+            className="rounded-md border border-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
           >
             Editar
           </button>
@@ -3582,7 +3608,7 @@ function VideoAvatarRow({
               type="button"
               onClick={handleToggleDefault}
               disabled={saving}
-              className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {avatar.is_default ? "Remover padrão" : "Marcar como padrão"}
             </button>
@@ -3594,7 +3620,7 @@ function VideoAvatarRow({
             className={
               avatar.is_active
                 ? "rounded-md border border-red-400/40 px-3 py-2 text-sm text-red-300 transition hover:border-red-300 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
-                : "rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                : "rounded-md border border-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
             }
           >
             {avatar.is_active ? "Desativar" : "Reativar"}
@@ -3611,7 +3637,7 @@ function VideoStatusBadge({ status }: { status: string }) {
     completed: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
     completed_mock: "border-amber-400/40 bg-amber-400/10 text-amber-300",
     processing: "border-sky-400/40 bg-sky-400/10 text-sky-300",
-    pending: "border-slate-400/40 bg-slate-400/10 text-slate-300",
+    pending: "border-zinc-400/40 bg-zinc-400/10 text-zinc-300",
     failed: "border-red-400/40 bg-red-400/10 text-red-300",
   };
   const labelsByStatus: Record<string, string> = {
@@ -3621,7 +3647,7 @@ function VideoStatusBadge({ status }: { status: string }) {
     pending: "Pendente",
     failed: "Falhou",
   };
-  const style = stylesByStatus[status] || "border-white/20 bg-white/5 text-slate-300";
+  const style = stylesByStatus[status] || "border-white/20 bg-white/5 text-zinc-300";
   const label = labelsByStatus[status] || status;
 
   return (
@@ -3633,12 +3659,12 @@ function VideoStatusBadge({ status }: { status: string }) {
 
 function VideoProviderBadge({ provider }: { provider: string }) {
   const stylesByProvider: Record<string, string> = {
-    mock: "border-slate-400/40 bg-slate-400/10 text-slate-300",
+    mock: "border-zinc-400/40 bg-zinc-400/10 text-zinc-300",
     heygen: "border-violet-400/40 bg-violet-400/10 text-violet-300",
     did: "border-blue-400/40 bg-blue-400/10 text-blue-300",
     sync: "border-teal-400/40 bg-teal-400/10 text-teal-300",
   };
-  const style = stylesByProvider[provider] || "border-white/20 bg-white/5 text-slate-300";
+  const style = stylesByProvider[provider] || "border-white/20 bg-white/5 text-zinc-300";
 
   return (
     <span className={`inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium ${style}`}>
@@ -3669,7 +3695,7 @@ const PIPELINE_ITEM_STATUS_LABELS: Record<string, string> = {
 
 function PipelineStatusBadge({ status }: { status: string }) {
   const stylesByStatus: Record<string, string> = {
-    pending: "border-slate-400/40 bg-slate-400/10 text-slate-300",
+    pending: "border-zinc-400/40 bg-zinc-400/10 text-zinc-300",
     running: "border-sky-400/40 bg-sky-400/10 text-sky-300",
     generating_audio: "border-sky-400/40 bg-sky-400/10 text-sky-300",
     audio_completed: "border-sky-400/40 bg-sky-400/10 text-sky-300",
@@ -3678,10 +3704,10 @@ function PipelineStatusBadge({ status }: { status: string }) {
     completed: "border-emerald-400/40 bg-emerald-400/10 text-emerald-300",
     partially_completed: "border-amber-400/40 bg-amber-400/10 text-amber-300",
     failed: "border-red-400/40 bg-red-400/10 text-red-300",
-    cancelled: "border-white/20 bg-white/5 text-slate-300",
-    skipped: "border-white/20 bg-white/5 text-slate-300",
+    cancelled: "border-white/20 bg-white/5 text-zinc-300",
+    skipped: "border-white/20 bg-white/5 text-zinc-300",
   };
-  const style = stylesByStatus[status] || "border-white/20 bg-white/5 text-slate-300";
+  const style = stylesByStatus[status] || "border-white/20 bg-white/5 text-zinc-300";
   const label = PIPELINE_JOB_STATUS_LABELS[status] || PIPELINE_ITEM_STATUS_LABELS[status] || status;
 
   return (
@@ -3716,11 +3742,11 @@ function PipelineJobCard({
   const canCancel = job.status === "pending" || job.status === "running";
 
   return (
-    <div className="mt-5 rounded-md border border-gold-500/20 bg-gold-500/5 p-4">
+    <div className="mt-5 rounded-md border border-accent-500/20 bg-accent-500/5 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-slate-100">{getPipelineScopeLabel(job)}</p>
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="text-sm font-medium text-zinc-100">{getPipelineScopeLabel(job)}</p>
+          <p className="mt-1 text-xs text-zinc-400">
             {job.current_item_label ? `Processando: ${job.current_item_label}` : "Aguardando início"}
           </p>
         </div>
@@ -3728,9 +3754,9 @@ function PipelineJobCard({
       </div>
 
       <div className="mt-4 h-2 rounded-full bg-white/10">
-        <div className="h-2 rounded-full bg-gold-500 transition-all" style={{ width: `${progressPercent}%` }} />
+        <div className="h-2 rounded-full bg-accent-500 transition-all" style={{ width: `${progressPercent}%` }} />
       </div>
-      <p className="mt-2 text-xs text-slate-400">
+      <p className="mt-2 text-xs text-zinc-400">
         {job.completed_items}/{job.total_items} concluídas
         {job.failed_items > 0 ? ` - ${job.failed_items} com falha` : ""} ({progressPercent}%)
       </p>
@@ -3741,7 +3767,7 @@ function PipelineJobCard({
             type="button"
             onClick={onRun}
             disabled={actionLoading}
-            className="rounded-md bg-gold-500 px-3 py-1.5 text-xs font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md bg-accent-500 px-3 py-1.5 text-xs font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
           >
             Iniciar geração
           </button>
@@ -3751,7 +3777,7 @@ function PipelineJobCard({
             type="button"
             onClick={onRetryFailed}
             disabled={actionLoading}
-            className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md border border-white/5 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Tentar novamente falhas
           </button>
@@ -3774,9 +3800,9 @@ function PipelineJobCard({
         {job.items.map((item) => (
           <div
             key={item.id}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-black/20 px-3 py-2"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/20 px-3 py-2"
           >
-            <span className="text-xs text-slate-300">{item.lesson_title || "Aula"}</span>
+            <span className="text-xs text-zinc-300">{item.lesson_title || "Aula"}</span>
             <div className="flex items-center gap-2">
               {item.error_message ? <span className="text-xs text-red-300">{item.error_message}</span> : null}
               <PipelineStatusBadge status={item.status} />
@@ -3880,11 +3906,11 @@ function VideoComparisonRow({
   }
 
   return (
-    <tr className="align-top text-slate-200">
+    <tr className="align-top text-zinc-200">
       <td className="border-b border-white/5 px-3 py-3">
         <VideoProviderBadge provider={video.provider} />
       </td>
-      <td className="max-w-[220px] border-b border-white/5 px-3 py-3 text-xs text-slate-300">
+      <td className="max-w-[220px] border-b border-white/5 px-3 py-3 text-xs text-zinc-300">
         <span className="line-clamp-2 break-words">{audioLabel}</span>
       </td>
       <td className="border-b border-white/5 px-3 py-3">
@@ -3893,13 +3919,13 @@ function VideoComparisonRow({
           <p className="mt-1 max-w-[160px] break-words text-xs text-red-300">{video.error_message}</p>
         ) : null}
       </td>
-      <td className="whitespace-nowrap border-b border-white/5 px-3 py-3 text-xs text-slate-300">
+      <td className="whitespace-nowrap border-b border-white/5 px-3 py-3 text-xs text-zinc-300">
         {formatSecondsLabel(video.duration_seconds)}
       </td>
-      <td className="whitespace-nowrap border-b border-white/5 px-3 py-3 text-xs text-slate-300">
+      <td className="whitespace-nowrap border-b border-white/5 px-3 py-3 text-xs text-zinc-300">
         {formatSecondsLabel(video.provider_latency_seconds)}
       </td>
-      <td className="whitespace-nowrap border-b border-white/5 px-3 py-3 text-xs text-slate-300">
+      <td className="whitespace-nowrap border-b border-white/5 px-3 py-3 text-xs text-zinc-300">
         {formatBytesLabel(video.file_size_bytes)}
       </td>
       <td className="border-b border-white/5 px-3 py-3">
@@ -3910,14 +3936,14 @@ function VideoComparisonRow({
           value={cost}
           onChange={(event) => setCost(event.target.value)}
           placeholder="USD"
-          className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-slate-100 focus:border-gold-500/50 focus:outline-none"
+          className="w-24 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-xs text-zinc-100 focus:border-accent-500/50 focus:outline-none"
         />
       </td>
       <td className="border-b border-white/5 px-3 py-3">
         <select
           value={rating}
           onChange={(event) => setRating(event.target.value)}
-          className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-slate-100 focus:border-gold-500/50 focus:outline-none"
+          className="w-20 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-xs text-zinc-100 focus:border-accent-500/50 focus:outline-none"
         >
           <option value="">—</option>
           {[1, 2, 3, 4, 5].map((value) => (
@@ -3933,7 +3959,7 @@ function VideoComparisonRow({
           onChange={(event) => setNotes(event.target.value)}
           rows={2}
           placeholder="Observações"
-          className="w-40 resize-none rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-slate-100 focus:border-gold-500/50 focus:outline-none"
+          className="w-40 resize-none rounded-md border border-white/5 bg-black/30 px-2 py-1 text-xs text-zinc-100 focus:border-accent-500/50 focus:outline-none"
         />
       </td>
       <td className="border-b border-white/5 px-3 py-3">
@@ -3943,7 +3969,7 @@ function VideoComparisonRow({
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="rounded-md border border-gold-500/40 px-2 py-1 text-xs text-gold-300 transition hover:border-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-accent-500/40 px-2 py-1 text-xs text-accent-300 transition hover:border-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? "Salvando..." : "Salvar avaliação"}
             </button>
@@ -3953,7 +3979,7 @@ function VideoComparisonRow({
               type="button"
               onClick={onRefreshStatus}
               disabled={refreshing}
-              className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-white/5 px-2 py-1 text-xs text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {refreshing ? "Atualizando..." : "Atualizar status"}
             </button>
@@ -3962,7 +3988,7 @@ function VideoComparisonRow({
             type="button"
             onClick={onDownload}
             disabled={video.status !== "completed" || !video.download_url}
-            className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md border border-white/5 px-2 py-1 text-xs text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Baixar
           </button>
@@ -3990,29 +4016,29 @@ function NarrationAudioList({
 }) {
   return (
     <div className="mt-6 grid gap-3">
-      <p className="text-xs font-medium uppercase tracking-[0.18em] text-gold-400">{title}</p>
+      <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent-400">{title}</p>
       {audios.length ? (
         audios.map((audio) => (
-          <article key={audio.id} className="rounded-md border border-white/10 bg-black/20 p-4">
+          <article key={audio.id} className="rounded-md border border-white/5 bg-black/20 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-slate-100">{audio.title || `Audio do bloco ${audio.block_index}`}</p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="text-sm font-medium text-zinc-100">{audio.title || `Audio do bloco ${audio.block_index}`}</p>
+                <p className="mt-1 text-xs text-zinc-500">
                   Bloco {audio.block_index} - {formatAudioDate(audio.created_at)}
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-zinc-500">
                   Provider {audio.voice_provider || "OpenAI"} - Voz {audio.voice || "padrao"} - Modelo {audio.model || "padrao"}
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-zinc-500">
                   {audio.personalized_voice_used ? "Voz personalizada configurada" : "Voz padrao do sistema"}
                 </p>
-                {audio.voice_notice ? <p className="mt-2 text-xs text-gold-300">{audio.voice_notice}</p> : null}
+                {audio.voice_notice ? <p className="mt-2 text-xs text-accent-300">{audio.voice_notice}</p> : null}
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => onDownload(audio)}
-                  className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                  className="rounded-md border border-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
                 >
                   Baixar audio
                 </button>
@@ -4028,12 +4054,14 @@ function NarrationAudioList({
             {audioUrls[audio.id] ? (
               <audio controls src={audioUrls[audio.id]} className="mt-4 w-full" />
             ) : (
-              <p className="mt-4 text-sm text-slate-400">Carregando player de audio...</p>
+              <div className="mt-4">
+                <LoadingProgress label="Carregando player de áudio..." size="inline" />
+              </div>
             )}
           </article>
         ))
       ) : (
-        <p className="rounded-md border border-white/10 bg-black/20 p-4 text-sm text-slate-400">{emptyText}</p>
+        <p className="rounded-md border border-white/5 bg-black/20 p-4 text-sm text-zinc-400">{emptyText}</p>
       )}
     </div>
   );
@@ -4057,41 +4085,45 @@ function VoiceSettingsCard({
   );
 
   return (
-    <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+    <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-gold-400">Configuração de voz</p>
-          <h3 className="mt-1 text-xl font-semibold text-slate-50">Perfil do Instrutor</h3>
+          <p className="text-sm font-medium text-accent-400">Configuração de voz</p>
+          <h3 className="mt-1 text-xl font-semibold text-zinc-50">Perfil do Instrutor</h3>
         </div>
         <Link
           href="/instructor-profile"
-          className="rounded-md border border-gold-500/30 px-3 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200"
+          className="rounded-md border border-accent-500/30 px-3 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200"
         >
           Configurar Perfil do Instrutor
         </Link>
       </div>
 
-      {!loaded ? <p className="mt-4 text-sm text-slate-400">Carregando configuração de voz...</p> : null}
+      {!loaded ? (
+        <div className="mt-4">
+          <LoadingProgress label="Carregando configuração de voz..." size="inline" />
+        </div>
+      ) : null}
       {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
       {loaded && !error && !profile ? (
-        <p className="mt-4 text-sm leading-6 text-slate-300">
+        <p className="mt-4 text-sm leading-6 text-zinc-300">
           Nenhum perfil de instrutor configurado. A geração usará a voz padrão do sistema.
         </p>
       ) : null}
 
       {loaded && !error && profile ? (
-        <div className="mt-4 grid gap-3 text-sm text-slate-300 md:grid-cols-3">
-          <div className="rounded-md border border-white/10 bg-black/20 p-3">
-            <p className="text-xs text-slate-500">Provider de voz</p>
-            <p className="mt-1 font-medium text-slate-100">{provider}</p>
+        <div className="mt-4 grid gap-3 text-sm text-zinc-300 md:grid-cols-3">
+          <div className="rounded-md border border-white/5 bg-black/20 p-3">
+            <p className="text-xs text-zinc-500">Provider de voz</p>
+            <p className="mt-1 font-medium text-zinc-100">{provider}</p>
           </div>
-          <div className="rounded-md border border-white/10 bg-black/20 p-3">
-            <p className="text-xs text-slate-500">Nome/ID da voz</p>
-            <p className="mt-1 font-medium text-slate-100">{voiceLabel}</p>
+          <div className="rounded-md border border-white/5 bg-black/20 p-3">
+            <p className="text-xs text-zinc-500">Nome/ID da voz</p>
+            <p className="mt-1 font-medium text-zinc-100">{voiceLabel}</p>
           </div>
-          <div className="rounded-md border border-white/10 bg-black/20 p-3">
-            <p className="text-xs text-slate-500">Consentimento</p>
-            <p className="mt-1 font-medium text-slate-100">
+          <div className="rounded-md border border-white/5 bg-black/20 p-3">
+            <p className="text-xs text-zinc-500">Consentimento</p>
+            <p className="mt-1 font-medium text-zinc-100">
               {profile.consent_voice_clone ? "ativo" : "não ativo"}
             </p>
           </div>
@@ -4099,18 +4131,18 @@ function VoiceSettingsCard({
       ) : null}
 
       {loaded && profile && !profile.consent_voice_clone ? (
-        <p className="mt-4 text-sm leading-6 text-gold-200">
+        <p className="mt-4 text-sm leading-6 text-accent-200">
           A voz personalizada não será usada porque o consentimento ainda não está ativo.
         </p>
       ) : null}
       {loaded && profile && profile.consent_voice_clone && isElevenLabsProvider ? (
-        <p className="mt-4 text-sm leading-6 text-gold-200">
+        <p className="mt-4 text-sm leading-6 text-accent-200">
           Provider: ElevenLabs. Voice ID: {profile.voice_id || "não informado"}. A voz será usada se a chave
           ElevenLabs estiver configurada no servidor.
         </p>
       ) : null}
       {loaded && profile && hasUnsupportedProvider ? (
-        <p className="mt-4 text-sm leading-6 text-gold-200">
+        <p className="mt-4 text-sm leading-6 text-accent-200">
           Este provider ainda será integrado em etapa futura.
         </p>
       ) : null}
@@ -4147,16 +4179,16 @@ function ScriptsView({
 
   return (
     <div className="grid gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-navy-950/60 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/5 bg-navy-950/60 p-4">
         <div>
-          <p className="text-sm font-medium text-slate-100">Roteiros de aula</p>
-          <p className="mt-1 text-xs text-slate-500">Exporte todos os roteiros editados deste projeto.</p>
+          <p className="text-sm font-medium text-zinc-100">Roteiros de aula</p>
+          <p className="mt-1 text-xs text-zinc-500">Exporte todos os roteiros editados deste projeto.</p>
         </div>
         <button
           type="button"
           onClick={onExport}
           disabled={exporting}
-          className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-md border border-accent-500/30 px-4 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {exporting ? "Gerando PDF..." : "Baixar roteiros em PDF"}
         </button>
@@ -4167,8 +4199,8 @@ function ScriptsView({
         return (
           <section key={moduleKey} className="grid gap-4">
             <div>
-              <p className="text-xs font-medium text-gold-400">Modulo {firstScript?.module_number || moduleKey}</p>
-              <h3 className="mt-1 text-xl font-semibold text-slate-50">{firstScript?.module_title || "Modulo"}</h3>
+              <p className="text-xs font-medium text-accent-400">Modulo {firstScript?.module_number || moduleKey}</p>
+              <h3 className="mt-1 text-xl font-semibold text-zinc-50">{firstScript?.module_title || "Modulo"}</h3>
             </div>
             {moduleContents.map((content) => {
               return (
@@ -4208,16 +4240,16 @@ function QuizzesView({
 
   return (
     <div className="grid gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-navy-950/60 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/5 bg-navy-950/60 p-4">
         <div>
-          <p className="text-sm font-medium text-slate-100">Quizzes</p>
-          <p className="mt-1 text-xs text-slate-500">Exporte todos os quizzes editados deste projeto.</p>
+          <p className="text-sm font-medium text-zinc-100">Quizzes</p>
+          <p className="mt-1 text-xs text-zinc-500">Exporte todos os quizzes editados deste projeto.</p>
         </div>
         <button
           type="button"
           onClick={onExport}
           disabled={exporting}
-          className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-md border border-accent-500/30 px-4 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {exporting ? "Gerando PDF..." : "Baixar quizzes em PDF"}
         </button>
@@ -4332,18 +4364,18 @@ function ModuleQuizCard({
 
   if (isEditing && draft) {
     return (
-      <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+      <article className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-medium text-gold-400">Editor de quiz</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-50">{draft.module_title || "Quiz"}</h3>
+            <p className="text-xs font-medium text-accent-400">Editor de quiz</p>
+            <h3 className="mt-2 text-xl font-semibold text-zinc-50">{draft.module_title || "Quiz"}</h3>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={saveQuiz}
               disabled={saving}
-              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? "Salvando..." : "Salvar alteracoes"}
             </button>
@@ -4355,7 +4387,7 @@ function ModuleQuizCard({
                 setSaveError("");
               }}
               disabled={saving}
-              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-300 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cancelar
             </button>
@@ -4375,7 +4407,7 @@ function ModuleQuizCard({
             type="button"
             onClick={addQuestion}
             disabled={saving}
-            className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md border border-accent-500/30 px-4 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Adicionar pergunta
           </button>
@@ -4383,9 +4415,9 @@ function ModuleQuizCard({
 
         <div className="mt-4 grid gap-4">
           {draft.questions.map((question, index) => (
-            <div key={`${question.question_number}-${index}`} className="rounded-md border border-white/10 bg-black/20 p-4">
+            <div key={`${question.question_number}-${index}`} className="rounded-md border border-white/5 bg-black/20 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <p className="text-sm font-semibold text-gold-400">Pergunta {index + 1}</p>
+                <p className="text-sm font-semibold text-accent-400">Pergunta {index + 1}</p>
                 <button
                   type="button"
                   onClick={() => removeQuestion(index)}
@@ -4427,18 +4459,18 @@ function ModuleQuizCard({
   }
 
   return (
-    <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+    <article className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-medium text-gold-400">Modulo {safeText(quiz.module_number)}</p>
-          <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-          <h3 className="mt-2 text-xl font-semibold text-slate-50">{safeText(quiz.module_title)}</h3>
-          {quiz.instructions ? <p className="mt-2 text-sm text-slate-400">{safeText(quiz.instructions)}</p> : null}
+          <p className="text-xs font-medium text-accent-400">Modulo {safeText(quiz.module_number)}</p>
+          <p className="mt-1 text-xs text-zinc-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+          <h3 className="mt-2 text-xl font-semibold text-zinc-50">{safeText(quiz.module_title)}</h3>
+          {quiz.instructions ? <p className="mt-2 text-sm text-zinc-400">{safeText(quiz.instructions)}</p> : null}
         </div>
         <button
           type="button"
           onClick={startEditing}
-          className="rounded-md border border-white/10 px-3 py-1.5 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+          className="rounded-md border border-white/5 px-3 py-1.5 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
         >
           Editar quiz
         </button>
@@ -4447,22 +4479,22 @@ function ModuleQuizCard({
         {toArray(quiz.questions).map((question, index) => {
           const record = typeof question === "object" && question !== null ? (question as Record<string, unknown>) : null;
           return (
-            <div key={itemKey(question, index)} className="rounded-md border border-white/10 bg-black/20 p-4">
-              <p className="font-semibold text-slate-100">
+            <div key={itemKey(question, index)} className="rounded-md border border-white/5 bg-black/20 p-4">
+              <p className="font-semibold text-zinc-100">
                 {safeText(record?.question_number ?? index + 1)}. {safeText(record?.question ?? question)}
               </p>
               <div className="mt-3 grid gap-2">
                 {toArray(record?.options).map((option, optionIndex) => {
                   const optionRecord = typeof option === "object" && option !== null ? (option as Record<string, unknown>) : null;
                   return (
-                    <p key={itemKey(option, optionIndex)} className="rounded border border-white/10 px-3 py-2 text-sm text-slate-300">
+                    <p key={itemKey(option, optionIndex)} className="rounded border border-white/5 px-3 py-2 text-sm text-zinc-300">
                       {safeText(optionRecord?.letter ?? String.fromCharCode(65 + optionIndex))}. {safeText(optionRecord?.text ?? option)}
                     </p>
                   );
                 })}
               </div>
-              <p className="mt-3 text-sm text-gold-400">Resposta correta: {safeText(record?.correct_answer)}</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-400">{safeText(record?.explanation)}</p>
+              <p className="mt-3 text-sm text-accent-400">Resposta correta: {safeText(record?.correct_answer)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-400">{safeText(record?.explanation)}</p>
             </div>
           );
         })}
@@ -4492,16 +4524,16 @@ function MaterialsView({
 
   return (
     <div className="grid gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-navy-950/60 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/5 bg-navy-950/60 p-4">
         <div>
-          <p className="text-sm font-medium text-slate-100">Materiais complementares</p>
-          <p className="mt-1 text-xs text-slate-500">Exporte todos os materiais editados deste projeto.</p>
+          <p className="text-sm font-medium text-zinc-100">Materiais complementares</p>
+          <p className="mt-1 text-xs text-zinc-500">Exporte todos os materiais editados deste projeto.</p>
         </div>
         <button
           type="button"
           onClick={onExport}
           disabled={exporting}
-          className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-md border border-accent-500/30 px-4 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {exporting ? "Gerando PDF..." : "Baixar materiais em PDF"}
         </button>
@@ -4532,10 +4564,10 @@ function MaterialCard({
 
   if (!material) {
     return (
-      <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
-        <p className="text-xs font-medium text-gold-400">Material complementar</p>
-        <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-        <pre className="mt-5 max-h-[720px] overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-4 text-sm leading-6 text-slate-200">
+      <article className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
+        <p className="text-xs font-medium text-accent-400">Material complementar</p>
+        <p className="mt-1 text-xs text-zinc-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+        <pre className="mt-5 max-h-[720px] overflow-auto whitespace-pre-wrap rounded-md border border-white/5 bg-black/30 p-4 text-sm leading-6 text-zinc-200">
           {JSON.stringify(raw, null, 2)}
         </pre>
       </article>
@@ -4618,18 +4650,18 @@ function MaterialCard({
 
   if (isEditing && draft) {
     return (
-      <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+      <article className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-medium text-gold-400">Editor de material complementar</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-50">{draft.material_title || "Material complementar"}</h3>
+            <p className="text-xs font-medium text-accent-400">Editor de material complementar</p>
+            <h3 className="mt-2 text-xl font-semibold text-zinc-50">{draft.material_title || "Material complementar"}</h3>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={saveMaterial}
               disabled={saving}
-              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? "Salvando..." : "Salvar alteracoes"}
             </button>
@@ -4641,7 +4673,7 @@ function MaterialCard({
                 setSaveError("");
               }}
               disabled={saving}
-              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-300 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cancelar
             </button>
@@ -4656,23 +4688,23 @@ function MaterialCard({
           <TextAreaField label="Visao geral" value={draft.overview} rows={5} onChange={(value) => updateDraftField("overview", value)} />
         </div>
 
-        <section className="mt-6 rounded-md border border-white/10 bg-black/20 p-4">
+        <section className="mt-6 rounded-md border border-white/5 bg-black/20 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-semibold text-gold-400">Conceitos-chave</p>
+            <p className="text-sm font-semibold text-accent-400">Conceitos-chave</p>
             <button
               type="button"
               onClick={addConcept}
               disabled={saving}
-              className="rounded-md border border-gold-500/30 px-3 py-1.5 text-sm text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-accent-500/30 px-3 py-1.5 text-sm text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Adicionar conceito
             </button>
           </div>
           <div className="mt-4 grid gap-4">
             {draft.key_concepts.map((concept, index) => (
-              <div key={`${index}-${concept.concept}`} className="rounded-md border border-white/10 p-4">
+              <div key={`${index}-${concept.concept}`} className="rounded-md border border-white/5 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <p className="text-sm text-slate-300">Conceito {index + 1}</p>
+                  <p className="text-sm text-zinc-300">Conceito {index + 1}</p>
                   <button
                     type="button"
                     onClick={() => removeConcept(index)}
@@ -4720,22 +4752,22 @@ function MaterialCard({
   }
 
   return (
-    <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+    <article className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-medium text-gold-400">{safeText(material.material_type || "Material complementar")}</p>
-          <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-          <h3 className="mt-2 text-xl font-semibold text-slate-50">{safeText(material.material_title || "Material complementar")}</h3>
+          <p className="text-xs font-medium text-accent-400">{safeText(material.material_type || "Material complementar")}</p>
+          <p className="mt-1 text-xs text-zinc-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+          <h3 className="mt-2 text-xl font-semibold text-zinc-50">{safeText(material.material_title || "Material complementar")}</h3>
         </div>
         <button
           type="button"
           onClick={startEditing}
-          className="rounded-md border border-white/10 px-3 py-1.5 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+          className="rounded-md border border-white/5 px-3 py-1.5 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
         >
           Editar material
         </button>
       </div>
-      <p className="mt-3 whitespace-pre-wrap leading-7 text-slate-400">{safeText(material.overview)}</p>
+      <p className="mt-3 whitespace-pre-wrap leading-7 text-zinc-400">{safeText(material.overview)}</p>
 
       <div className="mt-5 grid gap-5 md:grid-cols-2">
         <ConceptBlock items={Array.isArray(material.key_concepts) ? material.key_concepts : []} />
@@ -4829,18 +4861,18 @@ function LessonScriptCard({
 
   if (isEditing && draft) {
     return (
-      <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+      <article className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-medium text-gold-400">Editor de roteiro</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-50">{draft.lesson_title || "Roteiro de aula"}</h3>
+            <p className="text-xs font-medium text-accent-400">Editor de roteiro</p>
+            <h3 className="mt-2 text-xl font-semibold text-zinc-50">{draft.lesson_title || "Roteiro de aula"}</h3>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={saveLessonScript}
               disabled={saving}
-              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? "Salvando..." : "Salvar alteracoes"}
             </button>
@@ -4852,7 +4884,7 @@ function LessonScriptCard({
                 setSaveError("");
               }}
               disabled={saving}
-              className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-300 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cancelar
             </button>
@@ -4897,9 +4929,9 @@ function LessonScriptCard({
 
         <div className="mt-6 grid gap-4">
           {draft.main_script.map((section, index) => (
-            <div key={`${index}-${section.section_title}`} className="rounded-md border border-white/10 bg-black/20 p-4">
+            <div key={`${index}-${section.section_title}`} className="rounded-md border border-white/5 bg-black/20 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-gold-400">Secao {index + 1}</p>
+                <p className="text-sm font-semibold text-accent-400">Secao {index + 1}</p>
                 <button
                   type="button"
                   onClick={() => removeSection(index)}
@@ -4940,21 +4972,21 @@ function LessonScriptCard({
   }
 
   return (
-    <article className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+    <article className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-medium text-gold-400">
+          <p className="text-xs font-medium text-accent-400">
             Modulo {safeText(script.module_number)} - Aula {safeText(script.lesson_number)}
           </p>
-          <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-          <h3 className="mt-2 text-xl font-semibold text-slate-50">{safeText(script.lesson_title)}</h3>
+          <p className="mt-1 text-xs text-zinc-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+          <h3 className="mt-2 text-xl font-semibold text-zinc-50">{safeText(script.lesson_title)}</h3>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs text-gold-400">{safeText(script.estimated_duration_minutes || 10)} min</span>
+          <span className="text-xs text-accent-400">{safeText(script.estimated_duration_minutes || 10)} min</span>
           <button
             type="button"
             onClick={startEditing}
-            className="rounded-md border border-white/10 px-3 py-1.5 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+            className="rounded-md border border-white/5 px-3 py-1.5 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
           >
             Editar roteiro
           </button>
@@ -4966,11 +4998,11 @@ function LessonScriptCard({
         {toArray(script.main_script).map((section, index) => {
           const record = typeof section === "object" && section !== null ? (section as Record<string, unknown>) : null;
           return (
-            <div key={itemKey(section, index)} className="rounded-md border border-white/10 bg-black/20 p-4">
-              <h4 className="font-semibold text-slate-100">{safeText(record?.section_title ?? `Secao ${index + 1}`)}</h4>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{safeText(record?.narration ?? section)}</p>
-              <p className="mt-3 whitespace-pre-wrap text-xs text-slate-500">{safeText(record?.teaching_notes)}</p>
-              <p className="mt-2 whitespace-pre-wrap text-xs text-gold-400">{safeText(record?.visual_suggestion)}</p>
+            <div key={itemKey(section, index)} className="rounded-md border border-white/5 bg-black/20 p-4">
+              <h4 className="font-semibold text-zinc-100">{safeText(record?.section_title ?? `Secao ${index + 1}`)}</h4>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-300">{safeText(record?.narration ?? section)}</p>
+              <p className="mt-3 whitespace-pre-wrap text-xs text-zinc-500">{safeText(record?.teaching_notes)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-xs text-accent-400">{safeText(record?.visual_suggestion)}</p>
             </div>
           );
         })}
@@ -5087,18 +5119,18 @@ function PresentationView({
   if (isEditing && draft) {
     return (
       <div className="grid gap-6">
-        <section className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+        <section className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm text-gold-400">Editor da apresentacao</p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-50">Editar apresentacao</h2>
+              <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Editor da apresentacao</p>
+              <h2 className="mt-2 text-2xl font-semibold text-zinc-50">Editar apresentacao</h2>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={savePresentation}
                 disabled={saving}
-                className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? "Salvando..." : "Salvar alteracoes"}
               </button>
@@ -5110,7 +5142,7 @@ function PresentationView({
                   setSaveError("");
                 }}
                 disabled={saving}
-                className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-300 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-300 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Cancelar
               </button>
@@ -5154,9 +5186,9 @@ function PresentationView({
 
         <div className="grid gap-5">
           {draft.slides.map((slide, index) => (
-            <article key={`${slide.slide_number}-${index}`} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+            <article key={`${slide.slide_number}-${index}`} className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <p className="text-sm font-semibold text-gold-400">Slide {slide.slide_number}</p>
+                <p className="text-sm font-semibold text-accent-400">Slide {slide.slide_number}</p>
                 <button
                   type="button"
                   onClick={() => removeSlide(index)}
@@ -5204,18 +5236,18 @@ function PresentationView({
 
   return (
     <div className="grid gap-6">
-      <section className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
+      <section className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm text-gold-400">Apresentacao</p>
-            <p className="mt-1 text-xs text-slate-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
-            <h2 className="mt-2 text-2xl font-semibold text-slate-50">{safeText(deck.presentation_title)}</h2>
+            <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Apresentacao</p>
+            <p className="mt-1 text-xs text-zinc-500">{getLanguageLabel(getGenerationLanguage(content))}</p>
+            <h2 className="mt-2 text-2xl font-semibold text-zinc-50">{safeText(deck.presentation_title)}</h2>
           </div>
           <button
             type="button"
             onClick={onExport}
             disabled={exporting}
-            className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md border border-accent-500/30 px-4 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {exporting ? "Gerando PDF..." : "Baixar apresentacao em PDF"}
           </button>
@@ -5223,14 +5255,14 @@ function PresentationView({
             type="button"
             onClick={onExportPptx}
             disabled={exportingPptx}
-            className="rounded-md border border-gold-500/30 px-4 py-2 text-sm font-semibold text-gold-300 transition hover:border-gold-400 hover:text-gold-200 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md border border-accent-500/30 px-4 py-2 text-sm font-semibold text-accent-300 transition hover:border-accent-400 hover:text-accent-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {exportingPptx ? "Gerando PPTX..." : "Baixar apresentacao em PPTX"}
           </button>
           <button
             type="button"
             onClick={startEditing}
-            className="rounded-md border border-white/10 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+            className="rounded-md border border-white/5 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
           >
             Editar apresentacao
           </button>
@@ -5248,12 +5280,12 @@ function PresentationView({
       {slides.length ? (
         <div className="grid gap-5">
           {slides.map((slide, index) => (
-            <article key={itemKey(slide, index)} className="rounded-lg border border-white/10 bg-navy-950/60 p-5">
-              <p className="text-xs font-medium text-gold-400">
+            <article key={itemKey(slide, index)} className="rounded-lg border border-white/5 bg-navy-950/60 p-5">
+              <p className="text-xs font-medium text-accent-400">
                 Slide {safeText(slide?.slide_number ?? index + 1)}
               </p>
-              <h3 className="mt-2 text-xl font-semibold text-slate-50">{safeText(slide?.title)}</h3>
-              {slide?.subtitle ? <p className="mt-2 text-sm text-slate-400">{safeText(slide.subtitle)}</p> : null}
+              <h3 className="mt-2 text-xl font-semibold text-zinc-50">{safeText(slide?.title)}</h3>
+              {slide?.subtitle ? <p className="mt-2 text-sm text-zinc-400">{safeText(slide.subtitle)}</p> : null}
 
               <ListBlock title="Pontos principais" items={toArray(slide?.bullets)} />
               <InfoBlock label="Notas do apresentador" value={slide?.speaker_notes} />
@@ -6022,12 +6054,12 @@ function itemKey(item: unknown, index: number): string {
 
 function InputField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <label className="grid gap-2 text-sm text-slate-300">
+    <label className="grid gap-2 text-sm text-zinc-300">
       {label}
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+        className="rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
       />
     </label>
   );
@@ -6045,13 +6077,13 @@ function TextAreaField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="grid gap-2 text-sm text-slate-300">
+    <label className="grid gap-2 text-sm text-zinc-300">
       {label}
       <textarea
         value={value}
         rows={rows}
         onChange={(event) => onChange(event.target.value)}
-        className="resize-y rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm leading-6 text-slate-100 outline-none transition focus:border-gold-500/60"
+        className="resize-y rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none transition focus:border-accent-500/60"
       />
     </label>
   );
@@ -6059,8 +6091,8 @@ function TextAreaField({
 
 function ConceptBlock({ items }: { items?: unknown[] }) {
   return (
-    <div className="rounded-md border border-white/10 bg-black/20 p-4">
-      <p className="text-sm text-slate-400">Conceitos-chave</p>
+    <div className="rounded-md border border-white/5 bg-black/20 p-4">
+      <p className="text-sm text-zinc-400">Conceitos-chave</p>
       <div className="mt-3 grid gap-3">
         {Array.isArray(items) && items.length ? (
           items.map((item, index) => {
@@ -6069,14 +6101,14 @@ function ConceptBlock({ items }: { items?: unknown[] }) {
             const explanation = safeText(record?.explanation ?? record?.description ?? record?.text ?? item);
 
             return (
-              <div key={itemKey(item, index)} className="rounded border border-white/10 px-3 py-2">
-                <p className="font-medium text-slate-100">{title}</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-400">{explanation}</p>
+              <div key={itemKey(item, index)} className="rounded border border-white/5 px-3 py-2">
+                <p className="font-medium text-zinc-100">{title}</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-400">{explanation}</p>
               </div>
             );
           })
         ) : (
-          <p className="text-slate-100">Nao informado</p>
+          <p className="text-zinc-100">Nao informado</p>
         )}
       </div>
     </div>
@@ -6085,32 +6117,32 @@ function ConceptBlock({ items }: { items?: unknown[] }) {
 
 function InfoBlock({ label, value }: { label: string; value?: unknown }) {
   return (
-    <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-4">
-      <p className="text-sm text-slate-400">{label}</p>
-      <p className="mt-2 whitespace-pre-wrap text-slate-100">{safeText(value)}</p>
+    <div className="mt-4 rounded-md border border-white/5 bg-black/20 p-4">
+      <p className="text-sm text-zinc-400">{label}</p>
+      <p className="mt-2 whitespace-pre-wrap text-zinc-100">{safeText(value)}</p>
     </div>
   );
 }
 
 function ListBlock({ title, items }: { title: string; items?: unknown[] }) {
   return (
-    <div className="rounded-md border border-white/10 bg-black/20 p-4">
-      <p className="text-sm text-slate-400">{title}</p>
+    <div className="rounded-md border border-white/5 bg-black/20 p-4">
+      <p className="text-sm text-zinc-400">{title}</p>
       {Array.isArray(items) && items.length ? (
-        <ul className="mt-3 grid gap-2 text-sm text-slate-100">
+        <ul className="mt-3 grid gap-2 text-sm text-zinc-100">
           {items.map((item, index) => (
-            <li key={itemKey(item, index)} className="whitespace-pre-wrap rounded border border-white/10 bg-navy-950/60 px-3 py-2">
+            <li key={itemKey(item, index)} className="whitespace-pre-wrap rounded border border-white/5 bg-navy-950/60 px-3 py-2">
               {safeText(item)}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-slate-100">Nao informado</p>
+        <p className="mt-2 text-zinc-100">Nao informado</p>
       )}
     </div>
   );
 }
 
 function EmptyState({ text }: { text: string }) {
-  return <p className="rounded-md border border-white/10 bg-navy-950/60 p-4 text-slate-400">{text}</p>;
+  return <p className="rounded-md border border-white/5 bg-navy-950/60 p-4 text-zinc-400">{text}</p>;
 }

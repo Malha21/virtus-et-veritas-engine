@@ -41,7 +41,7 @@ from app.services.ai_orchestrator_service import (
 )
 from app.services.processing_service import add_processing_log, update_processing_job
 from app.services.project_service import get_project_by_id
-from app.services.user_ai_credential_service import resolve_generation_api_key
+from app.services.user_ai_credential_service import resolve_generation_api_key, resolve_generation_base_url
 
 EXCERPT_CHARS = 20000
 MAX_COMPLEMENTARY_MATERIALS_PER_RUN = 1
@@ -305,7 +305,7 @@ def update_lesson_script(
     content_id: UUID,
     payload: dict[str, Any],
 ) -> GeneratedContent:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     content = db.execute(
         select(GeneratedContent).where(
             GeneratedContent.id == content_id,
@@ -450,7 +450,7 @@ def update_module_quiz(
     content_id: UUID,
     payload: dict[str, Any],
 ) -> GeneratedContent:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     content = db.execute(
         select(GeneratedContent).where(
             GeneratedContent.id == content_id,
@@ -578,7 +578,7 @@ def update_complementary_material(
     content_id: UUID,
     payload: dict[str, Any],
 ) -> GeneratedContent:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     content = db.execute(
         select(GeneratedContent).where(
             GeneratedContent.id == content_id,
@@ -672,7 +672,7 @@ def update_presentation_deck(
     project_id: UUID,
     payload: dict[str, Any],
 ) -> GeneratedContent:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     content = get_latest_content(db, project, "presentation_deck")
 
     if content is None:
@@ -794,6 +794,166 @@ def add_educational_log(
     db.flush()
 
 
+def generate_course_summary_content(
+    db: Session,
+    project: Project,
+    job: ProcessingJob,
+    document_analysis: dict[str, Any],
+    course_structure: dict[str, Any],
+    ai_provider: AIProvider,
+    provider_record: Any,
+    generation_language: str,
+) -> GeneratedContent:
+    system_prompt, user_prompt = build_course_summary_prompt(project, document_analysis, course_structure, generation_language)
+    summary_json = call_ai_json(
+        db,
+        ai_provider,
+        project,
+        job,
+        provider_record.id,
+        "generate_course_summary",
+        COURSE_SUMMARY_PROMPT_VERSION,
+        system_prompt,
+        user_prompt,
+        generation_language,
+    )
+    return save_versioned_content(
+        db,
+        project,
+        provider_record.id,
+        "course_summary",
+        summary_json.get("course_summary", {}).get("title") or "Resumo executivo do curso",
+        summary_json,
+        generation_language,
+    )
+
+
+def generate_module_quiz_content(
+    db: Session,
+    project: Project,
+    job: ProcessingJob,
+    document_analysis: dict[str, Any],
+    course_structure: dict[str, Any],
+    module: dict[str, Any],
+    ai_provider: AIProvider,
+    provider_record: Any,
+    generation_language: str,
+) -> GeneratedContent:
+    system_prompt, user_prompt = build_module_quiz_prompt(
+        project, document_analysis, course_structure, module, generation_language
+    )
+    quiz_json = call_ai_json(
+        db,
+        ai_provider,
+        project,
+        job,
+        provider_record.id,
+        "generate_module_quizzes",
+        MODULE_QUIZ_PROMPT_VERSION,
+        system_prompt,
+        user_prompt,
+        generation_language,
+    )
+    module_quiz = quiz_json.get("module_quiz", {})
+    module_number = module_quiz.get("module_number") or module.get("module_number")
+    module_title = module_quiz.get("module_title") or module.get("title")
+    module_quiz["module_number"] = module_number
+    module_quiz["module_title"] = module_title
+    quiz_json["module_quiz"] = module_quiz
+    quiz_json["metadata"] = {"module_number": module_number, "module_title": module_title}
+    return save_versioned_content(
+        db,
+        project,
+        provider_record.id,
+        "module_quiz",
+        f"Quiz - Modulo {module_number}",
+        quiz_json,
+        generation_language,
+    )
+
+
+def generate_complementary_material_content(
+    db: Session,
+    project: Project,
+    job: ProcessingJob,
+    document_analysis: dict[str, Any],
+    course_structure: dict[str, Any],
+    ai_provider: AIProvider,
+    provider_record: Any,
+    generation_language: str,
+) -> GeneratedContent:
+    system_prompt, user_prompt = build_complementary_material_prompt(
+        project, document_analysis, course_structure, generation_language
+    )
+    material_json = call_ai_json(
+        db,
+        ai_provider,
+        project,
+        job,
+        provider_record.id,
+        "generate_complementary_materials",
+        COMPLEMENTARY_MATERIAL_PROMPT_VERSION,
+        system_prompt,
+        user_prompt,
+        generation_language,
+    )
+    material = material_json.get("complementary_material", {})
+    return save_versioned_content(
+        db,
+        project,
+        provider_record.id,
+        "complementary_material",
+        material.get("material_title") or "Material complementar",
+        material_json,
+        generation_language,
+    )
+
+
+def generate_presentation_deck_content(
+    db: Session,
+    project: Project,
+    job: ProcessingJob,
+    document_analysis: dict[str, Any],
+    course_structure: dict[str, Any],
+    course_summaries: list[dict[str, Any]],
+    lesson_scripts: list[dict[str, Any]],
+    complementary_materials: list[dict[str, Any]],
+    ai_provider: AIProvider,
+    provider_record: Any,
+    generation_language: str,
+) -> GeneratedContent:
+    system_prompt, user_prompt = build_presentation_deck_prompt(
+        project,
+        document_analysis,
+        course_structure,
+        course_summaries,
+        lesson_scripts,
+        complementary_materials,
+        generation_language,
+    )
+    presentation_json = call_ai_json(
+        db,
+        ai_provider,
+        project,
+        job,
+        provider_record.id,
+        "generate_presentation_deck",
+        PRESENTATION_DECK_PROMPT_VERSION,
+        system_prompt,
+        user_prompt,
+        generation_language,
+    )
+    return save_versioned_content(
+        db,
+        project,
+        provider_record.id,
+        "presentation_deck",
+        presentation_json.get("presentation_title") or "Apresentacao do curso",
+        presentation_json,
+        generation_language,
+    )
+
+
 def generate_educational_content(
     db: Session,
     current_user: User,
@@ -801,7 +961,7 @@ def generate_educational_content(
     generation_language: str = "pt-BR",
     job: ProcessingJob | None = None,
 ) -> dict[str, Any]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     analysis_content = get_latest_content(db, project, "document_analysis")
     structure_content = get_latest_content(db, project, "course_structure")
 
@@ -844,7 +1004,8 @@ def generate_educational_content(
         }
 
     user_api_key = resolve_generation_api_key(db, current_user, provider_key)
-    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key)
+    user_base_url = resolve_generation_base_url(db, current_user, provider_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key, base_url_override=user_base_url)
     counts = {
         "lesson_scripts": 0,
         "module_quizzes": 0,
@@ -875,32 +1036,8 @@ def generate_educational_content(
         )
         try:
             update_processing_job(db, job, 15, "Estrutura carregada", "Estrutura do curso carregada")
-            system_prompt, user_prompt = build_course_summary_prompt(
-                project,
-                document_analysis,
-                course_structure,
-                generation_language,
-            )
-            summary_json = call_ai_json(
-                db,
-                ai_provider,
-                project,
-                job,
-                provider_record.id,
-                "generate_course_summary",
-                COURSE_SUMMARY_PROMPT_VERSION,
-                system_prompt,
-                user_prompt,
-                generation_language,
-            )
-            save_versioned_content(
-                db,
-                project,
-                provider_record.id,
-                "course_summary",
-                summary_json.get("course_summary", {}).get("title") or "Resumo executivo do curso",
-                summary_json,
-                generation_language,
+            generate_course_summary_content(
+                db, project, job, document_analysis, course_structure, ai_provider, provider_record, generation_language
             )
             counts["course_summaries"] += 1
             add_educational_log(db, project, current_user, job, "Resumo do curso gerado")
@@ -920,44 +1057,10 @@ def generate_educational_content(
             module_number_for_log = module.get("module_number") or "?"
             try:
                 update_processing_job(db, job, 50, "Gerando quizzes", f"Gerando quiz do modulo {module_number_for_log}")
-                system_prompt, user_prompt = build_module_quiz_prompt(
-                    project,
-                    document_analysis,
-                    course_structure,
-                    module,
-                    generation_language,
+                quiz_content = generate_module_quiz_content(
+                    db, project, job, document_analysis, course_structure, module, ai_provider, provider_record, generation_language
                 )
-                quiz_json = call_ai_json(
-                    db,
-                    ai_provider,
-                    project,
-                    job,
-                    provider_record.id,
-                    "generate_module_quizzes",
-                    MODULE_QUIZ_PROMPT_VERSION,
-                    system_prompt,
-                    user_prompt,
-                    generation_language,
-                )
-                module_quiz = quiz_json.get("module_quiz", {})
-                module_number = module_quiz.get("module_number") or module.get("module_number")
-                module_title = module_quiz.get("module_title") or module.get("title")
-                module_quiz["module_number"] = module_number
-                module_quiz["module_title"] = module_title
-                quiz_json["module_quiz"] = module_quiz
-                quiz_json["metadata"] = {
-                    "module_number": module_number,
-                    "module_title": module_title,
-                }
-                save_versioned_content(
-                    db,
-                    project,
-                    provider_record.id,
-                    "module_quiz",
-                    f"Quiz - Modulo {module_number}",
-                    quiz_json,
-                    generation_language,
-                )
+                module_number = (quiz_content.content_json or {}).get("metadata", {}).get("module_number")
                 counts["module_quizzes"] += 1
                 add_educational_log(db, project, current_user, job, f"Quiz gerado: Módulo {module_number}")
             except Exception as exc:
@@ -1059,33 +1162,8 @@ def generate_educational_content(
                     "Gerando materiais complementares",
                     "Gerando material complementar",
                 )
-                system_prompt, user_prompt = build_complementary_material_prompt(
-                    project,
-                    document_analysis,
-                    course_structure,
-                    generation_language,
-                )
-                material_json = call_ai_json(
-                    db,
-                    ai_provider,
-                    project,
-                    job,
-                    provider_record.id,
-                    "generate_complementary_materials",
-                    COMPLEMENTARY_MATERIAL_PROMPT_VERSION,
-                    system_prompt,
-                    user_prompt,
-                    generation_language,
-                )
-                material = material_json.get("complementary_material", {})
-                save_versioned_content(
-                    db,
-                    project,
-                    provider_record.id,
-                    "complementary_material",
-                    material.get("material_title") or "Material complementar",
-                    material_json,
-                    generation_language,
+                generate_complementary_material_content(
+                    db, project, job, document_analysis, course_structure, ai_provider, provider_record, generation_language
                 )
                 counts["complementary_materials"] += 1
                 add_educational_log(db, project, current_user, job, "Material complementar gerado")
@@ -1118,34 +1196,17 @@ def generate_educational_content(
             complementary_materials = [
                 content.content_json or {} for content in get_latest_contents(db, project, "complementary_material")
             ]
-            system_prompt, user_prompt = build_presentation_deck_prompt(
+            generate_presentation_deck_content(
+                db,
                 project,
+                job,
                 document_analysis,
                 course_structure,
                 course_summaries,
                 lesson_scripts,
                 complementary_materials,
-                generation_language,
-            )
-            presentation_json = call_ai_json(
-                db,
                 ai_provider,
-                project,
-                job,
-                provider_record.id,
-                "generate_presentation_deck",
-                PRESENTATION_DECK_PROMPT_VERSION,
-                system_prompt,
-                user_prompt,
-                generation_language,
-            )
-            save_versioned_content(
-                db,
-                project,
-                provider_record.id,
-                "presentation_deck",
-                presentation_json.get("presentation_title") or "Apresentacao do curso",
-                presentation_json,
+                provider_record,
                 generation_language,
             )
             counts["presentation_decks"] += 1
@@ -1209,7 +1270,9 @@ def generate_educational_content(
 
 
 def list_educational_content(db: Session, current_user: User, project_id: UUID) -> dict[str, list[GeneratedContent]]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    from app.services.coverage_plan_service import get_approved_plan, list_lesson_scripts_from_plan
+
+    project = get_project_by_id(db, current_user, project_id)
     contents = db.execute(
         select(GeneratedContent)
         .where(
@@ -1239,6 +1302,11 @@ def list_educational_content(db: Session, current_user: User, project_id: UUID) 
     for content in contents:
         grouped[type_map[content.content_type]].append(content)
 
+    if not grouped["lesson_scripts"]:
+        coverage_plan = get_approved_plan(db, project.id)
+        if coverage_plan is not None:
+            grouped["lesson_scripts"] = list_lesson_scripts_from_plan(db, coverage_plan)
+
     grouped["lesson_scripts"].sort(
         key=lambda item: (
             get_content_metadata_number(item, "module_number"),
@@ -1257,3 +1325,224 @@ def list_educational_content(db: Session, current_user: User, project_id: UUID) 
     grouped["presentation_decks"].sort(key=lambda item: (item.version, item.created_at))
 
     return grouped
+
+
+def generate_educational_content_from_coverage_plan(
+    db: Session,
+    current_user: User,
+    project_id: UUID,
+    generation_language: str = "pt-BR",
+    job: ProcessingJob | None = None,
+) -> dict[str, Any]:
+    """Equivalente a generate_educational_content, mas usa o plano de cobertura
+    aprovado (modulos/aulas rastreaveis) como fonte em vez do course_structure
+    do fluxo antigo. Os roteiros de aula (coverage_lesson_script) sao gerados
+    separadamente, via lesson_generation_service.py; aqui so quiz, resumo,
+    material complementar e apresentacao sao gerados."""
+    from app.services.coverage_plan_service import (
+        build_course_structure_shape_from_plan,
+        get_approved_plan,
+        list_lesson_scripts_from_plan,
+    )
+
+    project = get_project_by_id(db, current_user, project_id)
+    coverage_plan = get_approved_plan(db, project.id)
+    if coverage_plan is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Aprove o plano de cobertura antes de gerar quiz, resumo e apresentacao.",
+        )
+
+    analysis_content = get_latest_content(db, project, "document_analysis")
+    document_analysis = analysis_content.content_json if analysis_content and analysis_content.content_json else {}
+    course_structure = build_course_structure_shape_from_plan(db, coverage_plan)
+    modules = course_structure.get("course", {}).get("modules", [])
+
+    settings = get_settings()
+    provider_key = resolve_provider_key(settings, project.ai_provider)
+    provider_record = get_active_ai_provider_record(db, provider_key, resolve_provider_name(settings, provider_key))
+
+    if job is None:
+        job = ProcessingJob(
+            project_id=project.id,
+            organization_id=current_user.organization_id,
+            job_type="generate_educational_content_from_coverage_plan",
+            status="pending",
+            attempts=0,
+            max_attempts=1,
+            progress=0,
+            current_step="Aguardando geracao de conteudos",
+            message="Job de conteudos educacionais (plano de cobertura) criado",
+            payload_json={"coverage_plan_id": str(coverage_plan.id)},
+        )
+        db.add(job)
+        db.flush()
+
+    user_api_key = resolve_generation_api_key(db, current_user, provider_key)
+    user_base_url = resolve_generation_base_url(db, current_user, provider_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key, base_url_override=user_base_url)
+    counts = {
+        "module_quizzes": 0,
+        "complementary_materials": 0,
+        "course_summaries": 0,
+        "presentation_decks": 0,
+    }
+
+    try:
+        job.status = "running"
+        job.attempts = 1
+        job.started_at = datetime.now(UTC)
+        update_processing_job(db, job, 5, "Job iniciado", "Geracao a partir do plano de cobertura iniciada")
+        add_educational_log(
+            db,
+            project,
+            current_user,
+            job,
+            message="Geração a partir do plano de cobertura iniciada",
+            context_json={
+                "generation_language": generation_language,
+                "total_modules": len(modules),
+                "coverage_plan_id": str(coverage_plan.id),
+            },
+        )
+
+        try:
+            update_processing_job(db, job, 15, "Plano carregado", "Plano de cobertura carregado")
+            generate_course_summary_content(
+                db, project, job, document_analysis, course_structure, ai_provider, provider_record, generation_language
+            )
+            counts["course_summaries"] += 1
+            add_educational_log(db, project, current_user, job, "Resumo do curso gerado")
+        except Exception as exc:
+            add_educational_log(
+                db,
+                project,
+                current_user,
+                job,
+                "Falha ao gerar resumo do curso",
+                level="error",
+                context_json={"error": str(exc)},
+            )
+            raise RuntimeError("Falha ao gerar resumo do curso com IA. Tente novamente em instantes.") from exc
+
+        for module in modules:
+            module_number_for_log = module.get("module_number") or "?"
+            try:
+                update_processing_job(db, job, 50, "Gerando quizzes", f"Gerando quiz do modulo {module_number_for_log}")
+                quiz_content = generate_module_quiz_content(
+                    db, project, job, document_analysis, course_structure, module, ai_provider, provider_record, generation_language
+                )
+                module_number = (quiz_content.content_json or {}).get("metadata", {}).get("module_number")
+                counts["module_quizzes"] += 1
+                add_educational_log(db, project, current_user, job, f"Quiz gerado: Módulo {module_number}")
+            except Exception as exc:
+                add_educational_log(
+                    db,
+                    project,
+                    current_user,
+                    job,
+                    f"Falha ao gerar quiz: Módulo {module_number_for_log}",
+                    level="error",
+                    context_json={"error": str(exc)},
+                )
+
+        if MAX_COMPLEMENTARY_MATERIALS_PER_RUN > 0:
+            try:
+                update_processing_job(
+                    db, job, 65, "Gerando materiais complementares", "Gerando material complementar"
+                )
+                generate_complementary_material_content(
+                    db, project, job, document_analysis, course_structure, ai_provider, provider_record, generation_language
+                )
+                counts["complementary_materials"] += 1
+                add_educational_log(db, project, current_user, job, "Material complementar gerado")
+            except Exception as exc:
+                add_educational_log(
+                    db,
+                    project,
+                    current_user,
+                    job,
+                    "Falha ao gerar material complementar",
+                    level="error",
+                    context_json={"error": str(exc)},
+                )
+                raise RuntimeError("Falha ao gerar material complementar com IA. Tente novamente em instantes.") from exc
+
+        try:
+            update_processing_job(
+                db, job, 80, "Gerando apresentacao", "Gerando apresentacao a partir do plano de cobertura"
+            )
+            course_summaries = [
+                content.content_json or {} for content in get_latest_contents(db, project, "course_summary", limit=3)
+            ]
+            lesson_scripts = [
+                content.content_json or {} for content in list_lesson_scripts_from_plan(db, coverage_plan)
+            ]
+            complementary_materials = [
+                content.content_json or {} for content in get_latest_contents(db, project, "complementary_material")
+            ]
+            generate_presentation_deck_content(
+                db,
+                project,
+                job,
+                document_analysis,
+                course_structure,
+                course_summaries,
+                lesson_scripts,
+                complementary_materials,
+                ai_provider,
+                provider_record,
+                generation_language,
+            )
+            counts["presentation_decks"] += 1
+            add_educational_log(db, project, current_user, job, "Apresentacao gerada")
+        except Exception as exc:
+            add_educational_log(
+                db,
+                project,
+                current_user,
+                job,
+                "Falha ao gerar apresentacao",
+                level="error",
+                context_json={"error": str(exc)},
+            )
+            raise RuntimeError("Falha ao gerar apresentacao com IA. Tente novamente em instantes.") from exc
+
+        update_processing_job(db, job, 90, "Salvando conteudos", "Salvando conteudos educacionais")
+        job.status = "completed"
+        job.finished_at = datetime.now(UTC)
+        job.result_json = {"contents_created": counts}
+        add_educational_log(
+            db,
+            project,
+            current_user,
+            job,
+            message="Geração a partir do plano de cobertura concluída",
+            context_json=counts,
+        )
+        update_processing_job(db, job, 100, "Finalizado", "Conteudos gerados a partir do plano de cobertura")
+        db.commit()
+        return {
+            "project_id": project.id,
+            "message": "Quiz, resumo, material complementar e apresentacao gerados a partir do plano de cobertura.",
+            "contents_created": counts,
+        }
+    except Exception as exc:
+        job.status = "failed"
+        job.error_message = str(exc)
+        job.message = "Falha ao gerar conteudos a partir do plano de cobertura"
+        job.finished_at = datetime.now(UTC)
+        add_processing_log(
+            db,
+            project_id=project.id,
+            organization_id=current_user.organization_id,
+            job_id=job.id,
+            level="error",
+            message="Falha ao gerar conteudos a partir do plano de cobertura",
+            context_json={"error": str(exc)},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc

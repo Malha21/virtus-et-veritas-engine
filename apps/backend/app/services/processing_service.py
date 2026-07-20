@@ -12,7 +12,7 @@ from app.models.processing_log import ProcessingLog
 from app.models.project import Project
 from app.models.project_file import ProjectFile
 from app.models.user import User
-from app.services.pdf_service import PDFTextExtractionError, extract_text_from_pdf
+from app.services.pdf_service import PDFTextExtractionError, extract_text_from_epub, extract_text_from_pdf
 from app.services.project_service import get_project_by_id
 
 
@@ -38,6 +38,44 @@ def add_processing_log(
     return log
 
 
+STALE_JOB_THRESHOLD_MINUTES = 20
+
+
+def reap_if_stale(db: Session, job: ProcessingJob | None) -> ProcessingJob | None:
+    """Marca como falho e "descarta" um job "ativo" que na verdade morreu.
+
+    Jobs rodam via FastAPI BackgroundTasks dentro do processo do backend: se o
+    processo reinicia (deploy, crash) enquanto um job esta em pending/processing,
+    a tarefa em background e perdida silenciosamente e o job fica preso nesse
+    status para sempre - bloqueando qualquer nova tentativa do usuario, ja que
+    o restante do sistema trata "existe job ativo" como "nao criar outro".
+    Se o job nao for atualizado ha mais de STALE_JOB_THRESHOLD_MINUTES, tratamos
+    como morto: marcamos failed com uma mensagem clara e liberamos o caminho
+    para uma nova tentativa, em vez de deixar o usuario travado indefinidamente.
+    """
+    if job is None:
+        return None
+
+    updated_at = job.updated_at
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=UTC)
+
+    age_minutes = (datetime.now(UTC) - updated_at).total_seconds() / 60
+    if age_minutes < STALE_JOB_THRESHOLD_MINUTES:
+        return job
+
+    job.status = "failed"
+    job.error_message = (
+        "Job interrompido (processo reiniciado durante a execução) e marcado como falho "
+        "automaticamente. Tente novamente."
+    )
+    job.message = "Falha: job interrompido"
+    job.finished_at = datetime.now(UTC)
+    db.add(job)
+    db.commit()
+    return None
+
+
 def update_processing_job(
     db: Session,
     job: ProcessingJob,
@@ -52,31 +90,35 @@ def update_processing_job(
     db.commit()
 
 
+SOURCE_FILE_TYPES = ("source_pdf", "source_epub")
+
+
 def get_latest_source_pdf(db: Session, project: Project) -> ProjectFile:
-    source_pdf = db.execute(
+    source_file = db.execute(
         select(ProjectFile)
         .where(
             ProjectFile.project_id == project.id,
             ProjectFile.organization_id == project.organization_id,
-            ProjectFile.file_type == "source_pdf",
+            ProjectFile.file_type.in_(SOURCE_FILE_TYPES),
             ProjectFile.status == "uploaded",
         )
         .order_by(ProjectFile.created_at.desc())
     ).scalars().first()
 
-    if source_pdf is None:
+    if source_file is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Envie um PDF antes de iniciar o processamento.",
+            detail="Envie um PDF ou EPUB antes de iniciar o processamento.",
         )
 
-    return source_pdf
+    return source_file
 
 
 def start_text_extraction(db: Session, current_user: User, project_id: UUID) -> ProcessingJob:
     settings = get_settings()
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     source_pdf = get_latest_source_pdf(db, project)
+    is_epub = source_pdf.file_type == "source_epub"
 
     job = ProcessingJob(
         project_id=project.id,
@@ -87,7 +129,7 @@ def start_text_extraction(db: Session, current_user: User, project_id: UUID) -> 
         max_attempts=3,
         progress=0,
         current_step="Aguardando extracao",
-        message="Processamento de PDF criado",
+        message="Processamento do documento criado",
         payload_json={"project_file_id": str(source_pdf.id)},
     )
     db.add(job)
@@ -96,7 +138,7 @@ def start_text_extraction(db: Session, current_user: User, project_id: UUID) -> 
     try:
         job.status = "running"
         job.attempts = 1
-        update_processing_job(db, job, 10, "Extraindo texto do PDF", "Extracao de texto iniciada")
+        update_processing_job(db, job, 10, "Extraindo texto do documento", "Extracao de texto iniciada")
         job.started_at = datetime.now(UTC)
         project.processing_status = "extracting_text"
         add_processing_log(
@@ -110,7 +152,7 @@ def start_text_extraction(db: Session, current_user: User, project_id: UUID) -> 
 
         storage_root = Path(settings.storage_path)
         pdf_path = storage_root / source_pdf.storage_path
-        extracted_text = extract_text_from_pdf(pdf_path)
+        extracted_text = extract_text_from_epub(pdf_path) if is_epub else extract_text_from_pdf(pdf_path)
 
         relative_text_path = Path(
             "organizations",
@@ -149,7 +191,7 @@ def start_text_extraction(db: Session, current_user: User, project_id: UUID) -> 
         project.processing_status = "failed"
         job.status = "failed"
         job.error_message = str(exc)
-        job.message = "Falha ao extrair texto do PDF"
+        job.message = "Falha ao extrair texto do documento"
         job.finished_at = datetime.now(UTC)
         add_processing_log(
             db,
@@ -157,7 +199,7 @@ def start_text_extraction(db: Session, current_user: User, project_id: UUID) -> 
             organization_id=current_user.organization_id,
             job_id=job.id,
             level="error",
-            message="Falha ao extrair texto do PDF",
+            message="Falha ao extrair texto do documento",
             context_json={"error": str(exc)},
         )
         db.commit()
@@ -166,12 +208,12 @@ def start_text_extraction(db: Session, current_user: User, project_id: UUID) -> 
 
 
 def get_processing_status(db: Session, current_user: User, project_id: UUID) -> dict[str, object]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     status_map = {
-        "draft": (0, "Aguardando PDF"),
+        "draft": (0, "Aguardando documento"),
         "uploaded": (20, "Arquivo recebido"),
         "queued": (35, "Processamento na fila"),
-        "extracting_text": (60, "Extraindo texto do PDF"),
+        "extracting_text": (60, "Extraindo texto do documento"),
         "text_extracted": (100, "Texto extraído com sucesso"),
         "ai_generating_structure": (85, "Gerando estrutura com IA"),
         "ai_structure_generated": (100, "Estrutura gerada com IA"),
@@ -190,7 +232,7 @@ def get_processing_status(db: Session, current_user: User, project_id: UUID) -> 
 
 
 def list_processing_logs(db: Session, current_user: User, project_id: UUID) -> list[ProcessingLog]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     statement = (
         select(ProcessingLog)
         .where(

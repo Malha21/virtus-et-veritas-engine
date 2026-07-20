@@ -22,6 +22,7 @@ from app.schemas.audio import AudioGenerateRequest
 from app.schemas.video import GeneratedVideoGenerateRequest
 from app.schemas.video_pipeline import VideoPipelineJobCreate
 from app.services.audio_service import generate_tts_audio, get_audio_storage_dir
+from app.services.coverage_plan_service import get_approved_plan, list_lesson_scripts_from_plan
 from app.services.educational_content_service import build_lesson_speech_text, get_content_metadata_number
 from app.services.project_service import get_project_by_id
 from app.services.video_avatar_service import get_active_avatar_for_generation
@@ -35,6 +36,12 @@ POLL_MAX_ATTEMPTS = 45
 
 
 def get_lesson_scripts_for_project(db: Session, project: Project) -> list[GeneratedContent]:
+    coverage_plan = get_approved_plan(db, project.id)
+    if coverage_plan is not None:
+        coverage_scripts = list_lesson_scripts_from_plan(db, coverage_plan)
+        if coverage_scripts:
+            return coverage_scripts
+
     contents = list(
         db.execute(
             select(GeneratedContent).where(
@@ -391,7 +398,7 @@ def run_pipeline(db: Session, current_user: User, job: VideoPipelineJob) -> None
     if job.status not in {"pending", "failed", "partially_completed"}:
         return
 
-    project = get_project_by_id(db, current_user.organization_id, job.project_id)
+    project = get_project_by_id(db, current_user, job.project_id)
     job.status = "running"
     job.started_at = job.started_at or datetime.now(UTC)
     job.error_message = None
@@ -468,7 +475,7 @@ def run_video_pipeline_job(job_id: UUID, user_id: UUID, project_id: UUID) -> Non
 def create_pipeline_job(
     db: Session, current_user: User, project_id: UUID, payload: VideoPipelineJobCreate
 ) -> VideoPipelineJob:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     lessons = resolve_target_lessons(db, project, payload)
 
     if payload.video_avatar_id:
@@ -525,7 +532,7 @@ def get_pipeline_job_for_project(db: Session, project_id: UUID, job_id: UUID) ->
 
 
 def list_pipeline_jobs_for_project(db: Session, current_user: User, project_id: UUID) -> list[VideoPipelineJob]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     return list(
         db.execute(
             select(VideoPipelineJob)
@@ -556,14 +563,14 @@ def get_pipeline_job_items(db: Session, job_id: UUID) -> list[VideoPipelineJobIt
 def get_pipeline_job_detail(
     db: Session, current_user: User, project_id: UUID, job_id: UUID
 ) -> tuple[VideoPipelineJob, list[VideoPipelineJobItem]]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     job = get_pipeline_job_for_project(db, project.id, job_id)
     items = get_pipeline_job_items(db, job.id)
     return job, items
 
 
 def start_pipeline_job(db: Session, current_user: User, project_id: UUID, job_id: UUID) -> VideoPipelineJob:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     job = get_pipeline_job_for_project(db, project.id, job_id)
     if job.status != "pending":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Este pipeline já foi iniciado.")
@@ -571,7 +578,7 @@ def start_pipeline_job(db: Session, current_user: User, project_id: UUID, job_id
 
 
 def prepare_retry_failed(db: Session, current_user: User, project_id: UUID, job_id: UUID) -> VideoPipelineJob:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     job = get_pipeline_job_for_project(db, project.id, job_id)
     if job.status not in {"failed", "partially_completed"}:
         raise HTTPException(
@@ -610,7 +617,7 @@ def prepare_retry_failed(db: Session, current_user: User, project_id: UUID, job_
 
 
 def cancel_pipeline_job(db: Session, current_user: User, project_id: UUID, job_id: UUID) -> VideoPipelineJob:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     job = get_pipeline_job_for_project(db, project.id, job_id)
     if job.status in {"completed", "failed", "cancelled", "partially_completed"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Este pipeline já foi finalizado.")

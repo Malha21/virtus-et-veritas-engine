@@ -37,9 +37,9 @@ from app.schemas.source_inventory import SourceInventorySummary
 from app.schemas.source_inventory_ai import AICoverageCheckResponse, AIInventoryChunkResponse, AIInventoryItemResponse
 from app.services.ai_orchestrator_service import get_active_ai_provider_record, parse_json_content, register_ai_request
 from app.services.document_extraction_service import get_project_file_for_extraction
-from app.services.processing_service import add_processing_log
+from app.services.processing_service import add_processing_log, reap_if_stale
 from app.services.project_service import get_project_by_id
-from app.services.user_ai_credential_service import resolve_generation_api_key
+from app.services.user_ai_credential_service import resolve_generation_api_key, resolve_generation_base_url
 from app.services.source_inventory_chunking import ChunkPlan, build_chunks
 from app.services.source_inventory_validator import anchor_item_to_blocks, are_likely_same_chunk_overlap_duplicate
 
@@ -105,7 +105,7 @@ def check_inventory_preconditions(
 
 
 def get_active_inventory_job(db: Session, project_file_id: UUID) -> ProcessingJob | None:
-    return db.execute(
+    job = db.execute(
         select(ProcessingJob)
         .where(
             ProcessingJob.project_file_id == project_file_id,
@@ -114,6 +114,7 @@ def get_active_inventory_job(db: Session, project_file_id: UUID) -> ProcessingJo
         )
         .order_by(ProcessingJob.created_at.desc())
     ).scalars().first()
+    return reap_if_stale(db, job)
 
 
 def get_latest_inventory_job(db: Session, project_file_id: UUID) -> ProcessingJob | None:
@@ -672,7 +673,7 @@ def supersede_items_for_pages(db: Session, project_file_id: UUID, page_numbers: 
 # --------------------------------------------------------------------------
 
 def generate_inventory(db: Session, current_user: User, job: ProcessingJob) -> None:
-    project = get_project_by_id(db, current_user.organization_id, job.project_id)
+    project = get_project_by_id(db, current_user, job.project_id)
     project_file = db.get(ProjectFile, job.project_file_id)
     if project_file is None:
         raise SourceInventoryError("Documento não encontrado para inventariar.")
@@ -764,7 +765,8 @@ def generate_inventory(db: Session, current_user: User, job: ProcessingJob) -> N
 
     provider_key = resolve_provider_key(settings, project.ai_provider)
     user_api_key = resolve_generation_api_key(db, current_user, provider_key)
-    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key)
+    user_base_url = resolve_generation_base_url(db, current_user, provider_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key, base_url_override=user_base_url)
     provider_record = get_active_ai_provider_record(db, provider_key, resolve_provider_name(settings, provider_key))
 
     all_items: list[ResolvedItem] = []

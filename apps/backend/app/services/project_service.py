@@ -66,7 +66,7 @@ def create_project(db: Session, current_user: User, payload: ProjectCreate) -> P
 
 def list_projects(
     db: Session,
-    organization_id: UUID,
+    current_user: User,
     page: int = 1,
     page_size: int = 20,
     status_filter: str | None = None,
@@ -78,11 +78,16 @@ def list_projects(
     page_size = min(max(page_size, 1), 100)
 
     filters = [
-        Project.organization_id == organization_id,
+        Project.organization_id == current_user.organization_id,
         Project.archived_at.is_(None),
         Project.deleted_at.is_(None),
         Project.status.not_in(HIDDEN_PROJECT_STATUSES),
     ]
+    # Membros veem so os proprios projetos; admins veem todos os da organizacao
+    # (supervisao). Sem este filtro, qualquer usuario via qualquer projeto de
+    # qualquer colega na mesma organizacao.
+    if current_user.role != "admin":
+        filters.append(Project.owner_id == current_user.id)
     if status_filter:
         filters.append(Project.status == status_filter)
     if product_type:
@@ -109,16 +114,18 @@ def list_projects(
     return list(db.execute(statement).scalars().all()), total
 
 
-def get_project_by_id(db: Session, organization_id: UUID, project_id: UUID) -> Project:
-    project = db.execute(
-        select(Project).where(
-            Project.id == project_id,
-            Project.organization_id == organization_id,
-            Project.status.not_in(HIDDEN_PROJECT_STATUSES),
-            Project.archived_at.is_(None),
-            Project.deleted_at.is_(None),
-        )
-    ).scalar_one_or_none()
+def get_project_by_id(db: Session, current_user: User, project_id: UUID) -> Project:
+    filters = [
+        Project.id == project_id,
+        Project.organization_id == current_user.organization_id,
+        Project.status.not_in(HIDDEN_PROJECT_STATUSES),
+        Project.archived_at.is_(None),
+        Project.deleted_at.is_(None),
+    ]
+    if current_user.role != "admin":
+        filters.append(Project.owner_id == current_user.id)
+
+    project = db.execute(select(Project).where(*filters)).scalar_one_or_none()
 
     if project is None:
         raise HTTPException(
@@ -131,15 +138,15 @@ def get_project_by_id(db: Session, organization_id: UUID, project_id: UUID) -> P
 
 def update_project(
     db: Session,
-    organization_id: UUID,
+    current_user: User,
     project_id: UUID,
     payload: ProjectUpdate,
 ) -> Project:
-    project = get_project_by_id(db, organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     updates = payload.model_dump(exclude_unset=True)
 
     if "title" in updates and updates["title"] and updates["title"] != project.title:
-        project.slug = generate_unique_slug(db, organization_id, updates["title"])
+        project.slug = generate_unique_slug(db, current_user.organization_id, updates["title"])
 
     for field, value in updates.items():
         setattr(project, field, value)
@@ -150,19 +157,21 @@ def update_project(
     return project
 
 
-def archive_project(db: Session, organization_id: UUID, project_id: UUID) -> None:
-    project = db.execute(
-        select(Project).where(
-            Project.id == project_id,
-            Project.organization_id == organization_id,
-            Project.deleted_at.is_(None),
-        )
-    ).scalar_one_or_none()
+def archive_project(db: Session, current_user: User, project_id: UUID) -> None:
+    filters = [
+        Project.id == project_id,
+        Project.organization_id == current_user.organization_id,
+        Project.deleted_at.is_(None),
+    ]
+    if current_user.role != "admin":
+        filters.append(Project.owner_id == current_user.id)
+
+    project = db.execute(select(Project).where(*filters)).scalar_one_or_none()
 
     if project is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Projeto nÃ£o encontrado.",
+            detail="Projeto não encontrado.",
         )
 
     project.status = "archived"

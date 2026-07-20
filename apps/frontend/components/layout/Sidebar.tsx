@@ -2,36 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import {
+  KeyRound,
+  LayoutDashboard,
+  UserCircle,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 
-function ShieldCheckIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4 shrink-0"
-      aria-hidden="true"
-    >
-      <path d="M12 3l7 3v5c0 4.5-3 8.25-7 10-4-1.75-7-5.5-7-10V6l7-3z" />
-      <path d="M9 12l2 2 4-4" />
-    </svg>
-  );
-}
-
-const baseLinks: { href: string; label: string; icon?: ReactNode }[] = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/projects", label: "Projetos" },
-  { href: "/fidelity-coverage", label: "Fidelidade e Cobertura", icon: <ShieldCheckIcon /> },
-  { href: "/instructor-profile", label: "Perfil do Instrutor" },
-  { href: "/account/api-keys", label: "Minhas APIs" },
+const baseLinks: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/instructor-profile", label: "Perfil do Instrutor", icon: UserCircle },
+  { href: "/account/api-keys", label: "Minhas APIs", icon: KeyRound },
 ];
 
-const adminLinks: { href: string; label: string; icon?: ReactNode }[] = [
-  { href: "/admin/users", label: "Administração" },
+const adminLinks: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: "/admin/users", label: "Administração", icon: Users },
 ];
 
 type SidebarProps = {
@@ -43,27 +29,29 @@ export function Sidebar({ role }: SidebarProps) {
   const links = role === "admin" ? [...baseLinks, ...adminLinks] : baseLinks;
 
   return (
-    <aside className="flex min-h-screen w-64 flex-col border-r border-white/10 bg-navy-950 px-5 py-6">
-      <Link href="/dashboard" className="text-lg font-semibold text-white">
-        Virtus et Veritas
-      </Link>
-      <p className="mt-1 text-xs text-gold-400">VVE Engine</p>
-
-      <nav className="mt-10 grid gap-2">
+    <aside className="flex min-h-screen w-[72px] flex-col items-center gap-1 border-r border-white/5 bg-navy-950 py-6">
+      <nav className="flex flex-col gap-2">
         {links.map((link) => {
           const active = pathname.startsWith(link.href);
+          const Icon = link.icon;
           return (
             <Link
               key={link.href}
               href={link.href}
-              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition ${
+              aria-label={link.label}
+              className={`group relative flex h-11 w-11 items-center justify-center rounded-full transition ${
                 active
-                  ? "bg-gold-500 text-navy-950"
-                  : "text-slate-300 hover:bg-white/[0.05] hover:text-white"
+                  ? "bg-accent-500 text-navy-950"
+                  : "text-zinc-400 hover:bg-white/5 hover:text-white"
               }`}
             >
-              {link.icon}
-              {link.label}
+              <Icon className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" />
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute left-full ml-3 whitespace-nowrap rounded-md bg-navy-700 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition group-hover:opacity-100"
+              >
+                {link.label}
+              </span>
             </Link>
           );
         })}

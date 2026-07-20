@@ -5,13 +5,17 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { LessonScriptPanel } from "@/components/coverage-plan/LessonScriptPanel";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   ApiError,
   apiFetch,
   addCoveragePlanLessonSourceItem,
   approveCoveragePlan,
+  generateAllCoverageLessons,
+  getCourseLessonGenerationJob,
   getCoveragePlan,
   getCoveragePlanSummary,
   getCoveragePlanVersion,
@@ -89,6 +93,7 @@ export default function CoveragePlanPage() {
   const [starting, setStarting] = useState(false);
   const [busyAction, setBusyAction] = useState("");
   const [showUnmapped, setShowUnmapped] = useState(false);
+  const [lessonGenerationJob, setLessonGenerationJob] = useState<ProcessingJob | null>(null);
 
   // Edicao de modulo
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
@@ -260,6 +265,38 @@ export default function CoveragePlanPage() {
       refreshPlan();
     } catch (err) {
       setError(errorMessage(err, "Não foi possível aprovar o plano de cobertura."));
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  const pollLessonGenerationJob = useCallback(
+    (jobId: string) => {
+      getCourseLessonGenerationJob(projectId)
+        .then((current) => {
+          if (!current || current.id !== jobId) return;
+          setLessonGenerationJob(current);
+          if (current.status === "pending" || current.status === "processing") {
+            window.setTimeout(() => pollLessonGenerationJob(jobId), 3000);
+            return;
+          }
+          setLessonGenerationJob(null);
+          refreshPlan();
+        })
+        .catch(() => setError("Não foi possível acompanhar a geração das aulas."));
+    },
+    [projectId, refreshPlan],
+  );
+
+  async function handleGenerateAllLessons() {
+    setBusyAction("generate-all-lessons");
+    setError("");
+    try {
+      const job = await generateAllCoverageLessons(projectId);
+      setLessonGenerationJob(job);
+      pollLessonGenerationJob(job.id);
+    } catch (err) {
+      setError(errorMessage(err, "Não foi possível iniciar a geração das aulas."));
     } finally {
       setBusyAction("");
     }
@@ -573,14 +610,14 @@ export default function CoveragePlanPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl">
-        <Link href={`/fidelity-coverage/${projectId}`} className="text-sm text-gold-400 hover:text-gold-500">
+        <Link href={`/fidelity-coverage/${projectId}`} className="text-sm text-accent-400 hover:text-accent-500">
           Voltar para o projeto
         </Link>
 
         <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-semibold text-white">Plano de Cobertura</h1>
-            <p className="mt-2 text-sm text-slate-400">
+            <p className="mt-2 text-sm text-zinc-400">
               Estrutura pedagógica (módulos e aulas) gerada a partir do inventário aprovado, com no máximo 10
               minutos por aula e cobertura obrigatória de todos os itens.
             </p>
@@ -589,7 +626,9 @@ export default function CoveragePlanPage() {
         </div>
 
         {loading ? (
-          <p className="mt-8 text-slate-300">Carregando...</p>
+          <div className="mt-8">
+            <LoadingProgress label="Carregando..." />
+          </div>
         ) : !sourceFile ? (
           <div className="mt-8">
             <EmptyState
@@ -603,18 +642,18 @@ export default function CoveragePlanPage() {
             {successMessage ? <p className="mt-4 text-sm text-emerald-300">{successMessage}</p> : null}
 
             {isRunning && activeJob ? (
-              <div className="mt-6 rounded-md border border-gold-500/20 bg-gold-500/10 p-4">
+              <div className="mt-6 rounded-md border border-accent-500/20 bg-accent-500/10 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm text-gold-200">
+                  <p className="text-sm text-accent-200">
                     {activeJob.current_item || activeJob.current_step || "Processando..."}
                   </p>
-                  <span className="text-xs text-gold-300">
+                  <span className="text-xs text-accent-300">
                     {activeJob.processed_items ?? 0}/{activeJob.total_items ?? "?"} lotes
                   </span>
                 </div>
                 <div className="mt-3 h-2 rounded-full bg-white/10">
                   <div
-                    className="h-2 rounded-full bg-gold-500 transition-all"
+                    className="h-2 rounded-full bg-accent-500 transition-all"
                     style={{ width: `${activeJob.progress || 0}%` }}
                   />
                 </div>
@@ -622,7 +661,7 @@ export default function CoveragePlanPage() {
             ) : null}
 
             {summary ? (
-              <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.035] p-6">
+              <div className="mt-6 rounded-lg border border-white/5 bg-white/[0.035] p-6">
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <Metric label="Versão" value={summary.version || "—"} />
                   <Metric label="Módulos" value={summary.total_modules} />
@@ -640,9 +679,9 @@ export default function CoveragePlanPage() {
                 </div>
 
                 {summary.warnings && summary.warnings.length > 0 ? (
-                  <div className="mt-4 rounded-md border border-gold-500/20 bg-gold-500/5 p-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-gold-400">Alertas</p>
-                    <ul className="mt-2 space-y-1 text-xs text-slate-300">
+                  <div className="mt-4 rounded-md border border-accent-500/20 bg-accent-500/5 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-accent-400">Alertas</p>
+                    <ul className="mt-2 space-y-1 text-xs text-zinc-300">
                       {summary.warnings.slice(0, 10).map((warning, index) => (
                         <li key={index}>• {warning}</li>
                       ))}
@@ -656,7 +695,7 @@ export default function CoveragePlanPage() {
                       type="button"
                       onClick={() => handleGenerate(false)}
                       disabled={starting || isRunning}
-                      className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {starting ? "Iniciando..." : "Gerar plano"}
                     </button>
@@ -667,7 +706,7 @@ export default function CoveragePlanPage() {
                       type="button"
                       onClick={() => handleGenerate(true)}
                       disabled={starting || isRunning}
-                      className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Regenerar rascunho
                     </button>
@@ -677,7 +716,7 @@ export default function CoveragePlanPage() {
                     type="button"
                     onClick={handleValidate}
                     disabled={busyAction === "validate" || status === "not_started"}
-                    className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {busyAction === "validate" ? "Validando..." : "Validar"}
                   </button>
@@ -686,7 +725,7 @@ export default function CoveragePlanPage() {
                     type="button"
                     onClick={handleRecalculate}
                     disabled={busyAction === "recalculate" || status === "not_started"}
-                    className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {busyAction === "recalculate" ? "Recalculando..." : "Recalcular duração"}
                   </button>
@@ -701,10 +740,25 @@ export default function CoveragePlanPage() {
                     {busyAction === "approve" ? "Aprovando..." : "Aprovar"}
                   </button>
 
+                  {status === "approved" ? (
+                    <button
+                      type="button"
+                      onClick={handleGenerateAllLessons}
+                      disabled={busyAction === "generate-all-lessons" || lessonGenerationJob !== null}
+                      className="rounded-md border border-accent-500/30 px-4 py-2 text-sm text-accent-400 transition hover:border-accent-500/60 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {lessonGenerationJob
+                        ? `Gerando aulas... (${lessonGenerationJob.progress}%)`
+                        : busyAction === "generate-all-lessons"
+                          ? "Iniciando..."
+                          : "Gerar todas as aulas"}
+                    </button>
+                  ) : null}
+
                   <button
                     type="button"
                     onClick={toggleVersions}
-                    className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                    className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
                   >
                     {showVersions ? "Ocultar versões" : "Ver versões"}
                   </button>
@@ -716,7 +770,7 @@ export default function CoveragePlanPage() {
                       refreshPlan();
                       refreshUnmapped();
                     }}
-                    className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                    className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
                   >
                     Atualizar status
                   </button>
@@ -725,9 +779,9 @@ export default function CoveragePlanPage() {
             ) : null}
 
             {showVersions ? (
-              <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.035] p-6">
+              <div className="mt-6 rounded-lg border border-white/5 bg-white/[0.035] p-6">
                 <p className="font-medium text-white">Versões do plano</p>
-                <p className="mt-1 text-sm text-slate-400">
+                <p className="mt-1 text-sm text-zinc-400">
                   Histórico de gerações. A versão ativa é a mais recente listada abaixo; versões antigas ficam
                   marcadas como desatualizadas (stale) e podem ser abertas apenas em modo leitura.
                 </p>
@@ -735,14 +789,14 @@ export default function CoveragePlanPage() {
                 {versionsError ? <p className="mt-3 text-sm text-red-300">{versionsError}</p> : null}
 
                 {versionsLoading ? (
-                  <p className="mt-4 text-sm text-slate-400">Carregando versões...</p>
+                  <LoadingProgress label="Carregando versões..." size="inline" />
                 ) : versions.length === 0 ? (
-                  <p className="mt-4 text-sm text-slate-400">Nenhuma versão gerada ainda.</p>
+                  <p className="mt-4 text-sm text-zinc-400">Nenhuma versão gerada ainda.</p>
                 ) : (
                   <div className="mt-4 overflow-x-auto">
                     <table className="w-full min-w-[640px] border-collapse text-sm">
                       <thead>
-                        <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wide text-slate-500">
+                        <tr className="border-b border-white/5 text-left text-xs uppercase tracking-wide text-zinc-500">
                           <th className="py-2 pr-4">Versão</th>
                           <th className="py-2 pr-4">Status</th>
                           <th className="py-2 pr-4">Criado em</th>
@@ -754,20 +808,20 @@ export default function CoveragePlanPage() {
                       <tbody>
                         {versions.map((version) => (
                           <tr key={version.id} className="border-b border-white/5">
-                            <td className="py-2 pr-4 text-slate-200">
+                            <td className="py-2 pr-4 text-zinc-200">
                               {version.version}
                               {plan && version.version === plan.version ? (
-                                <span className="ml-2 text-xs text-gold-400">(ativa)</span>
+                                <span className="ml-2 text-xs text-accent-400">(ativa)</span>
                               ) : null}
                             </td>
                             <td className="py-2 pr-4">
                               <StatusBadge label={STATUS_LABEL[version.status] || version.status} tone={statusTone(version.status)} />
                             </td>
-                            <td className="py-2 pr-4 text-slate-400">{new Date(version.created_at).toLocaleString("pt-BR")}</td>
-                            <td className="py-2 pr-4 text-slate-400">
+                            <td className="py-2 pr-4 text-zinc-400">{new Date(version.created_at).toLocaleString("pt-BR")}</td>
+                            <td className="py-2 pr-4 text-zinc-400">
                               {version.total_modules} / {version.total_lessons}
                             </td>
-                            <td className="py-2 pr-4 text-slate-400">
+                            <td className="py-2 pr-4 text-zinc-400">
                               {version.approved_at ? new Date(version.approved_at).toLocaleString("pt-BR") : "—"}
                             </td>
                             <td className="py-2 pr-4">
@@ -775,7 +829,7 @@ export default function CoveragePlanPage() {
                                 type="button"
                                 onClick={() => viewVersion(version.version)}
                                 disabled={viewingVersionLoading && viewingVersionNumber === version.version}
-                                className="text-xs text-gold-400 hover:text-gold-500 disabled:opacity-60"
+                                className="text-xs text-accent-400 hover:text-accent-500 disabled:opacity-60"
                               >
                                 Visualizar
                               </button>
@@ -788,31 +842,31 @@ export default function CoveragePlanPage() {
                 )}
 
                 {viewingVersionNumber !== null ? (
-                  <div className="mt-6 rounded-md border border-gold-500/20 bg-navy-950/40 p-4">
+                  <div className="mt-6 rounded-md border border-accent-500/20 bg-navy-950/40 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-gold-300">
+                      <p className="text-sm font-medium text-accent-300">
                         Visualizando versão {viewingVersionNumber} — somente leitura
                       </p>
-                      <button type="button" onClick={closeVersionView} className="text-xs text-slate-400 hover:text-slate-200">
+                      <button type="button" onClick={closeVersionView} className="text-xs text-zinc-400 hover:text-zinc-200">
                         Fechar visualização
                       </button>
                     </div>
                     {viewingVersionLoading ? (
-                      <p className="mt-3 text-sm text-slate-400">Carregando versão...</p>
+                      <LoadingProgress label="Carregando versão..." size="inline" />
                     ) : viewingVersionPlan ? (
                       <div className="mt-4 space-y-3">
-                        <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 sm:grid-cols-4">
+                        <div className="grid grid-cols-2 gap-2 text-xs text-zinc-400 sm:grid-cols-4">
                           <span>Modelo: {viewingVersionPlan.model_name || "—"}</span>
                           <span>Prompt: {viewingVersionPlan.prompt_version || "—"}</span>
                           <span>Módulos: {viewingVersionPlan.total_modules}</span>
                           <span>Aulas: {viewingVersionPlan.total_lessons}</span>
                         </div>
                         {viewingVersionPlan.modules.map((module) => (
-                          <div key={module.id} className="rounded-md border border-white/10 bg-white/[0.02] p-3">
+                          <div key={module.id} className="rounded-md border border-white/5 bg-white/[0.02] p-3">
                             <p className="text-sm font-medium text-white">
                               Módulo {module.module_order} — {module.title}
                             </p>
-                            <ul className="mt-2 space-y-1 pl-3 text-xs text-slate-400">
+                            <ul className="mt-2 space-y-1 pl-3 text-xs text-zinc-400">
                               {module.lessons.map((lesson) => (
                                 <li key={lesson.id}>
                                   Aula {lesson.lesson_order} — {lesson.title} ({lesson.source_item_count} item(ns),{" "}
@@ -829,48 +883,48 @@ export default function CoveragePlanPage() {
               </div>
             ) : null}
 
-            <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.035] p-6">
+            <div className="mt-6 rounded-lg border border-white/5 bg-white/[0.035] p-6">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="font-medium text-white">Itens sem aula</p>
                 <button
                   type="button"
                   onClick={() => setShowUnmapped((value) => !value)}
-                  className="text-xs text-gold-400 hover:text-gold-500"
+                  className="text-xs text-accent-400 hover:text-accent-500"
                 >
                   {showUnmapped ? "Ocultar" : `Mostrar (${unmappedItems.length})`}
                 </button>
               </div>
               {unmappedItems.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-400">
+                <p className="mt-2 text-sm text-zinc-400">
                   Nenhum item pendente — todo item elegível do inventário está associado a pelo menos uma aula.
                 </p>
               ) : showUnmapped ? (
                 <div className="mt-4 space-y-2">
                   {unmappedItems.map((item) => (
-                    <div key={item.source_item_id} className="rounded-md border border-gold-500/20 bg-gold-500/5 p-3 text-sm">
+                    <div key={item.source_item_id} className="rounded-md border border-accent-500/20 bg-accent-500/5 p-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-medium text-white">
                           {item.item_code} — {item.title}
                         </span>
-                        <span className="text-xs text-slate-400">
+                        <span className="text-xs text-zinc-400">
                           {item.content_type} · {item.importance} · pág. {item.page_start ?? "?"}-{item.page_end ?? "?"}
                         </span>
                       </div>
-                      <p className="mt-1 text-xs text-slate-400">{item.reason}</p>
-                      <p className="mt-1 text-xs text-gold-400">{item.recommended_action}</p>
+                      <p className="mt-1 text-xs text-zinc-400">{item.reason}</p>
+                      <p className="mt-1 text-xs text-accent-400">{item.recommended_action}</p>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="mt-2 text-sm text-gold-300">
+                <p className="mt-2 text-sm text-accent-300">
                   {unmappedItems.length} item(ns) aguardando associação manual ou nova geração do plano.
                 </p>
               )}
             </div>
 
-            <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.035] p-6">
+            <div className="mt-6 rounded-lg border border-white/5 bg-white/[0.035] p-6">
               <p className="font-medium text-white">Mapa de Aulas</p>
-              <p className="mt-1 text-sm text-slate-400">
+              <p className="mt-1 text-sm text-zinc-400">
                 Estrutura do curso: módulo, aula e itens do inventário cobertos em cada uma. Use as ações abaixo
                 para renomear, dividir, unir aulas ou mover itens entre elas.
               </p>
@@ -878,18 +932,18 @@ export default function CoveragePlanPage() {
               {itemActionError ? <p className="mt-3 text-sm text-red-300">{itemActionError}</p> : null}
 
               {!plan ? (
-                <p className="mt-4 text-sm text-slate-400">Gere o plano de cobertura para visualizar a estrutura.</p>
+                <p className="mt-4 text-sm text-zinc-400">Gere o plano de cobertura para visualizar a estrutura.</p>
               ) : (
                 <div className="mt-4 space-y-4">
                   {plan.modules.map((module) => (
-                    <details key={module.id} className="rounded-md border border-white/10 bg-navy-950/40 p-4" open>
+                    <details key={module.id} className="rounded-md border border-white/5 bg-navy-950/40 p-4" open>
                       <summary className="cursor-pointer list-none">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="font-medium text-white">
                             Módulo {module.module_order} — {module.title}
                           </span>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-zinc-400">
                               {module.lessons.length} aula(s) · {module.estimated_total_minutes} min
                             </span>
                             <StatusBadge label={STATUS_LABEL[module.status] || module.status} tone={statusTone(module.status)} />
@@ -899,20 +953,20 @@ export default function CoveragePlanPage() {
                                 event.preventDefault();
                                 startEditModule(module);
                               }}
-                              className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:border-gold-500/40 hover:text-gold-400"
+                              className="rounded border border-white/5 px-2 py-1 text-xs text-zinc-300 hover:border-accent-500/40 hover:text-accent-400"
                             >
                               Editar
                             </button>
                           </div>
                         </div>
                         {module.learning_objective ? (
-                          <p className="mt-1 text-xs text-slate-400">{module.learning_objective}</p>
+                          <p className="mt-1 text-xs text-zinc-400">{module.learning_objective}</p>
                         ) : null}
                       </summary>
 
                       {editingModuleId === module.id ? (
-                        <div className="mt-4 rounded-md border border-gold-500/20 bg-gold-500/5 p-3">
-                          <label htmlFor={`module-title-${module.id}`} className="block text-xs text-slate-300">
+                        <div className="mt-4 rounded-md border border-accent-500/20 bg-accent-500/5 p-3">
+                          <label htmlFor={`module-title-${module.id}`} className="block text-xs text-zinc-300">
                             Título do módulo
                           </label>
                           <input
@@ -920,9 +974,9 @@ export default function CoveragePlanPage() {
                             type="text"
                             value={moduleForm.title}
                             onChange={(event) => setModuleForm((form) => ({ ...form, title: event.target.value }))}
-                            className="mt-1 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                            className="mt-1 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
                           />
-                          <label htmlFor={`module-desc-${module.id}`} className="mt-3 block text-xs text-slate-300">
+                          <label htmlFor={`module-desc-${module.id}`} className="mt-3 block text-xs text-zinc-300">
                             Descrição
                           </label>
                           <textarea
@@ -930,9 +984,9 @@ export default function CoveragePlanPage() {
                             value={moduleForm.description}
                             onChange={(event) => setModuleForm((form) => ({ ...form, description: event.target.value }))}
                             rows={2}
-                            className="mt-1 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                            className="mt-1 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
                           />
-                          <label htmlFor={`module-obj-${module.id}`} className="mt-3 block text-xs text-slate-300">
+                          <label htmlFor={`module-obj-${module.id}`} className="mt-3 block text-xs text-zinc-300">
                             Objetivo de aprendizagem
                           </label>
                           <textarea
@@ -940,7 +994,7 @@ export default function CoveragePlanPage() {
                             value={moduleForm.learning_objective}
                             onChange={(event) => setModuleForm((form) => ({ ...form, learning_objective: event.target.value }))}
                             rows={2}
-                            className="mt-1 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                            className="mt-1 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
                           />
                           {moduleError ? <p className="mt-2 text-xs text-red-300">{moduleError}</p> : null}
                           <div className="mt-3 flex gap-2">
@@ -948,14 +1002,14 @@ export default function CoveragePlanPage() {
                               type="button"
                               onClick={() => saveModule(module.id)}
                               disabled={moduleSaving}
-                              className="rounded-md bg-gold-500 px-3 py-1.5 text-xs font-semibold text-navy-950 hover:bg-gold-400 disabled:opacity-60"
+                              className="rounded-md bg-accent-500 px-3 py-1.5 text-xs font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:opacity-60"
                             >
                               {moduleSaving ? "Salvando..." : "Salvar módulo"}
                             </button>
                             <button
                               type="button"
                               onClick={cancelEditModule}
-                              className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:border-white/30"
+                              className="rounded-md border border-white/5 px-3 py-1.5 text-xs text-zinc-300 hover:border-white/30"
                             >
                               Cancelar
                             </button>
@@ -970,13 +1024,13 @@ export default function CoveragePlanPage() {
                           const otherModules = plan.modules.filter((candidate) => candidate.id !== module.id);
 
                           return (
-                            <div key={lesson.id} className="rounded-md border border-white/10 bg-white/[0.02] p-3">
+                            <div key={lesson.id} className="rounded-md border border-white/5 bg-white/[0.02] p-3">
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <span className="text-sm font-medium text-white">
                                   Aula {lesson.lesson_order} — {lesson.title}
                                 </span>
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span className="text-xs text-slate-400">
+                                  <span className="text-xs text-zinc-400">
                                     {lesson.estimated_duration_minutes} min · {lesson.estimated_word_count} palavras ·{" "}
                                     {lesson.source_item_count} item(ns)
                                   </span>
@@ -994,10 +1048,10 @@ export default function CoveragePlanPage() {
                               ) : null}
 
                               {lesson.learning_objective ? (
-                                <p className="mt-1 text-xs text-slate-400">{lesson.learning_objective}</p>
+                                <p className="mt-1 text-xs text-zinc-400">{lesson.learning_objective}</p>
                               ) : null}
                               {lesson.warnings_json && lesson.warnings_json.length > 0 ? (
-                                <ul className="mt-2 space-y-0.5 text-xs text-gold-400">
+                                <ul className="mt-2 space-y-0.5 text-xs text-accent-400">
                                   {lesson.warnings_json.map((warning, index) => (
                                     <li key={index}>⚠ {warning}</li>
                                   ))}
@@ -1010,17 +1064,17 @@ export default function CoveragePlanPage() {
                                     key={item.source_item_id}
                                     className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/5 bg-navy-950/40 px-2 py-1 text-xs"
                                   >
-                                    <span className="text-slate-200">
+                                    <span className="text-zinc-200">
                                       {item.item_code} — {item.title}
                                     </span>
-                                    <span className="text-slate-500">
+                                    <span className="text-zinc-500">
                                       {item.content_type} · {item.coverage_type} ·{" "}
                                       {item.is_required ? "obrigatório" : "complementar"}
                                     </span>
                                     <div className="flex flex-wrap items-center gap-2">
                                       <Link
                                         href={`/fidelity-coverage/${projectId}/inventory/${item.source_item_id}`}
-                                        className="text-gold-400 hover:text-gold-500"
+                                        className="text-accent-400 hover:text-accent-500"
                                       >
                                         ver origem
                                       </Link>
@@ -1036,7 +1090,7 @@ export default function CoveragePlanPage() {
                                             [item.source_item_id]: event.target.value,
                                           }))
                                         }
-                                        className="rounded border border-white/10 bg-navy-950/60 px-1 py-0.5 text-xs text-slate-300"
+                                        className="rounded border border-white/5 bg-navy-950/60 px-1 py-0.5 text-xs text-zinc-300"
                                       >
                                         <option value="">Mover para...</option>
                                         {allLessons
@@ -1062,7 +1116,7 @@ export default function CoveragePlanPage() {
                                           !moveTargetByItem[item.source_item_id] ||
                                           itemActionBusy === `move-${item.source_item_id}`
                                         }
-                                        className="rounded border border-white/10 px-2 py-0.5 text-xs text-slate-300 hover:border-gold-500/40 hover:text-gold-400 disabled:opacity-40"
+                                        className="rounded border border-white/5 px-2 py-0.5 text-xs text-zinc-300 hover:border-accent-500/40 hover:text-accent-400 disabled:opacity-40"
                                       >
                                         Mover
                                       </button>
@@ -1084,7 +1138,7 @@ export default function CoveragePlanPage() {
                               </ul>
 
                               {addItemLessonId === lesson.id ? (
-                                <div className="mt-3 flex flex-wrap items-center gap-2 rounded border border-gold-500/20 bg-gold-500/5 p-2">
+                                <div className="mt-3 flex flex-wrap items-center gap-2 rounded border border-accent-500/20 bg-accent-500/5 p-2">
                                   <label className="sr-only" htmlFor={`add-item-${lesson.id}`}>
                                     Item não mapeado
                                   </label>
@@ -1092,7 +1146,7 @@ export default function CoveragePlanPage() {
                                     id={`add-item-${lesson.id}`}
                                     value={addItemSourceId}
                                     onChange={(event) => setAddItemSourceId(event.target.value)}
-                                    className="rounded border border-white/10 bg-navy-950/60 px-2 py-1 text-xs text-slate-200"
+                                    className="rounded border border-white/5 bg-navy-950/60 px-2 py-1 text-xs text-zinc-200"
                                   >
                                     <option value="">Selecione um item sem aula...</option>
                                     {unmappedItems.map((item) => (
@@ -1105,7 +1159,7 @@ export default function CoveragePlanPage() {
                                     type="button"
                                     onClick={() => handleAddUnmappedItem(lesson.id)}
                                     disabled={!addItemSourceId || itemActionBusy === `add-${lesson.id}`}
-                                    className="rounded bg-gold-500 px-2 py-1 text-xs font-semibold text-navy-950 hover:bg-gold-400 disabled:opacity-50"
+                                    className="rounded bg-accent-500 px-2 py-1 text-xs font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:opacity-50"
                                   >
                                     Associar
                                   </button>
@@ -1115,7 +1169,7 @@ export default function CoveragePlanPage() {
                                       setAddItemLessonId(null);
                                       setAddItemSourceId("");
                                     }}
-                                    className="text-xs text-slate-400 hover:text-slate-200"
+                                    className="text-xs text-zinc-400 hover:text-zinc-200"
                                   >
                                     Cancelar
                                   </button>
@@ -1127,14 +1181,14 @@ export default function CoveragePlanPage() {
                                   type="button"
                                   onClick={() => handleRecalculateLesson(lesson.id)}
                                   disabled={busyAction === `lesson-${lesson.id}`}
-                                  className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:border-gold-500/40 hover:text-gold-400 disabled:opacity-60"
+                                  className="rounded border border-white/5 px-2 py-1 text-xs text-zinc-300 hover:border-accent-500/40 hover:text-accent-400 disabled:opacity-60"
                                 >
                                   {busyAction === `lesson-${lesson.id}` ? "Recalculando..." : "Recalcular aula"}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => startEditLesson(lesson)}
-                                  className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:border-gold-500/40 hover:text-gold-400"
+                                  className="rounded border border-white/5 px-2 py-1 text-xs text-zinc-300 hover:border-accent-500/40 hover:text-accent-400"
                                 >
                                   Editar
                                 </button>
@@ -1143,7 +1197,7 @@ export default function CoveragePlanPage() {
                                   onClick={() => (splittingLessonId === lesson.id ? cancelSplit() : startSplit(lesson))}
                                   disabled={lesson.source_items.length < 2}
                                   title={lesson.source_items.length < 2 ? "É preciso ao menos 2 itens para dividir." : undefined}
-                                  className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:border-gold-500/40 hover:text-gold-400 disabled:opacity-40"
+                                  className="rounded border border-white/5 px-2 py-1 text-xs text-zinc-300 hover:border-accent-500/40 hover:text-accent-400 disabled:opacity-40"
                                 >
                                   Dividir aula
                                 </button>
@@ -1152,7 +1206,7 @@ export default function CoveragePlanPage() {
                                   onClick={() => (mergingLessonId === lesson.id ? cancelMerge() : startMerge(lesson))}
                                   disabled={sameModuleLessons.length === 0}
                                   title={sameModuleLessons.length === 0 ? "Não há outra aula no mesmo módulo." : undefined}
-                                  className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:border-gold-500/40 hover:text-gold-400 disabled:opacity-40"
+                                  className="rounded border border-white/5 px-2 py-1 text-xs text-zinc-300 hover:border-accent-500/40 hover:text-accent-400 disabled:opacity-40"
                                 >
                                   Unir aulas
                                 </button>
@@ -1161,7 +1215,7 @@ export default function CoveragePlanPage() {
                                   onClick={() => setAddItemLessonId(addItemLessonId === lesson.id ? null : lesson.id)}
                                   disabled={unmappedItems.length === 0}
                                   title={unmappedItems.length === 0 ? "Não há itens sem aula no momento." : undefined}
-                                  className="rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:border-gold-500/40 hover:text-gold-400 disabled:opacity-40"
+                                  className="rounded border border-white/5 px-2 py-1 text-xs text-zinc-300 hover:border-accent-500/40 hover:text-accent-400 disabled:opacity-40"
                                 >
                                   Adicionar item
                                 </button>
@@ -1179,7 +1233,7 @@ export default function CoveragePlanPage() {
                                           event.target.value = "";
                                         }
                                       }}
-                                      className="rounded border border-white/10 bg-navy-950/60 px-2 py-1 text-xs text-slate-300"
+                                      className="rounded border border-white/5 bg-navy-950/60 px-2 py-1 text-xs text-zinc-300"
                                     >
                                       <option value="">Mover para módulo...</option>
                                       {otherModules.map((candidate) => (
@@ -1192,9 +1246,11 @@ export default function CoveragePlanPage() {
                                 ) : null}
                               </div>
 
+                              <LessonScriptPanel lessonId={lesson.id} planApproved={plan?.status === "approved"} />
+
                               {editingLessonId === lesson.id ? (
-                                <div className="mt-3 rounded-md border border-gold-500/20 bg-gold-500/5 p-3">
-                                  <label htmlFor={`lesson-title-${lesson.id}`} className="block text-xs text-slate-300">
+                                <div className="mt-3 rounded-md border border-accent-500/20 bg-accent-500/5 p-3">
+                                  <label htmlFor={`lesson-title-${lesson.id}`} className="block text-xs text-zinc-300">
                                     Título da aula
                                   </label>
                                   <input
@@ -1202,9 +1258,9 @@ export default function CoveragePlanPage() {
                                     type="text"
                                     value={lessonForm.title}
                                     onChange={(event) => setLessonForm((form) => ({ ...form, title: event.target.value }))}
-                                    className="mt-1 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                                    className="mt-1 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
                                   />
-                                  <label htmlFor={`lesson-desc-${lesson.id}`} className="mt-3 block text-xs text-slate-300">
+                                  <label htmlFor={`lesson-desc-${lesson.id}`} className="mt-3 block text-xs text-zinc-300">
                                     Descrição
                                   </label>
                                   <textarea
@@ -1212,9 +1268,9 @@ export default function CoveragePlanPage() {
                                     value={lessonForm.description}
                                     onChange={(event) => setLessonForm((form) => ({ ...form, description: event.target.value }))}
                                     rows={2}
-                                    className="mt-1 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                                    className="mt-1 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
                                   />
-                                  <label htmlFor={`lesson-obj-${lesson.id}`} className="mt-3 block text-xs text-slate-300">
+                                  <label htmlFor={`lesson-obj-${lesson.id}`} className="mt-3 block text-xs text-zinc-300">
                                     Objetivo de aprendizagem
                                   </label>
                                   <textarea
@@ -1224,7 +1280,7 @@ export default function CoveragePlanPage() {
                                       setLessonForm((form) => ({ ...form, learning_objective: event.target.value }))
                                     }
                                     rows={2}
-                                    className="mt-1 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                                    className="mt-1 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
                                   />
                                   {lessonError ? <p className="mt-2 text-xs text-red-300">{lessonError}</p> : null}
                                   <div className="mt-3 flex gap-2">
@@ -1232,14 +1288,14 @@ export default function CoveragePlanPage() {
                                       type="button"
                                       onClick={() => saveLesson(lesson.id)}
                                       disabled={lessonSaving}
-                                      className="rounded-md bg-gold-500 px-3 py-1.5 text-xs font-semibold text-navy-950 hover:bg-gold-400 disabled:opacity-60"
+                                      className="rounded-md bg-accent-500 px-3 py-1.5 text-xs font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:opacity-60"
                                     >
                                       {lessonSaving ? "Salvando..." : "Salvar aula"}
                                     </button>
                                     <button
                                       type="button"
                                       onClick={cancelEditLesson}
-                                      className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:border-white/30"
+                                      className="rounded-md border border-white/5 px-3 py-1.5 text-xs text-zinc-300 hover:border-white/30"
                                     >
                                       Cancelar
                                     </button>
@@ -1248,8 +1304,8 @@ export default function CoveragePlanPage() {
                               ) : null}
 
                               {splittingLessonId === lesson.id ? (
-                                <div className="mt-3 rounded-md border border-gold-500/20 bg-gold-500/5 p-3">
-                                  <p className="text-xs font-medium text-gold-300">
+                                <div className="mt-3 rounded-md border border-accent-500/20 bg-accent-500/5 p-3">
+                                  <p className="text-xs font-medium text-accent-300">
                                     Dividir aula — selecione em qual metade cada item fica
                                   </p>
                                   <div className="mt-2 space-y-1">
@@ -1258,11 +1314,11 @@ export default function CoveragePlanPage() {
                                         key={item.source_item_id}
                                         className="flex flex-wrap items-center justify-between gap-2 rounded border border-white/5 bg-navy-950/40 px-2 py-1 text-xs"
                                       >
-                                        <span className="text-slate-200">
+                                        <span className="text-zinc-200">
                                           {item.item_code} — {item.title}
                                         </span>
                                         <div className="flex gap-3">
-                                          <label className="flex items-center gap-1 text-slate-300">
+                                          <label className="flex items-center gap-1 text-zinc-300">
                                             <input
                                               type="radio"
                                               name={`split-${lesson.id}-${item.source_item_id}`}
@@ -1276,7 +1332,7 @@ export default function CoveragePlanPage() {
                                             />
                                             Primeira
                                           </label>
-                                          <label className="flex items-center gap-1 text-slate-300">
+                                          <label className="flex items-center gap-1 text-zinc-300">
                                             <input
                                               type="radio"
                                               name={`split-${lesson.id}-${item.source_item_id}`}
@@ -1294,7 +1350,7 @@ export default function CoveragePlanPage() {
                                       </div>
                                     ))}
                                   </div>
-                                  <label htmlFor={`split-first-title-${lesson.id}`} className="mt-3 block text-xs text-slate-300">
+                                  <label htmlFor={`split-first-title-${lesson.id}`} className="mt-3 block text-xs text-zinc-300">
                                     Título da primeira aula
                                   </label>
                                   <input
@@ -1302,9 +1358,9 @@ export default function CoveragePlanPage() {
                                     type="text"
                                     value={splitTitles.first}
                                     onChange={(event) => setSplitTitles((titles) => ({ ...titles, first: event.target.value }))}
-                                    className="mt-1 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                                    className="mt-1 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
                                   />
-                                  <label htmlFor={`split-second-title-${lesson.id}`} className="mt-3 block text-xs text-slate-300">
+                                  <label htmlFor={`split-second-title-${lesson.id}`} className="mt-3 block text-xs text-zinc-300">
                                     Título da segunda aula
                                   </label>
                                   <input
@@ -1312,7 +1368,7 @@ export default function CoveragePlanPage() {
                                     type="text"
                                     value={splitTitles.second}
                                     onChange={(event) => setSplitTitles((titles) => ({ ...titles, second: event.target.value }))}
-                                    className="mt-1 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                                    className="mt-1 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
                                   />
                                   {splitError ? <p className="mt-2 text-xs text-red-300">{splitError}</p> : null}
                                   <div className="mt-3 flex gap-2">
@@ -1320,14 +1376,14 @@ export default function CoveragePlanPage() {
                                       type="button"
                                       onClick={() => confirmSplit(lesson)}
                                       disabled={splitSaving}
-                                      className="rounded-md bg-gold-500 px-3 py-1.5 text-xs font-semibold text-navy-950 hover:bg-gold-400 disabled:opacity-60"
+                                      className="rounded-md bg-accent-500 px-3 py-1.5 text-xs font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:opacity-60"
                                     >
                                       {splitSaving ? "Dividindo..." : "Confirmar divisão"}
                                     </button>
                                     <button
                                       type="button"
                                       onClick={cancelSplit}
-                                      className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:border-white/30"
+                                      className="rounded-md border border-white/5 px-3 py-1.5 text-xs text-zinc-300 hover:border-white/30"
                                     >
                                       Cancelar
                                     </button>
@@ -1336,16 +1392,16 @@ export default function CoveragePlanPage() {
                               ) : null}
 
                               {mergingLessonId === lesson.id ? (
-                                <div className="mt-3 rounded-md border border-gold-500/20 bg-gold-500/5 p-3">
-                                  <p className="text-xs font-medium text-gold-300">Unir com outra aula do mesmo módulo</p>
-                                  <label htmlFor={`merge-target-${lesson.id}`} className="mt-2 block text-xs text-slate-300">
+                                <div className="mt-3 rounded-md border border-accent-500/20 bg-accent-500/5 p-3">
+                                  <p className="text-xs font-medium text-accent-300">Unir com outra aula do mesmo módulo</p>
+                                  <label htmlFor={`merge-target-${lesson.id}`} className="mt-2 block text-xs text-zinc-300">
                                     Aula destino
                                   </label>
                                   <select
                                     id={`merge-target-${lesson.id}`}
                                     value={mergeTargetId}
                                     onChange={(event) => setMergeTargetId(event.target.value)}
-                                    className="mt-1 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100"
+                                    className="mt-1 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100"
                                   >
                                     <option value="">Selecione...</option>
                                     {sameModuleLessons.map((candidate) => (
@@ -1363,7 +1419,7 @@ export default function CoveragePlanPage() {
                                       const combinedItems = lesson.source_item_count + target.source_item_count;
                                       return (
                                         <p
-                                          className={`mt-2 text-xs ${combinedMinutes > 10 ? "text-red-300" : "text-slate-300"}`}
+                                          className={`mt-2 text-xs ${combinedMinutes > 10 ? "text-red-300" : "text-zinc-300"}`}
                                         >
                                           Duração combinada estimada: {combinedMinutes.toFixed(2)} min · {combinedItems}{" "}
                                           item(ns) {combinedMinutes > 10 ? "— excede o limite de 10 min" : ""}
@@ -1371,7 +1427,7 @@ export default function CoveragePlanPage() {
                                       );
                                     })()
                                   ) : null}
-                                  <label htmlFor={`merge-title-${lesson.id}`} className="mt-3 block text-xs text-slate-300">
+                                  <label htmlFor={`merge-title-${lesson.id}`} className="mt-3 block text-xs text-zinc-300">
                                     Título da aula unificada
                                   </label>
                                   <input
@@ -1379,7 +1435,7 @@ export default function CoveragePlanPage() {
                                     type="text"
                                     value={mergeTitle}
                                     onChange={(event) => setMergeTitle(event.target.value)}
-                                    className="mt-1 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                                    className="mt-1 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
                                   />
                                   {mergeError ? <p className="mt-2 text-xs text-red-300">{mergeError}</p> : null}
                                   <div className="mt-3 flex gap-2">
@@ -1387,14 +1443,14 @@ export default function CoveragePlanPage() {
                                       type="button"
                                       onClick={() => confirmMerge(lesson)}
                                       disabled={mergeSaving || !mergeTargetId}
-                                      className="rounded-md bg-gold-500 px-3 py-1.5 text-xs font-semibold text-navy-950 hover:bg-gold-400 disabled:opacity-60"
+                                      className="rounded-md bg-accent-500 px-3 py-1.5 text-xs font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:opacity-60"
                                     >
                                       {mergeSaving ? "Unindo..." : "Confirmar união"}
                                     </button>
                                     <button
                                       type="button"
                                       onClick={cancelMerge}
-                                      className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:border-white/30"
+                                      className="rounded-md border border-white/5 px-3 py-1.5 text-xs text-zinc-300 hover:border-white/30"
                                     >
                                       Cancelar
                                     </button>
@@ -1419,8 +1475,8 @@ export default function CoveragePlanPage() {
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-md border border-white/10 bg-navy-950/60 p-4">
-      <p className="text-xs text-slate-400">{label}</p>
+    <div className="rounded-md border border-white/5 bg-navy-950/60 p-4">
+      <p className="text-xs text-zinc-400">{label}</p>
       <p className="mt-2 text-xl font-semibold text-white">{value}</p>
     </div>
   );

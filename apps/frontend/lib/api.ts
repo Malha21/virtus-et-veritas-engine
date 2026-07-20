@@ -9,6 +9,7 @@ import type {
 } from "@/types/educational-content";
 import type { GeneratedContent } from "@/types/content";
 import type { AdminUser, AdminUserCreatePayload, UserAICredential } from "@/types/user-management";
+import type { MarketInsights } from "@/types/market-insight";
 import type {
   CoveragePlan,
   CoveragePlanLessonMergeRequest,
@@ -20,6 +21,11 @@ import type {
   CoveragePlanSummary,
   CoveragePlanValidationResult,
   CoveragePlanVersion,
+  LessonGeneration,
+  LessonGenerationDetail,
+  LessonGenerationListResponse,
+  LessonGenerationValidationResult,
+  LessonRegenerationMode,
   UnmappedSourceItem,
 } from "@/types/coverage-plan";
 import type {
@@ -1385,6 +1391,18 @@ export async function deleteProject(projectId: string): Promise<{ message: strin
   });
 }
 
+export async function deleteProjectFile(projectId: string, fileId: string): Promise<{ message: string }> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<{ message: string }>(`/projects/${projectId}/files/${fileId}`, {
+    method: "DELETE",
+    token,
+  });
+}
+
 export async function startDocumentExtraction(
   projectId: string,
   fileId: string,
@@ -1881,6 +1899,204 @@ export async function removeCoveragePlanLessonSourceItem(
   });
 }
 
+export async function generateCoverageLesson(lessonId: string, force = false): Promise<ProcessingJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob>(`/coverage-plan/lessons/${lessonId}/generate`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ force }),
+  });
+}
+
+export async function regenerateCoverageLesson(
+  lessonId: string,
+  mode: LessonRegenerationMode,
+  feedback?: string,
+): Promise<ProcessingJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob>(`/coverage-plan/lessons/${lessonId}/regenerate`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ mode, feedback: feedback ?? null }),
+  });
+}
+
+export async function listCoverageLessonGenerations(lessonId: string): Promise<LessonGenerationListResponse> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<LessonGenerationListResponse>(`/coverage-plan/lessons/${lessonId}/generations`, { token });
+}
+
+export async function getLatestCoverageLessonGeneration(lessonId: string): Promise<LessonGenerationDetail | null> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<LessonGenerationDetail | null>(`/coverage-plan/lessons/${lessonId}/generations/latest`, { token });
+}
+
+export async function getCoverageLessonGenerationVersion(
+  lessonId: string,
+  version: number,
+): Promise<LessonGenerationDetail> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<LessonGenerationDetail>(`/coverage-plan/lessons/${lessonId}/generations/${version}`, { token });
+}
+
+export async function editCoverageLessonGeneration(
+  lessonId: string,
+  version: number,
+  payload: { generated_content: string; structured_content?: Record<string, unknown> | null },
+): Promise<LessonGeneration> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<LessonGeneration>(`/coverage-plan/lessons/${lessonId}/generations/${version}`, {
+    method: "PATCH",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function validateCoverageLessonGeneration(
+  lessonId: string,
+  version: number,
+): Promise<LessonGenerationValidationResult> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<LessonGenerationValidationResult>(
+    `/coverage-plan/lessons/${lessonId}/generations/${version}/validate`,
+    { method: "POST", token },
+  );
+}
+
+export async function approveCoverageLessonGeneration(lessonId: string, version: number): Promise<LessonGeneration> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<LessonGeneration>(`/coverage-plan/lessons/${lessonId}/generations/${version}/approve`, {
+    method: "POST",
+    token,
+  });
+}
+
+export async function rejectCoverageLessonGeneration(
+  lessonId: string,
+  version: number,
+  reason: string,
+): Promise<LessonGeneration> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<LessonGeneration>(`/coverage-plan/lessons/${lessonId}/generations/${version}/reject`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function getCoverageLessonGenerationJob(lessonId: string): Promise<ProcessingJob | null> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob | null>(`/coverage-plan/lessons/${lessonId}/generation-job`, { token });
+}
+
+export async function generateAllCoverageLessons(
+  projectId: string,
+  options: { force?: boolean; onlyPending?: boolean } = {},
+): Promise<ProcessingJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob>(`/projects/${projectId}/lessons/generate-all`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ force: options.force ?? false, only_pending: options.onlyPending ?? true }),
+  });
+}
+
+export async function getCourseLessonGenerationJob(projectId: string): Promise<ProcessingJob | null> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob | null>(`/projects/${projectId}/lessons/generation-job`, { token });
+}
+
+export async function retryFailedCoverageLessons(projectId: string): Promise<ProcessingJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob>(`/projects/${projectId}/lessons/retry-failed`, { method: "POST", token });
+}
+
+export async function cancelCoverageLessonGeneration(projectId: string): Promise<ProcessingJob> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<ProcessingJob>(`/projects/${projectId}/lessons/cancel-generation`, { method: "POST", token });
+}
+
+export async function startEducationalContentFromCoveragePlanJob(
+  projectId: string,
+  generationLanguage: GenerationLanguage = "pt-BR",
+): Promise<StartAIJobResponse> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<StartAIJobResponse>(`/projects/${projectId}/coverage-plan-content/jobs`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ generation_language: generationLanguage }),
+  });
+}
+
+export async function getMarketInsights(): Promise<MarketInsights> {
+  const token = getToken();
+  if (!token) {
+    throw new ApiError("Sua sessão expirou. Faça login novamente.", 401);
+  }
+
+  return apiFetch<MarketInsights>("/market-insights", { token });
+}
+
 export async function listAdminUsers(): Promise<AdminUser[]> {
   const token = getToken();
   if (!token) {
@@ -1933,6 +2149,7 @@ export async function listMyApiKeys(): Promise<UserAICredential[]> {
 export async function putMyApiKey(
   providerType: UserAICredential["provider_type"],
   apiKey: string,
+  baseUrl?: string,
 ): Promise<UserAICredential> {
   const token = getToken();
   if (!token) {
@@ -1942,7 +2159,7 @@ export async function putMyApiKey(
   return apiFetch<UserAICredential>(`/account/api-keys/${providerType}`, {
     method: "PUT",
     token,
-    body: JSON.stringify({ api_key: apiKey }),
+    body: JSON.stringify({ api_key: apiKey, base_url: baseUrl || null }),
   });
 }
 

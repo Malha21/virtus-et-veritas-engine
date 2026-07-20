@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import { apiFetch } from "@/lib/api";
 import { getToken, removeToken } from "@/lib/auth";
 import type { CurrentUser } from "@/types/auth";
@@ -37,8 +38,8 @@ export function AppShell({ children }: AppShellProps) {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-navy-950 text-slate-200">
-        Carregando área segura...
+      <main className="flex min-h-screen items-center justify-center bg-navy-950 text-zinc-200">
+        <LoadingProgress label="Carregando área segura..." />
       </main>
     );
   }
@@ -51,7 +52,7 @@ export function AppShell({ children }: AppShellProps) {
     <main className="flex min-h-screen bg-navy-950 text-white">
       <Sidebar role={user.role} />
       <section className="min-w-0 flex-1">
-        <Topbar userName={user.name} organizationName={user.organization.name} />
+        <Topbar />
         <div className="p-6">{typeof children === "function" ? children(user) : children}</div>
       </section>
     </main>

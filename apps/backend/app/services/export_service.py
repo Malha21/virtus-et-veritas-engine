@@ -21,6 +21,11 @@ from sqlalchemy.orm import Session
 from app.models.generated_content import GeneratedContent
 from app.models.project import Project
 from app.models.user import User
+from app.services.coverage_plan_service import (
+    build_course_structure_shape_from_plan,
+    get_approved_plan,
+    list_lesson_scripts_from_plan,
+)
 from app.services.project_service import get_project_by_id
 
 FOOTER_TEXT = "Virtus et Veritas Engine"
@@ -115,17 +120,21 @@ def get_content_number(content: GeneratedContent, field: str) -> int:
 
 
 def get_lesson_scripts(db: Session, project: Project) -> list[GeneratedContent]:
-    contents = list(
-        db.execute(
-            select(GeneratedContent)
-            .where(
-                GeneratedContent.project_id == project.id,
-                GeneratedContent.organization_id == project.organization_id,
-                GeneratedContent.content_type.in_(["lesson_script", "lesson_scripts"]),
-            )
-            .order_by(GeneratedContent.created_at.asc())
-        ).scalars().all()
-    )
+    coverage_plan = get_approved_plan(db, project.id)
+    contents = list_lesson_scripts_from_plan(db, coverage_plan) if coverage_plan is not None else []
+
+    if not contents:
+        contents = list(
+            db.execute(
+                select(GeneratedContent)
+                .where(
+                    GeneratedContent.project_id == project.id,
+                    GeneratedContent.organization_id == project.organization_id,
+                    GeneratedContent.content_type.in_(["lesson_script", "lesson_scripts"]),
+                )
+                .order_by(GeneratedContent.created_at.asc())
+            ).scalars().all()
+        )
 
     contents.sort(
         key=lambda content: (
@@ -1295,37 +1304,37 @@ def build_full_course_pdf(
 
 
 def export_presentation_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     presentation = get_latest_presentation_deck(db, project)
     return project, build_presentation_pdf(project, presentation)
 
 
 def export_presentation_pptx(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     presentation = get_latest_presentation_deck(db, project)
     return project, build_presentation_pptx(project, presentation)
 
 
 def export_lesson_scripts_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     lesson_scripts = get_lesson_scripts(db, project)
     return project, build_lesson_scripts_pdf(project, lesson_scripts)
 
 
 def export_quizzes_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     quizzes = get_module_quizzes(db, project)
     return project, build_quizzes_pdf(project, quizzes)
 
 
 def export_complementary_materials_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     materials = get_complementary_materials(db, project)
     return project, build_complementary_materials_pdf(project, materials)
 
 
 def export_full_course_pdf(db: Session, current_user: User, project_id: UUID) -> tuple[Project, bytes]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     lesson_scripts = get_optional_contents(db, project, ["lesson_script", "lesson_scripts"])
     lesson_scripts.sort(
         key=lambda content: (
@@ -1338,10 +1347,17 @@ def export_full_course_pdf(db: Session, current_user: User, project_id: UUID) ->
     quizzes.sort(key=lambda content: (get_content_number(content, "module_number") or 9999, content.created_at))
     materials = get_optional_contents(db, project, ["complementary_material", "complementary_materials"])
     materials.sort(key=lambda content: content.created_at)
+
+    course_structure = get_optional_latest_content(db, project, "course_structure")
+    if course_structure is None:
+        coverage_plan = get_approved_plan(db, project.id)
+        if coverage_plan is not None:
+            course_structure = GeneratedContent(content_json=build_course_structure_shape_from_plan(db, coverage_plan))
+
     pdf_bytes = build_full_course_pdf(
         project,
         get_optional_latest_content(db, project, "course_summary"),
-        get_optional_latest_content(db, project, "course_structure"),
+        course_structure,
         lesson_scripts,
         quizzes,
         materials,

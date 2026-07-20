@@ -1,11 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { FolderOpen, Trash2 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { KpiActionCard } from "@/components/ui/KpiActionCard";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ApiError, apiFetch, deleteProject } from "@/lib/api";
+import { translateProcessingStatus, translateProductType, translateProjectStatus } from "@/lib/status-labels";
 import type { ProjectListResponse } from "@/types/project";
 
 export default function ProjectsPage() {
@@ -51,34 +54,28 @@ export default function ProjectsPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm text-gold-400">Projetos</p>
-            <h1 className="mt-2 text-3xl font-semibold">Produção intelectual</h1>
-            <p className="mt-2 text-slate-400">Acompanhe os projetos criados no VVE Engine.</p>
-          </div>
-          <Link
-            href="/projects/new"
-            className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 hover:bg-gold-400"
-          >
-            Novo Projeto
-          </Link>
+        <div>
+          <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Projetos</p>
+          <h1 className="mt-2 text-3xl font-semibold">Produção intelectual</h1>
+          <p className="mt-2 text-zinc-400">Acompanhe os projetos criados no VVE Engine.</p>
         </div>
 
-        <div className="mt-8 rounded-lg border border-white/10 bg-white/[0.035]">
+        <div className="mt-8 rounded-lg border border-white/5 bg-white/[0.035]">
           {loading ? (
-            <p className="p-6 text-slate-300">Carregando projetos...</p>
+            <div className="p-6">
+              <LoadingProgress label="Carregando projetos..." />
+            </div>
           ) : error ? (
             <p className="p-6 text-red-300">{error}</p>
           ) : !data?.items.length ? (
             <div className="p-8 text-center">
               <p className="text-lg font-semibold text-white">Nenhum projeto criado ainda.</p>
-              <p className="mt-2 text-sm text-slate-400">Crie o primeiro projeto para iniciar a produção.</p>
+              <p className="mt-2 text-sm text-zinc-400">Crie o primeiro projeto para iniciar a produção.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="border-b border-white/10 text-slate-400">
+                <thead className="border-b border-white/5 text-zinc-400">
                   <tr>
                     <th className="px-5 py-4 font-medium">Título</th>
                     <th className="px-5 py-4 font-medium">Tipo</th>
@@ -92,28 +89,34 @@ export default function ProjectsPage() {
                   {data.items.map((project) => (
                     <tr key={project.id} className="border-b border-white/5">
                       <td className="px-5 py-4 font-medium text-white">{project.title}</td>
-                      <td className="px-5 py-4 text-slate-300">{project.product_type}</td>
+                      <td className="px-5 py-4 text-zinc-300">{translateProductType(project.product_type)}</td>
                       <td className="px-5 py-4">
-                        <StatusBadge label={project.status} tone={project.status === "active" ? "success" : "neutral"} />
+                        <StatusBadge
+                          label={translateProjectStatus(project.status)}
+                          tone={project.status === "active" ? "success" : "neutral"}
+                        />
                       </td>
                       <td className="px-5 py-4">
-                        <StatusBadge label={project.processing_status} tone="warning" />
+                        <StatusBadge label={translateProcessingStatus(project.processing_status)} tone="warning" />
                       </td>
-                      <td className="px-5 py-4 text-slate-400">
+                      <td className="px-5 py-4 text-zinc-400">
                         {new Date(project.updated_at).toLocaleDateString("pt-BR")}
                       </td>
                       <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <Link href={`/projects/${project.id}`} className="text-gold-400 hover:text-gold-500">
-                            Abrir
-                          </Link>
-                          <button
-                            type="button"
+                        <div className="flex items-center gap-2">
+                          <KpiActionCard
+                            size="sm"
+                            icon={FolderOpen}
+                            label="Abrir"
+                            href={`/projects/${project.id}`}
+                          />
+                          <KpiActionCard
+                            size="sm"
+                            tone="red"
+                            icon={Trash2}
+                            label="Excluir"
                             onClick={() => handleDeleteProject(project.id)}
-                            className="rounded-md border border-red-400/30 px-3 py-1.5 text-red-300 transition hover:border-red-300/60 hover:bg-red-950/30 hover:text-red-200"
-                          >
-                            Excluir
-                          </button>
+                          />
                         </div>
                       </td>
                     </tr>

@@ -88,7 +88,17 @@ def _copy_upload_to_temp(file: UploadFile, max_size_bytes: int, extension: str) 
 
 def save_project_file(db: Session, current_user: User, project_id: uuid.UUID, file: UploadFile) -> ProjectFile:
     settings = get_settings()
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
+
+    existing_file = db.execute(
+        select(ProjectFile).where(ProjectFile.project_id == project.id)
+    ).scalar_one_or_none()
+    if existing_file is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Este projeto já possui um documento-base enviado. Remova o arquivo atual antes de enviar um novo.",
+        )
+
     extension = _resolve_upload_extension(file)
     _validate_document_upload(file, extension)
 
@@ -135,7 +145,7 @@ def save_project_file(db: Session, current_user: User, project_id: uuid.UUID, fi
 
 
 def list_project_files(db: Session, current_user: User, project_id: uuid.UUID) -> list[ProjectFile]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     statement = (
         select(ProjectFile)
         .where(
@@ -145,3 +155,28 @@ def list_project_files(db: Session, current_user: User, project_id: uuid.UUID) -
         .order_by(ProjectFile.created_at.desc())
     )
     return list(db.execute(statement).scalars().all())
+
+
+def delete_project_file(db: Session, current_user: User, project_id: uuid.UUID, file_id: uuid.UUID) -> None:
+    settings = get_settings()
+    project = get_project_by_id(db, current_user, project_id)
+    project_file = db.execute(
+        select(ProjectFile).where(
+            ProjectFile.id == file_id,
+            ProjectFile.project_id == project.id,
+            ProjectFile.organization_id == current_user.organization_id,
+        )
+    ).scalar_one_or_none()
+    if project_file is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Documento não encontrado.")
+
+    storage_root = Path(settings.storage_path).resolve()
+    file_path = (storage_root / project_file.storage_path).resolve()
+    if storage_root in file_path.parents and file_path.exists() and file_path.is_file():
+        try:
+            file_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    db.delete(project_file)
+    db.commit()

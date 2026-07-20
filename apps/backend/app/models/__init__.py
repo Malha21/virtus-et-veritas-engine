@@ -14,6 +14,7 @@ from app.models.instructor_asset import InstructorAsset
 from app.models.instructor_profile import InstructorProfile
 from app.models.lesson_generation import LessonGeneration
 from app.models.lesson_source_item import LessonSourceItem
+from app.models.market_bestseller import MarketBestseller
 from app.models.organization import Organization
 from app.models.project import Project
 from app.models.project_file import ProjectFile
@@ -47,6 +48,7 @@ __all__ = [
     "InstructorProfile",
     "LessonGeneration",
     "LessonSourceItem",
+    "MarketBestseller",
     "Organization",
     "ProcessingJob",
     "ProcessingLog",

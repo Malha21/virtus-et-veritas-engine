@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { apiFetch, listDocumentPages } from "@/lib/api";
 import type { DocumentPage } from "@/types/document-extraction";
@@ -62,27 +63,29 @@ export default function DocumentPagesListPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl">
-        <Link href={`/fidelity-coverage/${projectId}`} className="text-sm text-gold-400 hover:text-gold-500">
+        <Link href={`/fidelity-coverage/${projectId}`} className="text-sm text-accent-400 hover:text-accent-500">
           Voltar para o projeto
         </Link>
 
         <div className="mt-4">
-          <p className="text-sm text-gold-400">Extração do Documento</p>
+          <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Extração do Documento</p>
           <h1 className="mt-2 text-3xl font-semibold">Páginas extraídas</h1>
           {sourceFile ? (
-            <p className="mt-2 text-slate-400">{sourceFile.original_filename}</p>
+            <p className="mt-2 text-zinc-400">{sourceFile.original_filename}</p>
           ) : null}
         </div>
 
         {loading ? (
-          <p className="mt-8 text-slate-300">Carregando páginas...</p>
+          <div className="mt-8">
+            <LoadingProgress label="Carregando páginas..." />
+          </div>
         ) : error ? (
           <p className="mt-8 text-red-300">{error}</p>
         ) : !sourceFile ? (
-          <p className="mt-8 text-slate-300">Nenhum documento enviado neste projeto.</p>
+          <p className="mt-8 text-zinc-300">Nenhum documento enviado neste projeto.</p>
         ) : !pages.length ? (
-          <div className="mt-8 rounded-lg border border-white/10 bg-white/[0.035] p-8 text-center">
-            <p className="text-slate-300">Nenhuma página extraída ainda. Inicie a extração no projeto.</p>
+          <div className="mt-8 rounded-lg border border-white/5 bg-white/[0.035] p-8 text-center">
+            <p className="text-zinc-300">Nenhuma página extraída ainda. Inicie a extração no projeto.</p>
           </div>
         ) : (
           <>
@@ -90,7 +93,7 @@ export default function DocumentPagesListPage() {
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                className="rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                className="rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
               >
                 <option value="all">Todos os status</option>
                 {statusOptions.map((status) => (
@@ -99,7 +102,7 @@ export default function DocumentPagesListPage() {
                   </option>
                 ))}
               </select>
-              <label className="flex items-center gap-2 text-sm text-slate-300">
+              <label className="flex items-center gap-2 text-sm text-zinc-300">
                 <input
                   type="checkbox"
                   checked={ocrOnly}
@@ -110,9 +113,9 @@ export default function DocumentPagesListPage() {
               </label>
             </div>
 
-            <div className="mt-6 overflow-x-auto rounded-lg border border-white/10 bg-white/[0.035]">
+            <div className="mt-6 overflow-x-auto rounded-lg border border-white/5 bg-white/[0.035]">
               <table className="w-full min-w-[860px] text-left text-sm">
-                <thead className="border-b border-white/10 text-slate-400">
+                <thead className="border-b border-white/5 text-zinc-400">
                   <tr>
                     <th className="px-5 py-4 font-medium">Página</th>
                     <th className="px-5 py-4 font-medium">Status</th>
@@ -134,15 +137,15 @@ export default function DocumentPagesListPage() {
                           tone={STATUS_TONE[docPage.extraction_status] || "neutral"}
                         />
                       </td>
-                      <td className="px-5 py-4 text-slate-300">{docPage.word_count}</td>
-                      <td className="px-5 py-4 text-slate-300">{docPage.character_count}</td>
-                      <td className="px-5 py-4 text-slate-300">{docPage.block_count}</td>
-                      <td className="px-5 py-4 text-slate-400">{docPage.extraction_method || "—"}</td>
-                      <td className="px-5 py-4 text-slate-300">{docPage.requires_ocr ? "Sim" : "Não"}</td>
+                      <td className="px-5 py-4 text-zinc-300">{docPage.word_count}</td>
+                      <td className="px-5 py-4 text-zinc-300">{docPage.character_count}</td>
+                      <td className="px-5 py-4 text-zinc-300">{docPage.block_count}</td>
+                      <td className="px-5 py-4 text-zinc-400">{docPage.extraction_method || "—"}</td>
+                      <td className="px-5 py-4 text-zinc-300">{docPage.requires_ocr ? "Sim" : "Não"}</td>
                       <td className="px-5 py-4">
                         <Link
                           href={`/fidelity-coverage/${projectId}/pages/${docPage.page_number}`}
-                          className="text-gold-400 hover:text-gold-500"
+                          className="text-accent-400 hover:text-accent-500"
                         >
                           Abrir detalhes
                         </Link>

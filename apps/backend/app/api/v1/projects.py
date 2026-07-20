@@ -39,7 +39,7 @@ def get_projects(
 ) -> dict[str, object]:
     projects, total = list_projects(
         db=db,
-        organization_id=current_user.organization_id,
+        current_user=current_user,
         page=page,
         page_size=page_size,
         status_filter=status,
@@ -74,7 +74,7 @@ def get_project(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, object]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     data = ProjectResponse.model_validate(project)
     return {"success": True, "data": data.model_dump(mode="json")}
 
@@ -86,7 +86,7 @@ def patch_project(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, object]:
-    project = update_project(db, current_user.organization_id, project_id, payload)
+    project = update_project(db, current_user, project_id, payload)
     data = ProjectResponse.model_validate(project)
     return {"success": True, "data": data.model_dump(mode="json")}
 
@@ -97,5 +97,5 @@ def delete_project(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, object]:
-    archive_project(db, current_user.organization_id, project_id)
+    archive_project(db, current_user, project_id)
     return {"success": True, "data": {"message": "Projeto arquivado com sucesso."}}

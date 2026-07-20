@@ -4,7 +4,7 @@ do Plano de Cobertura (fase 19.5). Nao exposto via API; todo source_item_id
 antes de qualquer persistencia (nunca confiamos cegamente no que a IA retorna --
 cf. app/services/lesson_generation_service.py::validate_structured_response)."""
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 AI_LESSON_GENERATION_STATUSES = {"completed", "requires_split"}
 AI_COVERAGE_TYPES = {"full", "partial", "reference"}
@@ -43,6 +43,52 @@ class AICoverageLessonScriptResponse(BaseModel):
     requires_split: bool = False
     split_reason: str | None = None
     warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("source_pages", mode="before")
+    @classmethod
+    def normalize_source_pages(cls, value: object) -> list[int]:
+        """O contexto enviado a IA descreve paginas de cada item como faixas
+        ("paginas: 1-1"), e o modelo por vezes copia esse formato de faixa
+        (ex.: "1-1", "2-3") em vez de devolver inteiros individuais, mesmo o
+        contrato pedindo uma lista de paginas. Em vez de derrubar a geracao
+        inteira por causa de um campo so informativo/de rastreabilidade,
+        aceitamos int ou string aqui e expandimos faixas em inteiros."""
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            value = [value]
+
+        pages: list[int] = []
+        for item in value:
+            if isinstance(item, bool):
+                continue
+            if isinstance(item, int):
+                pages.append(item)
+                continue
+            if isinstance(item, str):
+                text = item.strip()
+                if "-" in text:
+                    start_text, _, end_text = text.partition("-")
+                    try:
+                        start, end = int(start_text.strip()), int(end_text.strip())
+                    except ValueError:
+                        continue
+                    if start > end:
+                        start, end = end, start
+                    pages.extend(range(start, end + 1))
+                    continue
+                try:
+                    pages.append(int(text))
+                except ValueError:
+                    continue
+
+        seen: set[int] = set()
+        ordered: list[int] = []
+        for page in pages:
+            if page not in seen:
+                seen.add(page)
+                ordered.append(page)
+        return ordered
 
     @model_validator(mode="after")
     def validate_status(self) -> "AICoverageLessonScriptResponse":

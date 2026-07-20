@@ -6,8 +6,11 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.models.user import User
-from app.schemas.project import AIProviderChoice
-from app.schemas.user_ai_credential import UserAICredentialResponse, UserAICredentialUpsert
+from app.schemas.user_ai_credential import (
+    CredentialProviderChoice,
+    UserAICredentialResponse,
+    UserAICredentialUpsert,
+)
 from app.services.user_ai_credential_service import (
     delete_user_credential,
     list_user_credentials,
@@ -29,19 +32,19 @@ def get_my_api_keys(
 
 @router.put("/{provider_type}")
 def put_my_api_key(
-    provider_type: AIProviderChoice,
+    provider_type: CredentialProviderChoice,
     payload: UserAICredentialUpsert,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, object]:
-    credential = upsert_user_credential(db, current_user, provider_type, payload.api_key)
+    credential = upsert_user_credential(db, current_user, provider_type, payload.api_key, payload.base_url)
     data = UserAICredentialResponse.model_validate(credential)
     return {"success": True, "data": data.model_dump(mode="json")}
 
 
 @router.delete("/{provider_type}")
 def delete_my_api_key(
-    provider_type: AIProviderChoice,
+    provider_type: CredentialProviderChoice,
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, object]:

@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-AIProviderChoice = Literal["openai", "anthropic", "gemini"]
+AIProviderChoice = Literal["openai", "gemini"]
 
 
 class ProjectCreate(BaseModel):

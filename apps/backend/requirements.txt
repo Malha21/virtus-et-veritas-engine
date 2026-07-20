@@ -1,6 +1,6 @@
 fastapi==0.115.6
 alembic==1.14.0
-anthropic
+apscheduler==3.10.4
 beautifulsoup4==4.12.3
 ebooklib==0.18
 google-genai

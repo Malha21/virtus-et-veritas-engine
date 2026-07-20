@@ -7,11 +7,16 @@ from sqlalchemy.orm import Session
 from app.core.crypto import decrypt_secret, encrypt_secret
 from app.models.user import User
 from app.models.user_ai_credential import UserAICredential
-from app.providers.ai import PROVIDER_KEYS
+
+# Provedores aceitos para cadastro de chave pessoal. Inclui "anthropic" mesmo
+# sem geracao de conteudo ativa para esse provedor (PROVIDER_KEYS, em
+# app.providers.ai, cobre so os provedores efetivamente usados na geracao) -
+# permite ao usuario guardar a chave desde ja.
+CREDENTIAL_PROVIDER_KEYS = ("openai", "gemini", "anthropic")
 
 
 def _validate_provider_type(provider_type: str) -> None:
-    if provider_type not in PROVIDER_KEYS:
+    if provider_type not in CREDENTIAL_PROVIDER_KEYS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Provedor de IA inválido.",
@@ -31,7 +36,13 @@ def get_user_credential(db: Session, user: User, provider_type: str) -> UserAICr
     return db.execute(statement).scalar_one_or_none()
 
 
-def upsert_user_credential(db: Session, user: User, provider_type: str, api_key: str) -> UserAICredential:
+def upsert_user_credential(
+    db: Session,
+    user: User,
+    provider_type: str,
+    api_key: str,
+    base_url: str | None = None,
+) -> UserAICredential:
     _validate_provider_type(provider_type)
     api_key = api_key.strip()
 
@@ -41,6 +52,7 @@ def upsert_user_credential(db: Session, user: User, provider_type: str, api_key:
 
     credential.encrypted_api_key = encrypt_secret(api_key)
     credential.key_last_four = api_key[-4:]
+    credential.base_url = base_url or None
     db.add(credential)
     db.commit()
     db.refresh(credential)
@@ -67,6 +79,19 @@ def get_decrypted_key_for_user(db: Session, user_id: UUID, provider_type: str) -
     if credential is None:
         return None
     return decrypt_secret(credential.encrypted_api_key)
+
+
+def resolve_generation_base_url(db: Session, current_user: User, provider_type: str) -> str | None:
+    """Host customizado cadastrado pelo usuario para o provedor, se houver.
+
+    Ao contrario da chave, o host e sempre opcional: quando nao cadastrado
+    (ou quando nao ha credencial pessoal), retorna None e o provider usa o
+    host padrao dele.
+    """
+    credential = get_user_credential(db, current_user, provider_type)
+    if credential is None:
+        return None
+    return credential.base_url
 
 
 def resolve_generation_api_key(db: Session, current_user: User, provider_type: str) -> str | None:

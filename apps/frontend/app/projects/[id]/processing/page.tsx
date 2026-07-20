@@ -5,9 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ApiError, apiFetch, getProjectJob, startAiStructureJob } from "@/lib/api";
 import type { GenerationLanguage } from "@/lib/api";
+import { translateJobStatus, translateLogLevel, translateProcessingStatus } from "@/lib/status-labels";
 import type { ProcessingJob, ProcessingLog, ProcessingStatus } from "@/types/processing";
 
 const steps = ["Recebendo arquivo", "Extraindo texto", "Texto extraido", "Estrutura com IA"];
@@ -87,25 +89,27 @@ export default function ProcessingPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl">
-        <Link href={`/projects/${params.id}`} className="text-sm text-gold-400 hover:text-gold-500">
+        <Link href={`/projects/${params.id}`} className="text-sm text-accent-400 hover:text-accent-500">
           Voltar para o projeto
         </Link>
 
         {loading ? (
-          <p className="mt-8 text-slate-300">Carregando processamento...</p>
+          <div className="mt-8">
+            <LoadingProgress label="Carregando processamento..." />
+          </div>
         ) : error ? (
           <p className="mt-8 text-red-300">{error}</p>
         ) : status ? (
           <div className="mt-6 grid gap-6">
-            <section className="rounded-lg border border-white/10 bg-white/[0.035] p-6">
+            <section className="rounded-lg border border-white/5 bg-white/[0.035] p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="text-sm text-gold-400">Processamento</p>
+                  <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Processamento</p>
                   <h1 className="mt-2 text-3xl font-semibold">Processamento inteligente</h1>
-                  <p className="mt-2 text-slate-400">{status.current_step}</p>
+                  <p className="mt-2 text-zinc-400">{status.current_step}</p>
                 </div>
                 <StatusBadge
-                  label={status.processing_status}
+                  label={translateProcessingStatus(status.processing_status)}
                   tone={status.processing_status === "failed" ? "neutral" : "success"}
                 />
               </div>
@@ -113,38 +117,38 @@ export default function ProcessingPage() {
               <div className="mt-8">
                 <div className="h-2 rounded-full bg-white/10">
                   <div
-                    className="h-2 rounded-full bg-gold-500 transition-all"
+                    className="h-2 rounded-full bg-accent-500 transition-all"
                     style={{ width: `${status.progress}%` }}
                   />
                 </div>
-                <p className="mt-2 text-sm text-slate-400">{status.progress}% concluido</p>
+                <p className="mt-2 text-sm text-zinc-400">{status.progress}% concluido</p>
               </div>
 
               <div className="mt-8 grid gap-3 md:grid-cols-4">
                 {steps.map((step, index) => (
-                  <div key={step} className="rounded-md border border-white/10 bg-navy-950/60 p-4">
-                    <p className="text-xs font-medium text-gold-400">0{index + 1}</p>
-                    <p className="mt-2 text-sm text-slate-100">{step}</p>
+                  <div key={step} className="rounded-md border border-white/5 bg-navy-950/60 p-4">
+                    <p className="text-xs font-medium text-accent-400">0{index + 1}</p>
+                    <p className="mt-2 text-sm text-zinc-100">{step}</p>
                   </div>
                 ))}
               </div>
             </section>
 
-            <section className="rounded-lg border border-white/10 bg-white/[0.035] p-6">
+            <section className="rounded-lg border border-white/5 bg-white/[0.035] p-6">
               <h2 className="text-lg font-semibold">Logs de processamento</h2>
               {!logs.length ? (
-                <p className="mt-4 text-sm text-slate-400">Nenhum log registrado ainda.</p>
+                <p className="mt-4 text-sm text-zinc-400">Nenhum log registrado ainda.</p>
               ) : (
                 <div className="mt-4 grid gap-3">
                   {logs.map((log) => (
-                    <div key={log.id} className="rounded-md border border-white/10 bg-navy-950/60 p-4">
+                    <div key={log.id} className="rounded-md border border-white/5 bg-navy-950/60 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <StatusBadge label={log.level} tone={log.level === "error" ? "neutral" : "warning"} />
-                        <span className="text-xs text-slate-500">
+                        <StatusBadge label={translateLogLevel(log.level)} tone={log.level === "error" ? "neutral" : "warning"} />
+                        <span className="text-xs text-zinc-500">
                           {new Date(log.created_at).toLocaleString("pt-BR")}
                         </span>
                       </div>
-                      <p className="mt-3 text-sm text-slate-200">{log.message}</p>
+                      <p className="mt-3 text-sm text-zinc-200">{log.message}</p>
                     </div>
                   ))}
                 </div>
@@ -155,18 +159,18 @@ export default function ProcessingPage() {
               {status.processing_status === "ai_structure_generated" ? (
                 <Link
                   href={`/projects/${params.id}/review`}
-                  className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
+                  className="inline-flex rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow"
                 >
                   Revisar estrutura
                 </Link>
               ) : (
                 <div className="flex flex-wrap items-end gap-3">
-                  <label className="grid gap-2 text-sm text-slate-300">
+                  <label className="grid gap-2 text-sm text-zinc-300">
                     Idioma da estrutura
                     <select
                       value={generationLanguage}
                       onChange={(event) => setGenerationLanguage(event.target.value as GenerationLanguage)}
-                      className="rounded-md border border-white/10 bg-navy-950 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+                      className="rounded-md border border-white/5 bg-navy-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
                     >
                       <option value="pt-BR">Português do Brasil</option>
                       <option value="en-US">English</option>
@@ -176,7 +180,7 @@ export default function ProcessingPage() {
                     type="button"
                     onClick={generateStructure}
                     disabled={status.processing_status !== "text_extracted" || generating}
-                    className="inline-flex rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {generating ? "Gerando estrutura..." : "Gerar estrutura com IA"}
                   </button>
@@ -194,18 +198,21 @@ export default function ProcessingPage() {
 
 function JobProgressCard({ job }: { job: ProcessingJob }) {
   return (
-    <section className="rounded-lg border border-gold-500/20 bg-gold-500/10 p-6">
+    <section className="rounded-lg border border-accent-500/20 bg-accent-500/10 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-gold-100">Processamento em andamento</h2>
-          <p className="mt-2 text-sm text-slate-300">{job.current_step || "Preparando processamento"}</p>
+          <h2 className="text-lg font-semibold text-accent-100">Processamento em andamento</h2>
+          <p className="mt-2 text-sm text-zinc-300">{job.current_step || "Preparando processamento"}</p>
         </div>
-        <StatusBadge label={job.status || "pending"} tone={job.status === "failed" ? "neutral" : "warning"} />
+        <StatusBadge
+          label={`${translateJobStatus(job.status || "pending")} · ${job.progress ?? 0}%`}
+          tone={job.status === "failed" ? "neutral" : "warning"}
+        />
       </div>
       <div className="mt-5 h-2 rounded-full bg-white/10">
-        <div className="h-2 rounded-full bg-gold-500 transition-all" style={{ width: `${job.progress || 0}%` }} />
+        <div className="h-2 rounded-full bg-accent-500 transition-all" style={{ width: `${job.progress || 0}%` }} />
       </div>
-      <p className="mt-2 text-sm text-slate-400">{job.message || `${job.progress || 0}% concluido`}</p>
+      <p className="mt-2 text-sm text-zinc-400">{job.message || `${job.progress || 0}% concluido`}</p>
     </section>
   );
 }

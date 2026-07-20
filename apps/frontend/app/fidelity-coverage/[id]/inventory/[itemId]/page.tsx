@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   ApiError,
@@ -96,22 +97,24 @@ export default function SourceInventoryItemDetailPage() {
       <div className="mx-auto max-w-4xl">
         <Link
           href={`/fidelity-coverage/${projectId}/inventory`}
-          className="text-sm text-gold-400 hover:text-gold-500"
+          className="text-sm text-accent-400 hover:text-accent-500"
         >
           Voltar para o inventário
         </Link>
 
         {loading ? (
-          <p className="mt-8 text-slate-300">Carregando item...</p>
+          <div className="mt-8">
+            <LoadingProgress label="Carregando item..." />
+          </div>
         ) : error ? (
           <p className="mt-8 text-red-300">{error}</p>
         ) : item ? (
           <>
             <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="font-mono text-sm text-gold-400">{item.item_code}</p>
+                <p className="font-mono text-sm text-accent-400">{item.item_code}</p>
                 <h1 className="mt-2 text-2xl font-semibold">{item.title}</h1>
-                <p className="mt-2 text-sm text-slate-400">
+                <p className="mt-2 text-sm text-zinc-400">
                   {item.content_type} · {item.importance} · páginas{" "}
                   {item.page_start === item.page_end ? item.page_start : `${item.page_start}–${item.page_end}`}
                 </p>
@@ -126,7 +129,7 @@ export default function SourceInventoryItemDetailPage() {
                 type="button"
                 onClick={handleApprove}
                 disabled={item.status === "approved"}
-                className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Aprovar
               </button>
@@ -140,12 +143,12 @@ export default function SourceInventoryItemDetailPage() {
               </button>
             </div>
 
-            <div className="mt-8 rounded-lg border border-white/10 bg-white/[0.035] p-6">
+            <div className="mt-8 rounded-lg border border-white/5 bg-white/[0.035] p-6">
               <p className="font-medium text-white">Conteúdo normalizado (editável)</p>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-zinc-500">
                 Descrição fiel e reorganizada pela IA. Não é o texto original do documento.
               </p>
-              <label htmlFor="edit-title" className="mt-4 block text-sm text-slate-300">
+              <label htmlFor="edit-title" className="mt-4 block text-sm text-zinc-300">
                 Título
               </label>
               <input
@@ -153,9 +156,9 @@ export default function SourceInventoryItemDetailPage() {
                 type="text"
                 value={editTitle}
                 onChange={(event) => setEditTitle(event.target.value)}
-                className="mt-2 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                className="mt-2 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
               />
-              <label htmlFor="edit-normalized" className="mt-4 block text-sm text-slate-300">
+              <label htmlFor="edit-normalized" className="mt-4 block text-sm text-zinc-300">
                 Conteúdo normalizado
               </label>
               <textarea
@@ -163,65 +166,65 @@ export default function SourceInventoryItemDetailPage() {
                 value={editNormalized}
                 onChange={(event) => setEditNormalized(event.target.value)}
                 rows={6}
-                className="mt-2 w-full rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                className="mt-2 w-full rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
               />
               <button
                 type="button"
                 onClick={handleSave}
                 disabled={saving}
-                className="mt-4 rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-4 rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? "Salvando..." : "Salvar alterações"}
               </button>
             </div>
 
-            <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.035] p-6">
+            <div className="mt-6 rounded-lg border border-white/5 bg-white/[0.035] p-6">
               <p className="font-medium text-white">Texto original (fonte, não editável aqui)</p>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-zinc-500">
                 Trecho exato extraído do documento, preservado para rastreabilidade.
               </p>
-              <pre className="mt-4 max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-navy-950/60 p-4 text-sm text-slate-200">
+              <pre className="mt-4 max-h-[300px] overflow-auto whitespace-pre-wrap break-words rounded-md bg-navy-950/60 p-4 text-sm text-zinc-200">
                 {item.source_text}
               </pre>
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg border border-white/10 bg-white/[0.035] p-5">
+              <div className="rounded-lg border border-white/5 bg-white/[0.035] p-5">
                 <p className="font-medium text-white">Blocos de origem</p>
                 <div className="mt-3 space-y-2">
                   {item.blocks.length === 0 ? (
-                    <p className="text-sm text-slate-400">Nenhum bloco associado.</p>
+                    <p className="text-sm text-zinc-400">Nenhum bloco associado.</p>
                   ) : (
                     item.blocks.map((block) => (
                       <Link
                         key={block.id}
                         href={`/fidelity-coverage/${projectId}/pages/${block.page_number}`}
-                        className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 hover:border-gold-500/40"
+                        className="flex items-center justify-between rounded-md border border-white/5 px-3 py-2 text-sm text-zinc-200 hover:border-accent-500/40"
                       >
                         <span>
                           {block.block_code} {block.is_primary ? "(principal)" : ""}
                         </span>
-                        <span className="text-slate-400">página {block.page_number}</span>
+                        <span className="text-zinc-400">página {block.page_number}</span>
                       </Link>
                     ))
                   )}
                 </div>
               </div>
 
-              <div className="rounded-lg border border-white/10 bg-white/[0.035] p-5">
+              <div className="rounded-lg border border-white/5 bg-white/[0.035] p-5">
                 <p className="font-medium text-white">Dependências</p>
                 <div className="mt-3 space-y-2">
                   {item.dependencies.length === 0 && item.dependents.length === 0 ? (
-                    <p className="text-sm text-slate-400">Nenhuma dependência registrada.</p>
+                    <p className="text-sm text-zinc-400">Nenhuma dependência registrada.</p>
                   ) : (
                     <>
                       {item.dependencies.map((dep) => (
-                        <p key={dep.id} className="text-sm text-slate-300">
+                        <p key={dep.id} className="text-sm text-zinc-300">
                           depende de outro item ({dep.dependency_type})
                         </p>
                       ))}
                       {item.dependents.map((dep) => (
-                        <p key={dep.id} className="text-sm text-slate-300">
+                        <p key={dep.id} className="text-sm text-zinc-300">
                           é referenciado por outro item ({dep.dependency_type})
                         </p>
                       ))}

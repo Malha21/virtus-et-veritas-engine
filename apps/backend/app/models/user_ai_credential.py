@@ -26,6 +26,7 @@ class UserAICredential(Base):
     provider_type: Mapped[str] = mapped_column(String(40), nullable=False)
     encrypted_api_key: Mapped[str] = mapped_column(Text, nullable=False)
     key_last_four: Mapped[str] = mapped_column(String(4), nullable=False)
+    base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

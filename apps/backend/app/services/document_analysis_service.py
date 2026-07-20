@@ -29,7 +29,7 @@ from app.services.ai_orchestrator_service import (
     register_ai_request,
 )
 from app.services.project_service import get_project_by_id
-from app.services.user_ai_credential_service import resolve_generation_api_key
+from app.services.user_ai_credential_service import resolve_generation_api_key, resolve_generation_base_url
 
 
 def get_latest_document_analysis(
@@ -37,7 +37,7 @@ def get_latest_document_analysis(
     current_user: User,
     project_id: UUID,
 ) -> GeneratedContent | None:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     return db.execute(
         select(GeneratedContent)
         .where(
@@ -94,9 +94,10 @@ def generate_document_analysis(
     generation_language: str = "pt-BR",
 ) -> GeneratedContent:
     settings = get_settings()
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     provider_key = resolve_provider_key(settings, project.ai_provider)
     user_api_key = resolve_generation_api_key(db, current_user, provider_key)
+    user_base_url = resolve_generation_base_url(db, current_user, provider_key)
     api_key = user_api_key or resolve_api_key(settings, provider_key)
     if not api_key or api_key.startswith("change_me_"):
         raise HTTPException(
@@ -124,7 +125,7 @@ def generate_document_analysis(
     db.add(job)
     db.flush()
 
-    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key, base_url_override=user_base_url)
     system_prompt, user_prompt = build_document_analysis_prompt(project, extracted_text, generation_language)
     response = ai_provider.generate_text(
         AIProviderRequest(

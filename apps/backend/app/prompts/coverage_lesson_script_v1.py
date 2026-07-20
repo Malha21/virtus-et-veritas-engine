@@ -191,6 +191,9 @@ fornecidos ({', '.join(item_codes)}) devem ser considerados; se algum nao puder
 ser efetivamente coberto sem violar as regras, liste-o em uncovered_source_items
 e explique em warnings.
 
+source_pages deve ser uma lista de numeros de pagina individuais (ex.: [1, 2, 3]),
+nunca faixas em formato de texto como "1-3".
+
 Retorne somente JSON valido exatamente neste formato:
 {{
   "lesson_title": "",
@@ -213,7 +216,7 @@ Retorne somente JSON valido exatamente neste formato:
     }}
   ],
   "uncovered_source_items": [],
-  "source_pages": [],
+  "source_pages": [1, 2],
   "source_block_codes": [],
   "unsupported_claims_declared": [],
   "requires_split": false,

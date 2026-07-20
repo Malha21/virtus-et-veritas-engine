@@ -3,13 +3,14 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import { ApiError, deleteMyApiKey, listMyApiKeys, putMyApiKey } from "@/lib/api";
 import type { UserAICredential } from "@/types/user-management";
 
-const PROVIDERS: { value: UserAICredential["provider_type"]; label: string }[] = [
-  { value: "anthropic", label: "Anthropic (Claude)" },
-  { value: "openai", label: "OpenAI (GPT)" },
-  { value: "gemini", label: "Google Gemini" },
+const PROVIDERS: { value: UserAICredential["provider_type"]; label: string; defaultHost: string }[] = [
+  { value: "openai", label: "OpenAI (GPT)", defaultHost: "api.openai.com" },
+  { value: "gemini", label: "Google Gemini", defaultHost: "generativelanguage.googleapis.com" },
+  { value: "anthropic", label: "Anthropic (Claude)", defaultHost: "api.anthropic.com" },
 ];
 
 export default function ApiKeysPage() {
@@ -17,8 +18,9 @@ export default function ApiKeysPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [provider, setProvider] = useState<UserAICredential["provider_type"]>("anthropic");
+  const [provider, setProvider] = useState<UserAICredential["provider_type"]>("openai");
   const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
   function refresh() {
@@ -40,9 +42,10 @@ export default function ApiKeysPage() {
     setSaving(true);
 
     try {
-      await putMyApiKey(provider, apiKey);
+      await putMyApiKey(provider, apiKey, baseUrl);
       setSuccess("Chave salva com sucesso.");
       setApiKey("");
+      setBaseUrl("");
       refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Não foi possível salvar a chave.");
@@ -67,26 +70,31 @@ export default function ApiKeysPage() {
     return PROVIDERS.find((item) => item.value === value)?.label || value;
   }
 
+  function providerDefaultHost(value: string): string {
+    return PROVIDERS.find((item) => item.value === value)?.defaultHost || "";
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl">
-        <p className="text-sm text-gold-400">Minha conta</p>
+        <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Minha conta</p>
         <h1 className="mt-2 text-3xl font-semibold">Minhas chaves de API</h1>
-        <p className="mt-2 text-slate-400">
-          Cadastre suas próprias chaves de Anthropic, OpenAI ou Gemini para gerar conteúdo com IA. Cada usuário usa a
-          própria chave — o custo de geração fica na sua conta, não na de outra pessoa.
+        <p className="mt-2 text-zinc-400">
+          Cadastre suas próprias chaves de OpenAI, Gemini ou Anthropic. Cada usuário usa a própria chave — o custo de
+          geração fica na sua conta, não na de outra pessoa. A chave da Anthropic pode ser cadastrada, mas a geração
+          de conteúdo por esse provedor ainda não está disponível nesta fase.
         </p>
 
         <form
           onSubmit={handleSubmit}
-          className="mt-8 grid gap-5 rounded-lg border border-white/10 bg-white/[0.035] p-6"
+          className="mt-8 grid gap-5 rounded-lg border border-white/5 bg-white/[0.035] p-6"
         >
-          <label className="grid gap-2 text-sm text-slate-200">
+          <label className="grid gap-2 text-sm text-zinc-200">
             Provedor
             <select
               value={provider}
               onChange={(event) => setProvider(event.target.value as UserAICredential["provider_type"])}
-              className="h-11 rounded-md border border-white/10 bg-navy-950 px-3 text-white outline-none focus:border-gold-500"
+              className="h-11 rounded-md border border-white/5 bg-navy-950 px-3 text-white outline-none focus:border-accent-500"
             >
               {PROVIDERS.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -96,7 +104,7 @@ export default function ApiKeysPage() {
             </select>
           </label>
 
-          <label className="grid gap-2 text-sm text-slate-200">
+          <label className="grid gap-2 text-sm text-zinc-200">
             Chave de API
             <input
               type="password"
@@ -105,8 +113,23 @@ export default function ApiKeysPage() {
               required
               minLength={8}
               placeholder="Cole aqui a chave da sua conta"
-              className="h-11 rounded-md border border-white/10 bg-navy-950 px-3 text-white outline-none focus:border-gold-500"
+              className="h-11 rounded-md border border-white/5 bg-navy-950 px-3 text-white outline-none focus:border-accent-500"
             />
+          </label>
+
+          <label className="grid gap-2 text-sm text-zinc-200">
+            Host (opcional)
+            <input
+              type="text"
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+              placeholder={`Em branco usa o padrão: ${providerDefaultHost(provider)}`}
+              className="h-11 rounded-md border border-white/5 bg-navy-950 px-3 text-white outline-none focus:border-accent-500"
+            />
+            <span className="text-xs text-zinc-500">
+              Use para apontar para um proxy, gateway próprio ou endpoint compatível (ex.: Azure OpenAI). Deixe em
+              branco para usar o host padrão do provedor.
+            </span>
           </label>
 
           {error ? <p className="text-sm text-red-300">{error}</p> : null}
@@ -116,38 +139,43 @@ export default function ApiKeysPage() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 hover:bg-gold-400 disabled:opacity-60"
+              className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:opacity-60"
             >
               {saving ? "Salvando..." : "Salvar chave"}
             </button>
           </div>
         </form>
 
-        <section className="mt-8 rounded-lg border border-white/10 bg-white/[0.035] p-5">
+        <section className="mt-8 rounded-lg border border-white/5 bg-white/[0.035] p-5">
           <h2 className="text-lg font-semibold text-white">Chaves cadastradas</h2>
 
           {loading ? (
-            <p className="mt-4 text-sm text-slate-400">Carregando...</p>
+            <div className="mt-4">
+              <LoadingProgress label="Carregando chaves..." />
+            </div>
           ) : !credentials.length ? (
-            <p className="mt-4 text-sm text-slate-400">Nenhuma chave cadastrada ainda.</p>
+            <p className="mt-4 text-sm text-zinc-400">Nenhuma chave cadastrada ainda.</p>
           ) : (
             <div className="mt-4 grid gap-3">
               {credentials.map((credential) => (
                 <div
                   key={credential.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-navy-950/60 px-4 py-3"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/5 bg-navy-950/60 px-4 py-3"
                 >
                   <div>
                     <p className="text-sm font-medium text-white">{providerLabel(credential.provider_type)}</p>
-                    <p className="mt-1 text-xs text-slate-400">
+                    <p className="mt-1 text-xs text-zinc-400">
                       Termina em •••• {credential.key_last_four} — atualizada em{" "}
                       {new Date(credential.updated_at).toLocaleDateString("pt-BR")}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Host: {credential.base_url || `padrão (${providerDefaultHost(credential.provider_type)})`}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleDelete(credential.provider_type)}
-                    className="rounded-md border border-white/10 px-3 py-2 text-sm text-red-300 transition hover:border-red-400/40"
+                    className="rounded-md border border-white/5 px-3 py-2 text-sm text-red-300 transition hover:border-red-400/40"
                   >
                     Remover
                   </button>

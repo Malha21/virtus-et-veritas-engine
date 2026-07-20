@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -20,6 +22,7 @@ from app.api.v1.instructor_profiles import router as instructor_profiles_router
 from app.api.v1.jobs import router as jobs_router
 from app.api.v1.lesson_generation import course_router as lesson_generation_course_router
 from app.api.v1.lesson_generation import lesson_router as lesson_generation_lesson_router
+from app.api.v1.market_insights import router as market_insights_router
 from app.api.v1.processing import router as processing_router
 from app.api.v1.project_video_settings import router as project_video_settings_router
 from app.api.v1.projects import router as projects_router
@@ -30,12 +33,22 @@ from app.api.v1.video_avatars import router as video_avatars_router
 from app.api.v1.video_pipeline import router as video_pipeline_router
 from app.api.v1.videos import router as videos_router
 from app.core.config import get_settings
+from app.core.scheduler import start_scheduler, stop_scheduler
 
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    start_scheduler()
+    yield
+    stop_scheduler()
+
 
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -71,6 +84,7 @@ app.include_router(coverage_plan_router, prefix=settings.api_prefix)
 app.include_router(coverage_plan_lessons_router, prefix=settings.api_prefix)
 app.include_router(lesson_generation_lesson_router, prefix=settings.api_prefix)
 app.include_router(lesson_generation_course_router, prefix=settings.api_prefix)
+app.include_router(market_insights_router, prefix=settings.api_prefix)
 app.include_router(ai_router, prefix=settings.api_prefix)
 app.include_router(audio_router, prefix=settings.api_prefix)
 app.include_router(instructor_assets_router, prefix=settings.api_prefix)

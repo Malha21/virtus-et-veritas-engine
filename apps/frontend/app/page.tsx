@@ -28,7 +28,7 @@ export default function Home() {
 
         <div className="relative mx-auto grid w-full max-w-6xl gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:items-center">
           <div className="max-w-3xl">
-            <p className="mb-6 inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-gold-400">
+            <p className="mb-6 inline-flex rounded-full border border-white/5 bg-white/[0.04] px-4 py-2 text-sm font-medium text-accent-400">
               Inteligência para produção de conhecimento
             </p>
 
@@ -36,7 +36,7 @@ export default function Home() {
               Virtus et Veritas Engine
             </h1>
 
-            <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-200 sm:text-xl">
+            <p className="mt-7 max-w-2xl text-lg leading-8 text-zinc-200 sm:text-xl">
               Transforme conhecimento bruto em cursos, roteiros, materiais e
               experiências educacionais com IA.
             </p>
@@ -45,23 +45,23 @@ export default function Home() {
               <button
                 type="button"
                 onClick={handleStart}
-                className="inline-flex h-12 items-center justify-center rounded-md bg-gold-500 px-6 text-sm font-semibold text-navy-950 shadow-premium transition hover:bg-gold-400 focus:outline-none focus:ring-2 focus:ring-gold-400 focus:ring-offset-2 focus:ring-offset-navy-950"
+                className="inline-flex h-12 items-center justify-center rounded-md bg-accent-500 px-6 text-sm font-semibold text-navy-950 shadow-premium transition hover:bg-accent-400 hover:shadow-glow focus:outline-none focus:ring-2 focus:ring-accent-400 focus:ring-offset-2 focus:ring-offset-navy-950"
               >
                 Iniciar Projeto
               </button>
-              <span className="text-sm text-slate-400">Área autenticada inicial</span>
+              <span className="text-sm text-zinc-400">Área autenticada inicial</span>
             </div>
           </div>
 
-          <div className="rounded-lg border border-white/10 bg-navy-900/70 p-5 shadow-premium backdrop-blur">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+          <div className="rounded-lg border border-white/5 bg-navy-900/70 p-5 shadow-premium backdrop-blur">
+            <div className="flex items-center justify-between border-b border-white/5 pb-4">
               <div>
-                <p className="text-sm text-slate-400">Pipeline VVE</p>
+                <p className="text-sm text-zinc-400">Pipeline VVE</p>
                 <p className="mt-1 text-lg font-semibold text-white">
                   Produção intelectual
                 </p>
               </div>
-              <span className="rounded-full bg-gold-500/12 px-3 py-1 text-xs font-medium text-gold-400">
+              <span className="rounded-full bg-accent-500/12 px-3 py-1 text-xs font-medium text-accent-400">
                 Fase 4
               </span>
             </div>
@@ -70,10 +70,10 @@ export default function Home() {
               {capabilities.map((item, index) => (
                 <div
                   key={item}
-                  className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.035] px-4 py-3"
+                  className="flex items-center justify-between rounded-md border border-white/5 bg-white/[0.035] px-4 py-3"
                 >
-                  <span className="text-sm text-slate-200">{item}</span>
-                  <span className="text-xs font-medium text-gold-400">
+                  <span className="text-sm text-zinc-200">{item}</span>
+                  <span className="text-xs font-medium text-accent-400">
                     0{index + 1}
                   </span>
                 </div>

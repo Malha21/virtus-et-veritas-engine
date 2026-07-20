@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   ApiError,
@@ -285,21 +286,23 @@ export default function FidelityCoverageProjectDetailPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl">
-        <Link href="/fidelity-coverage" className="text-sm text-gold-400 hover:text-gold-500">
-          Voltar para Fidelidade e Cobertura
+        <Link href={`/projects/${projectId}`} className="text-sm text-accent-400 hover:text-accent-500">
+          Voltar para o projeto
         </Link>
 
         {loading ? (
-          <p className="mt-8 text-slate-300">Carregando projeto...</p>
+          <div className="mt-8">
+            <LoadingProgress label="Carregando projeto..." />
+          </div>
         ) : error ? (
           <p className="mt-8 text-red-300">{error}</p>
         ) : project ? (
           <>
-            <div className="mt-6 flex flex-wrap items-start justify-between gap-4 rounded-lg border border-white/10 bg-white/[0.035] p-6">
+            <div className="mt-6 flex flex-wrap items-start justify-between gap-4 rounded-lg border border-white/5 bg-white/[0.035] p-6">
               <div>
-                <p className="text-sm text-gold-400">{project.product_type}</p>
+                <p className="font-mono text-xs uppercase tracking-wider text-accent-400">{project.product_type}</p>
                 <h1 className="mt-2 text-3xl font-semibold">{project.title}</h1>
-                <p className="mt-2 text-sm text-slate-400">
+                <p className="mt-2 text-sm text-zinc-400">
                   Análise de fidelidade e cobertura documental deste projeto.
                 </p>
               </div>
@@ -309,11 +312,11 @@ export default function FidelityCoverageProjectDetailPage() {
               </div>
             </div>
 
-            <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.035] p-6">
+            <div className="mt-6 rounded-lg border border-white/5 bg-white/[0.035] p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="font-medium text-white">Extração do Documento</p>
-                  <p className="mt-1 text-sm text-slate-400">
+                  <p className="mt-1 text-sm text-zinc-400">
                     Divisão do PDF em páginas e blocos rastreáveis, preservando o texto original.
                   </p>
                 </div>
@@ -331,7 +334,7 @@ export default function FidelityCoverageProjectDetailPage() {
                     action={
                       <Link
                         href={`/projects/${project.id}/upload`}
-                        className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 hover:bg-gold-400"
+                        className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow"
                       >
                         Enviar PDF
                       </Link>
@@ -340,25 +343,25 @@ export default function FidelityCoverageProjectDetailPage() {
                 </div>
               ) : (
                 <>
-                  <p className="mt-4 text-sm text-slate-300">
+                  <p className="mt-4 text-sm text-zinc-300">
                     Documento: <span className="text-white">{sourceFile.original_filename}</span>
                   </p>
 
                   {extractionError ? <p className="mt-3 text-sm text-red-300">{extractionError}</p> : null}
 
                   {isRunning && activeJob ? (
-                    <div className="mt-4 rounded-md border border-gold-500/20 bg-gold-500/10 p-4">
+                    <div className="mt-4 rounded-md border border-accent-500/20 bg-accent-500/10 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm text-gold-200">
+                        <p className="text-sm text-accent-200">
                           {activeJob.current_item || activeJob.current_step || "Processando..."}
                         </p>
-                        <span className="text-xs text-gold-300">
+                        <span className="text-xs text-accent-300">
                           {activeJob.processed_items ?? 0}/{activeJob.total_items ?? "?"} páginas
                         </span>
                       </div>
                       <div className="mt-3 h-2 rounded-full bg-white/10">
                         <div
-                          className="h-2 rounded-full bg-gold-500 transition-all"
+                          className="h-2 rounded-full bg-accent-500 transition-all"
                           style={{ width: `${activeJob.progress || 0}%` }}
                         />
                       </div>
@@ -391,7 +394,7 @@ export default function FidelityCoverageProjectDetailPage() {
                         type="button"
                         onClick={handleStartExtraction}
                         disabled={starting || isRunning}
-                        className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {starting ? "Iniciando..." : "Iniciar extração"}
                       </button>
@@ -402,7 +405,7 @@ export default function FidelityCoverageProjectDetailPage() {
                         type="button"
                         onClick={handleReprocessFailed}
                         disabled={reprocessing || isRunning}
-                        className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {reprocessing ? "Reprocessando..." : "Reprocessar falhas"}
                       </button>
@@ -411,7 +414,7 @@ export default function FidelityCoverageProjectDetailPage() {
                     <button
                       type="button"
                       onClick={refreshSummary}
-                      className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                      className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
                     >
                       Atualizar status
                     </button>
@@ -419,7 +422,7 @@ export default function FidelityCoverageProjectDetailPage() {
                     {summary && summary.total_pages > 0 ? (
                       <Link
                         href={`/fidelity-coverage/${project.id}/pages`}
-                        className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                        className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
                       >
                         Visualizar páginas
                       </Link>
@@ -429,11 +432,11 @@ export default function FidelityCoverageProjectDetailPage() {
               )}
             </div>
 
-            <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.035] p-6">
+            <div className="mt-6 rounded-lg border border-white/5 bg-white/[0.035] p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="font-medium text-white">Inventário do Documento</p>
-                  <p className="mt-1 text-sm text-slate-400">
+                  <p className="mt-1 text-sm text-zinc-400">
                     Unidades de conhecimento identificadas no documento, com página, bloco e trecho de origem.
                   </p>
                 </div>
@@ -444,9 +447,9 @@ export default function FidelityCoverageProjectDetailPage() {
               </div>
 
               {!sourceFile ? (
-                <p className="mt-4 text-sm text-slate-400">Envie um documento para habilitar o inventário.</p>
+                <p className="mt-4 text-sm text-zinc-400">Envie um documento para habilitar o inventário.</p>
               ) : !extractionReady ? (
-                <p className="mt-4 text-sm text-slate-400">
+                <p className="mt-4 text-sm text-zinc-400">
                   Conclua a extração do documento acima para habilitar a geração do inventário.
                 </p>
               ) : (
@@ -454,18 +457,18 @@ export default function FidelityCoverageProjectDetailPage() {
                   {inventoryError ? <p className="mt-3 text-sm text-red-300">{inventoryError}</p> : null}
 
                   {isInventoryRunning && inventoryJob ? (
-                    <div className="mt-4 rounded-md border border-gold-500/20 bg-gold-500/10 p-4">
+                    <div className="mt-4 rounded-md border border-accent-500/20 bg-accent-500/10 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm text-gold-200">
+                        <p className="text-sm text-accent-200">
                           {inventoryJob.current_item || inventoryJob.current_step || "Processando..."}
                         </p>
-                        <span className="text-xs text-gold-300">
+                        <span className="text-xs text-accent-300">
                           {inventoryJob.processed_items ?? 0}/{inventoryJob.total_items ?? "?"} chunks
                         </span>
                       </div>
                       <div className="mt-3 h-2 rounded-full bg-white/10">
                         <div
-                          className="h-2 rounded-full bg-gold-500 transition-all"
+                          className="h-2 rounded-full bg-accent-500 transition-all"
                           style={{ width: `${inventoryJob.progress || 0}%` }}
                         />
                       </div>
@@ -500,7 +503,7 @@ export default function FidelityCoverageProjectDetailPage() {
                         type="button"
                         onClick={handleStartInventory}
                         disabled={inventoryStarting || isInventoryRunning}
-                        className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {inventoryStarting ? "Iniciando..." : "Gerar inventário"}
                       </button>
@@ -511,7 +514,7 @@ export default function FidelityCoverageProjectDetailPage() {
                         type="button"
                         onClick={handleReprocessInventoryFailed}
                         disabled={inventoryReprocessing || isInventoryRunning}
-                        className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {inventoryReprocessing ? "Reprocessando..." : "Reprocessar falhas"}
                       </button>
@@ -520,7 +523,7 @@ export default function FidelityCoverageProjectDetailPage() {
                     <button
                       type="button"
                       onClick={refreshInventorySummary}
-                      className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                      className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
                     >
                       Atualizar status
                     </button>
@@ -528,7 +531,7 @@ export default function FidelityCoverageProjectDetailPage() {
                     {inventorySummary && inventorySummary.total_items > 0 ? (
                       <Link
                         href={`/fidelity-coverage/${projectId}/inventory`}
-                        className="rounded-md border border-white/10 px-4 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                        className="rounded-md border border-white/5 px-4 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
                       >
                         Visualizar inventário
                       </Link>
@@ -538,11 +541,11 @@ export default function FidelityCoverageProjectDetailPage() {
               )}
             </div>
 
-            <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.035] p-6">
+            <div className="mt-6 rounded-lg border border-white/5 bg-white/[0.035] p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="font-medium text-white">Plano de Cobertura</p>
-                  <p className="mt-1 text-sm text-slate-400">
+                  <p className="mt-1 text-sm text-zinc-400">
                     Estrutura pedagógica (módulos e aulas) e Mapa de Aulas: relação entre cada item do inventário e
                     a(s) aula(s) em que ele deve ser ensinado.
                   </p>
@@ -556,9 +559,9 @@ export default function FidelityCoverageProjectDetailPage() {
               {coveragePlanError ? <p className="mt-3 text-sm text-red-300">{coveragePlanError}</p> : null}
 
               {!sourceFile ? (
-                <p className="mt-4 text-sm text-slate-400">Envie um documento para habilitar o plano de cobertura.</p>
+                <p className="mt-4 text-sm text-zinc-400">Envie um documento para habilitar o plano de cobertura.</p>
               ) : !inventorySummary || inventorySummary.total_items === 0 ? (
-                <p className="mt-4 text-sm text-slate-400">
+                <p className="mt-4 text-sm text-zinc-400">
                   Gere e revise o inventário acima para habilitar o plano de cobertura.
                 </p>
               ) : coveragePlanSummary && coveragePlanSummary.total_items > 0 ? (
@@ -573,7 +576,7 @@ export default function FidelityCoverageProjectDetailPage() {
               <div className="mt-6">
                 <Link
                   href={`/fidelity-coverage/${projectId}/coverage-plan`}
-                  className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400"
+                  className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow"
                 >
                   Abrir Plano de Cobertura
                 </Link>
@@ -582,10 +585,10 @@ export default function FidelityCoverageProjectDetailPage() {
 
             <div className="mt-8 grid gap-4 md:grid-cols-2">
               {SUBSECTIONS.map((section) => (
-                <div key={section.title} className="rounded-lg border border-white/10 bg-white/[0.035] p-5">
+                <div key={section.title} className="rounded-lg border border-white/5 bg-white/[0.035] p-5">
                   <p className="font-medium text-white">{section.title}</p>
-                  <p className="mt-2 text-sm text-slate-400">{section.description}</p>
-                  <p className="mt-4 text-xs uppercase tracking-wide text-slate-500">Em breve</p>
+                  <p className="mt-2 text-sm text-zinc-400">{section.description}</p>
+                  <p className="mt-4 text-xs uppercase tracking-wide text-zinc-500">Em breve</p>
                 </div>
               ))}
             </div>
@@ -598,8 +601,8 @@ export default function FidelityCoverageProjectDetailPage() {
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-md border border-white/10 bg-navy-950/60 p-4">
-      <p className="text-xs text-slate-400">{label}</p>
+    <div className="rounded-md border border-white/5 bg-navy-950/60 p-4">
+      <p className="text-xs text-zinc-400">{label}</p>
       <p className="mt-2 text-xl font-semibold text-white">{value}</p>
     </div>
   );

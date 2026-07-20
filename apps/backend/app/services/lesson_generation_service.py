@@ -62,9 +62,9 @@ from app.services.coverage_plan_config import (
 )
 from app.services.coverage_plan_service import get_latest_plan, get_lesson_for_user
 from app.services.coverage_plan_validator import EXCLUDED_ITEM_STATUSES, REVIEW_FLAG_STATUSES
-from app.services.processing_service import add_processing_log
+from app.services.processing_service import add_processing_log, reap_if_stale
 from app.services.project_service import get_project_by_id
-from app.services.user_ai_credential_service import resolve_generation_api_key
+from app.services.user_ai_credential_service import resolve_generation_api_key, resolve_generation_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -313,7 +313,7 @@ def _prepare_items_for_prompt(
 # --------------------------------------------------------------------------
 
 def get_active_lesson_generation_job(db: Session, lesson_id: UUID) -> ProcessingJob | None:
-    return db.execute(
+    job = db.execute(
         select(ProcessingJob)
         .where(
             ProcessingJob.coverage_plan_lesson_id == lesson_id,
@@ -322,6 +322,7 @@ def get_active_lesson_generation_job(db: Session, lesson_id: UUID) -> Processing
         )
         .order_by(ProcessingJob.created_at.desc())
     ).scalars().first()
+    return reap_if_stale(db, job)
 
 
 def get_latest_lesson_generation_job(db: Session, lesson_id: UUID) -> ProcessingJob | None:
@@ -333,7 +334,7 @@ def get_latest_lesson_generation_job(db: Session, lesson_id: UUID) -> Processing
 
 
 def get_active_course_lesson_generation_job(db: Session, project_id: UUID) -> ProcessingJob | None:
-    return db.execute(
+    job = db.execute(
         select(ProcessingJob)
         .where(
             ProcessingJob.project_id == project_id,
@@ -342,6 +343,7 @@ def get_active_course_lesson_generation_job(db: Session, project_id: UUID) -> Pr
         )
         .order_by(ProcessingJob.created_at.desc())
     ).scalars().first()
+    return reap_if_stale(db, job)
 
 
 def get_latest_course_lesson_generation_job(db: Session, project_id: UUID) -> ProcessingJob | None:
@@ -469,7 +471,7 @@ def start_repair_missing_items(
 def start_course_lesson_generation(
     db: Session, current_user: User, project_id: UUID, *, force: bool = False, only_pending: bool = True
 ) -> ProcessingJob:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     plan = get_latest_plan(db, project.id)
     if plan is None:
         raise HTTPException(
@@ -536,7 +538,7 @@ def start_course_lesson_generation(
 
 
 def retry_failed_course_lessons(db: Session, current_user: User, project_id: UUID) -> ProcessingJob:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     plan = get_latest_plan(db, project.id)
     if plan is None:
         raise HTTPException(
@@ -592,7 +594,7 @@ def retry_failed_course_lessons(db: Session, current_user: User, project_id: UUI
 
 
 def cancel_course_lesson_generation(db: Session, current_user: User, project_id: UUID) -> ProcessingJob:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     job = get_active_course_lesson_generation_job(db, project.id)
     if job is None:
         raise HTTPException(
@@ -672,7 +674,7 @@ def generate_lesson(db: Session, current_user: User, job: ProcessingJob) -> None
     if lesson is None:
         raise LessonGenerationError("Aula do plano de cobertura não encontrada para gerar.")
     plan, module = load_plan_and_module(db, lesson)
-    project = get_project_by_id(db, current_user.organization_id, plan.project_id)
+    project = get_project_by_id(db, current_user, plan.project_id)
     settings = get_settings()
 
     payload = job.payload_json or {}
@@ -724,7 +726,8 @@ def generate_lesson(db: Session, current_user: User, job: ProcessingJob) -> None
 
     provider_key = resolve_provider_key(settings, project.ai_provider)
     user_api_key = resolve_generation_api_key(db, current_user, provider_key)
-    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key)
+    user_base_url = resolve_generation_base_url(db, current_user, provider_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key, base_url_override=user_base_url)
     provider_record = get_active_ai_provider_record(db, provider_key, resolve_provider_name(settings, provider_key))
 
     ai_response, warnings, usage = call_model(
@@ -1312,7 +1315,7 @@ def edit_generation_manual(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Gere a aula pelo menos uma vez antes de editar manualmente."
         )
 
-    project = get_project_by_id(db, current_user.organization_id, plan.project_id)
+    project = get_project_by_id(db, current_user, plan.project_id)
     fingerprint = compute_lesson_source_fingerprint(lesson, plan, pairs)
 
     word_count = count_words(generated_content_text)

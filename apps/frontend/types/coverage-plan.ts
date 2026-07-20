@@ -226,3 +226,110 @@ export type CoveragePlanLessonSourceItemAddRequest = {
   source_order_in_lesson?: number;
   coverage_notes?: string;
 };
+
+export type LessonGenerationStatus =
+  | "pending"
+  | "queued"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "requires_review"
+  | "requires_split"
+  | "approved"
+  | "rejected"
+  | "stale"
+  | "cancelled";
+
+export type LessonGenerationValidationStatus =
+  | "pending"
+  | "valid"
+  | "invalid"
+  | "requires_review"
+  | "requires_split"
+  | "approved";
+
+export type LessonRegenerationMode = "regenerate" | "regenerate_with_feedback";
+
+export type LessonGeneration = {
+  id: string;
+  lesson_content_id: string;
+  coverage_plan_lesson_id: string | null;
+  version: number;
+  generated_content: string | null;
+  structured_content: Record<string, unknown> | null;
+  word_count: number | null;
+  estimated_duration_seconds: number | null;
+  source_item_count: number;
+  generation_status: LessonGenerationStatus;
+  validation_status: LessonGenerationValidationStatus;
+  model_name: string | null;
+  prompt_version: string | null;
+  error_message: string | null;
+  coverage_plan_version: number | null;
+  source_fingerprint: string | null;
+  is_stale: boolean;
+  requires_split: boolean;
+  split_reason: string | null;
+  covered_source_items_json: Record<string, unknown>[] | null;
+  uncovered_source_items_json: Record<string, unknown>[] | null;
+  source_pages_json: number[] | null;
+  source_block_codes_json: string[] | null;
+  unsupported_claims_json: string[] | null;
+  warnings_json: string[] | null;
+  feedback_notes: string | null;
+  is_manual_edit: boolean;
+  approved_at: string | null;
+  approved_by: string | null;
+  rejected_at: string | null;
+  rejected_by: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LessonGenerationDetail = LessonGeneration & {
+  lesson_id: string;
+  lesson_title: string;
+  module_id: string;
+  module_title: string;
+  target_duration_minutes: string | null;
+  is_approved_version: boolean;
+  is_latest_version: boolean;
+  source_items: CoveragePlanLessonSourceItem[];
+};
+
+export type LessonGenerationListResponse = {
+  items: LessonGeneration[];
+  latest_version: number | null;
+  approved_version: number | null;
+};
+
+export type LessonGenerationValidationIssue = {
+  issue_type: string;
+  severity: string;
+  message: string;
+  source_item_id: string | null;
+};
+
+export type LessonGenerationValidationResult = {
+  status: string;
+  covered_item_count: number;
+  expected_item_count: number;
+  missing_required_item_codes: string[];
+  extra_item_codes: string[];
+  requires_split: boolean;
+  split_reason: string | null;
+  issues: LessonGenerationValidationIssue[];
+  warnings: string[];
+};
+
+export type CourseLessonGenerationSummary = {
+  total_lessons: number;
+  completed_lessons: number;
+  failed_lessons: number;
+  skipped_lessons: number;
+  approved_lessons: number;
+  stale_lessons: number;
+  current_lesson: string | null;
+  progress_percentage: number;
+};

@@ -8,9 +8,10 @@ from app.providers.ai.base import AIProviderRequest, AIProviderResponse
 
 
 class OpenAIProvider:
-    def __init__(self, settings: Settings, api_key: str | None = None) -> None:
+    def __init__(self, settings: Settings, api_key: str | None = None, base_url: str | None = None) -> None:
         self.settings = settings
         self.api_key = api_key or settings.openai_api_key
+        self.base_url = base_url
 
     def generate_text(self, request: AIProviderRequest) -> AIProviderResponse:
         if not self.api_key or self.api_key == "change_me_openai_api_key":
@@ -38,6 +39,8 @@ class OpenAIProvider:
         client_kwargs: dict[str, Any] = {"api_key": self.api_key}
         if request.timeout is not None:
             client_kwargs["timeout"] = request.timeout
+        if self.base_url:
+            client_kwargs["base_url"] = self.base_url
         client = OpenAI(**client_kwargs)
         response_format: dict[str, str] | None = None
         if request.response_format == "json":

@@ -264,7 +264,7 @@ def get_course_lesson_generation_job_endpoint(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, object]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     job = get_latest_course_lesson_generation_job(db, project.id)
     if job is None:
         return {"success": True, "data": None}

@@ -23,6 +23,8 @@ from app.core.database import SessionLocal
 from app.models.coverage_plan import CoveragePlan
 from app.models.coverage_plan_lesson import CoveragePlanLesson
 from app.models.coverage_plan_module import CoveragePlanModule
+from app.models.generated_content import GeneratedContent
+from app.models.lesson_generation import LessonGeneration
 from app.models.lesson_source_item import LessonSourceItem
 from app.models.processing_job import ProcessingJob
 from app.models.project import Project
@@ -59,9 +61,9 @@ from app.services.coverage_plan_validator import (
     validate_persisted_coverage,
 )
 from app.services.document_extraction_service import get_project_file_for_extraction
-from app.services.processing_service import add_processing_log
+from app.services.processing_service import add_processing_log, reap_if_stale
 from app.services.project_service import get_project_by_id
-from app.services.user_ai_credential_service import resolve_generation_api_key
+from app.services.user_ai_credential_service import resolve_generation_api_key, resolve_generation_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +72,15 @@ ACTIVE_JOB_STATUSES = ("pending", "queued", "processing")
 AI_TEMPERATURE = 0.2
 AI_TIMEOUT_SECONDS = 120.0
 AI_MAX_RETRIES = 2
-BATCH_TARGET_CHARS = 12000
+# Lotes de ate ~37 itens (BATCH_TARGET_CHARS de entrada) geram uma estrutura
+# JSON grande (modulos/aulas/relacionamentos por item); o default de
+# max_tokens dos providers (8192) estava truncando toda resposta - ver jobs
+# 4a509b9d.../6a29040c... em 19-07-2026 (100% dos lotes truncados mesmo com
+# max_tokens=16000). Reduzido o tamanho do lote de entrada (menos itens por
+# lote => menos JSON de saida) e aumentado o teto de saida junto, para nao
+# depender so de acertar um numero grande o suficiente.
+AI_MAX_OUTPUT_TOKENS = 32000
+BATCH_TARGET_CHARS = 6000
 
 RELATIONSHIP_TO_COVERAGE_TYPE = {
     "primary": "planned_primary",
@@ -116,7 +126,7 @@ def check_coverage_plan_preconditions(items: list[SourceContentItem]) -> tuple[i
 
 
 def get_active_coverage_plan_job(db: Session, project_file_id: UUID) -> ProcessingJob | None:
-    return db.execute(
+    job = db.execute(
         select(ProcessingJob)
         .where(
             ProcessingJob.project_file_id == project_file_id,
@@ -125,6 +135,7 @@ def get_active_coverage_plan_job(db: Session, project_file_id: UUID) -> Processi
         )
         .order_by(ProcessingJob.created_at.desc())
     ).scalars().first()
+    return reap_if_stale(db, job)
 
 
 def get_latest_coverage_plan_job(db: Session, project_file_id: UUID) -> ProcessingJob | None:
@@ -532,6 +543,7 @@ def propose_structure_for_batch(
             temperature=AI_TEMPERATURE,
             timeout=AI_TIMEOUT_SECONDS,
             max_retries=AI_MAX_RETRIES,
+            max_tokens=AI_MAX_OUTPUT_TOKENS,
         )
     )
     register_ai_request(
@@ -564,7 +576,7 @@ def propose_structure_for_batch(
 # --------------------------------------------------------------------------
 
 def generate_coverage_plan(db: Session, current_user: User, job: ProcessingJob) -> None:
-    project = get_project_by_id(db, current_user.organization_id, job.project_id)
+    project = get_project_by_id(db, current_user, job.project_id)
     project_file = db.get(ProjectFile, job.project_file_id)
     if project_file is None:
         raise CoveragePlanError("Documento não encontrado para gerar o plano de cobertura.")
@@ -670,7 +682,8 @@ def generate_coverage_plan(db: Session, current_user: User, job: ProcessingJob) 
 
     provider_key = resolve_provider_key(settings, project.ai_provider)
     user_api_key = resolve_generation_api_key(db, current_user, provider_key)
-    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key)
+    user_base_url = resolve_generation_base_url(db, current_user, provider_key)
+    ai_provider = get_ai_provider(settings, provider_key, api_key_override=user_api_key, base_url_override=user_base_url)
     provider_record = get_active_ai_provider_record(db, provider_key, resolve_provider_name(settings, provider_key))
 
     pending_modules: list[PendingModule] = []
@@ -1027,7 +1040,7 @@ def add_source_item_to_lesson(
 
     # Nunca revela a existencia de um item de outra organizacao: mesmo tratamento
     # (404 generico) usado pelo restante do projeto para recursos fora do tenant.
-    get_project_by_id(db, current_user.organization_id, item.project_id)
+    get_project_by_id(db, current_user, item.project_id)
 
     if item.project_file_id != plan.project_file_id:
         raise HTTPException(
@@ -1305,7 +1318,7 @@ def get_module_for_user(db: Session, current_user: User, module_id: UUID) -> Cov
     module = db.get(CoveragePlanModule, module_id)
     if module is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Módulo do plano de cobertura não encontrado.")
-    get_project_by_id(db, current_user.organization_id, module.project_id)
+    get_project_by_id(db, current_user, module.project_id)
     return module
 
 
@@ -1316,7 +1329,7 @@ def get_lesson_for_user(db: Session, current_user: User, lesson_id: UUID) -> Cov
     module = db.get(CoveragePlanModule, lesson.module_id)
     if module is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aula do plano de cobertura não encontrada.")
-    get_project_by_id(db, current_user.organization_id, module.project_id)
+    get_project_by_id(db, current_user, module.project_id)
     return lesson
 
 
@@ -1345,7 +1358,7 @@ def update_lesson(
         # Nunca revela a existencia de um modulo de outra organizacao: mesmo
         # tratamento (404 generico) usado pelo restante do projeto para
         # recursos fora do tenant.
-        get_project_by_id(db, current_user.organization_id, target_module.project_id)
+        get_project_by_id(db, current_user, target_module.project_id)
         if target_module.coverage_plan_id != lesson.coverage_plan_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1600,3 +1613,165 @@ def list_unmapped_items(db: Session, coverage_plan: CoveragePlan) -> list[Unmapp
             )
         )
     return unmapped
+
+
+def get_approved_plan(db: Session, project_id: UUID) -> CoveragePlan | None:
+    """Plano de cobertura aprovado mais recente do projeto, ou None se nao houver
+    nenhum (projeto ainda no fluxo antigo, ou plano ainda nao aprovado)."""
+    return db.execute(
+        select(CoveragePlan)
+        .where(CoveragePlan.project_id == project_id, CoveragePlan.status == "approved")
+        .order_by(CoveragePlan.version.desc())
+    ).scalars().first()
+
+
+def get_coverage_lesson_as_legacy_script_dict(
+    db: Session, lesson: CoveragePlanLesson, module: CoveragePlanModule | None = None
+) -> dict[str, Any] | None:
+    """Traduz uma CoveragePlanLesson ja roteirizada para o formato legado
+    content_json['lesson_script'], para reaproveitar os consumidores (video,
+    narracao, export) construidos em cima do pipeline antigo. Retorna None se a
+    aula ainda nao tem roteiro gerado (generated_content_id vazio)."""
+    if lesson.generated_content_id is None:
+        return None
+    content = db.get(GeneratedContent, lesson.generated_content_id)
+    if content is None:
+        return None
+    if module is None:
+        module = db.get(CoveragePlanModule, lesson.module_id)
+
+    latest_generation = db.execute(
+        select(LessonGeneration)
+        .where(LessonGeneration.coverage_plan_lesson_id == lesson.id)
+        .order_by(LessonGeneration.version.desc())
+    ).scalars().first()
+    structured = (latest_generation.structured_content if latest_generation else None) or {}
+    raw = content.content_json or {}
+    narration_text = content.content_text or ""
+
+    module_number = module.module_order if module else None
+    module_title = module.title if module else None
+    lesson_number = lesson.lesson_order
+    lesson_title = structured.get("lesson_title") or lesson.title
+
+    duration = structured.get("target_duration_minutes")
+    if duration is None and lesson.estimated_duration_minutes is not None:
+        duration = float(lesson.estimated_duration_minutes)
+
+    lesson_script = {
+        "course_title": None,
+        "module_number": module_number,
+        "module_title": module_title,
+        "lesson_number": lesson_number,
+        "lesson_title": lesson_title,
+        "estimated_duration_minutes": duration,
+        "learning_objective": structured.get("learning_objective") or lesson.learning_objective,
+        "opening": raw.get("opening"),
+        "development": raw.get("development"),
+        "closing": raw.get("closing"),
+        "summary": raw.get("summary"),
+        "key_points": raw.get("key_points"),
+        "script_text": narration_text,
+        "narration_text": narration_text,
+        "main_script": [],
+    }
+    metadata = {
+        "module_number": module_number,
+        "module_title": module_title,
+        "lesson_number": lesson_number,
+        "lesson_title": lesson_title,
+    }
+    return {"lesson_script": lesson_script, "metadata": metadata, "generation_language": content.language}
+
+
+def list_lesson_scripts_from_plan(db: Session, coverage_plan: CoveragePlan) -> list[GeneratedContent]:
+    """Todos os roteiros ja gerados (coverage_lesson_script) do plano, ordenados por
+    modulo/aula e traduzidos para o formato legado lesson_script (ver
+    get_coverage_lesson_as_legacy_script_dict) para reaproveitar consumidores como
+    video_pipeline_service/export_service/course_export_service."""
+    modules = {
+        module.id: module
+        for module in db.execute(
+            select(CoveragePlanModule).where(CoveragePlanModule.coverage_plan_id == coverage_plan.id)
+        )
+        .scalars()
+        .all()
+    }
+    lessons = list(
+        db.execute(
+            select(CoveragePlanLesson).where(
+                CoveragePlanLesson.coverage_plan_id == coverage_plan.id,
+                CoveragePlanLesson.generated_content_id.is_not(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    lessons.sort(
+        key=lambda lesson: (
+            modules[lesson.module_id].module_order if lesson.module_id in modules else 0,
+            lesson.lesson_order,
+        )
+    )
+
+    contents: list[GeneratedContent] = []
+    for lesson in lessons:
+        module = modules.get(lesson.module_id)
+        legacy_json = get_coverage_lesson_as_legacy_script_dict(db, lesson, module)
+        if legacy_json is None:
+            continue
+        content = db.get(GeneratedContent, lesson.generated_content_id)
+        if content is None:
+            continue
+        db.expunge(content)
+        content.content_json = legacy_json
+        contents.append(content)
+    return contents
+
+
+def build_course_structure_shape_from_plan(db: Session, coverage_plan: CoveragePlan) -> dict[str, Any]:
+    """Sintetiza um dict no formato de course_structure a partir de um plano de
+    cobertura aprovado, para reaproveitar os prompt builders de quiz/resumo/
+    apresentacao (que apenas fazem json.dumps do modulo/curso recebido, sem exigir
+    o formato antigo especificamente)."""
+    plan_data = build_plan_response_data(db, coverage_plan)
+    project = db.get(Project, coverage_plan.project_id)
+
+    modules = []
+    for module in plan_data["modules"]:
+        lessons = []
+        for lesson in module["lessons"]:
+            lessons.append(
+                {
+                    "lesson_number": lesson["lesson_order"],
+                    "title": lesson["title"],
+                    "summary": lesson["description"] or "",
+                    "estimated_duration_minutes": float(lesson["estimated_duration_minutes"] or 0),
+                    "learning_objective": lesson["learning_objective"] or "",
+                    "key_topics": [],
+                    "covered_document_points": [item["title"] for item in lesson["source_items"]],
+                    "fidelity_note": "",
+                }
+            )
+        modules.append(
+            {
+                "module_number": module["module_order"],
+                "title": module["title"],
+                "description": module["description"] or "",
+                "learning_goal": module["learning_objective"] or "",
+                "lessons": lessons,
+                "covered_document_points": [],
+                "fidelity_note": "",
+            }
+        )
+
+    return {
+        "course": {
+            "title": project.title if project else "",
+            "promise": "",
+            "description": project.description if project else "",
+            "target_audience": (project.target_audience if project else "") or "",
+            "learning_objectives": [],
+            "modules": modules,
+        }
+    }

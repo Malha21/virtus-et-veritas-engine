@@ -19,6 +19,11 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.course_export import CourseExportCreate
 from app.services.audio_service import get_audio_storage_dir
+from app.services.coverage_plan_service import (
+    build_course_structure_shape_from_plan,
+    get_approved_plan,
+    list_lesson_scripts_from_plan,
+)
 from app.services.export_service import as_list, safe_text
 from app.services.project_service import get_project_by_id, slugify
 from app.services.video_pipeline_service import get_lesson_narration_text, get_lesson_script_dict
@@ -55,17 +60,21 @@ def get_content_field_number(content: GeneratedContent, field: str) -> int:
 
 
 def list_lesson_scripts(db: Session, project: Project) -> list[GeneratedContent]:
-    contents = list(
-        db.execute(
-            select(GeneratedContent).where(
-                GeneratedContent.project_id == project.id,
-                GeneratedContent.organization_id == project.organization_id,
-                GeneratedContent.content_type == "lesson_script",
+    coverage_plan = get_approved_plan(db, project.id)
+    contents = list_lesson_scripts_from_plan(db, coverage_plan) if coverage_plan is not None else []
+
+    if not contents:
+        contents = list(
+            db.execute(
+                select(GeneratedContent).where(
+                    GeneratedContent.project_id == project.id,
+                    GeneratedContent.organization_id == project.organization_id,
+                    GeneratedContent.content_type == "lesson_script",
+                )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
     contents.sort(
         key=lambda content: (
             get_content_field_number(content, "module_number") or 9999,
@@ -484,6 +493,10 @@ def build_course_export_zip(
     module_quizzes = list_module_quizzes(db, project)
     materials = list_complementary_materials(db, project)
     course_structure = get_optional_latest_content(db, project, "course_structure")
+    if course_structure is None:
+        coverage_plan = get_approved_plan(db, project.id)
+        if coverage_plan is not None:
+            course_structure = GeneratedContent(content_json=build_course_structure_shape_from_plan(db, coverage_plan))
     course_summary = get_optional_latest_content(db, project, "course_summary")
     document_analysis = get_optional_latest_content(db, project, "document_analysis")
     presentation = get_optional_latest_content(db, project, "presentation_deck")
@@ -674,7 +687,7 @@ def build_course_export_zip(
 def create_course_export(
     db: Session, current_user: User, project_id: UUID, payload: CourseExportCreate
 ) -> CourseExport:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     export = CourseExport(
         project_id=project.id,
         status="pending",
@@ -710,7 +723,7 @@ def execute_course_export(db: Session, current_user: User, export: CourseExport)
     if export.status != "pending":
         return
 
-    project = get_project_by_id(db, current_user.organization_id, export.project_id)
+    project = get_project_by_id(db, current_user, export.project_id)
     payload = CourseExportCreate(**(export.options_json or {}))
 
     export.status = "running"
@@ -749,7 +762,7 @@ def get_course_export_for_project(db: Session, project_id: UUID, export_id: UUID
 
 
 def list_course_exports(db: Session, current_user: User, project_id: UUID) -> list[CourseExport]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     return list(
         db.execute(
             select(CourseExport)
@@ -762,7 +775,7 @@ def list_course_exports(db: Session, current_user: User, project_id: UUID) -> li
 
 
 def get_course_export(db: Session, current_user: User, project_id: UUID, export_id: UUID) -> CourseExport:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     return get_course_export_for_project(db, project.id, export_id)
 
 

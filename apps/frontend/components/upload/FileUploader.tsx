@@ -88,14 +88,14 @@ export function FileUploader({ projectId, onUploaded }: FileUploaderProps) {
   }
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.035] p-5">
+    <div className="rounded-lg border border-white/5 bg-white/[0.035] p-5">
       <label
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
-        className="flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-gold-500/35 bg-navy-950/60 px-5 py-8 text-center transition hover:border-gold-400"
+        className="flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-accent-500/35 bg-navy-950/60 px-5 py-8 text-center transition hover:border-accent-400"
       >
-        <span className="text-sm font-medium text-gold-400">Selecionar PDF ou EPUB</span>
-        <span className="mt-2 max-w-md text-sm text-slate-300">
+        <span className="text-sm font-medium text-accent-400">Selecionar PDF ou EPUB</span>
+        <span className="mt-2 max-w-md text-sm text-zinc-300">
           Arraste o arquivo para esta área ou clique para escolher o PDF ou EPUB-base do curso.
         </span>
         <input
@@ -107,7 +107,7 @@ export function FileUploader({ projectId, onUploaded }: FileUploaderProps) {
       </label>
 
       {selectedFile ? (
-        <p className="mt-4 text-sm text-slate-200">
+        <p className="mt-4 text-sm text-zinc-200">
           Arquivo selecionado: <span className="text-white">{selectedFile.name}</span>
         </p>
       ) : null}
@@ -119,7 +119,7 @@ export function FileUploader({ projectId, onUploaded }: FileUploaderProps) {
         type="button"
         onClick={uploadFile}
         disabled={loading || !selectedFile}
-        className="mt-5 rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-5 rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
       >
         {loading ? "Enviando..." : "Enviar arquivo"}
       </button>

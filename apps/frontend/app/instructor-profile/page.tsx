@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import {
   ApiError,
   deleteInstructorAsset,
@@ -143,17 +144,17 @@ export default function InstructorProfilePage() {
   return (
     <AppShell>
       <div className="mx-auto grid max-w-6xl gap-6">
-        <section className="rounded-lg border border-white/10 bg-navy-950/70 p-6">
-          <p className="text-sm font-medium text-gold-400">Configuração do instrutor</p>
+        <section className="rounded-lg border border-white/5 bg-navy-950/70 p-6">
+          <p className="text-sm font-medium text-accent-400">Configuração do instrutor</p>
           <h1 className="mt-2 text-3xl font-semibold text-white">Perfil do Instrutor</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-zinc-400">
             Prepare as informações para futuras gerações com voz e avatar personalizados. Nesta fase, o perfil
             apenas armazena as configurações; a geração com voz/avatar será ativada em etapas futuras.
           </p>
         </section>
 
         {loading ? (
-          <p className="text-slate-300">Carregando perfil...</p>
+          <LoadingProgress label="Carregando perfil..." />
         ) : (
           <form onSubmit={handleSubmit} className="grid gap-6">
             <ProfileSection title="Dados básicos" description="Identidade pública e estilo didático do instrutor.">
@@ -175,7 +176,7 @@ export default function InstructorProfilePage() {
             </ProfileSection>
 
             <ProfileSection title="Voz" description="Referências para futura narração personalizada.">
-              <p className="rounded-md border border-gold-500/20 bg-gold-500/10 px-4 py-3 text-sm leading-6 text-gold-100 md:col-span-2">
+              <p className="rounded-md border border-accent-500/20 bg-accent-500/10 px-4 py-3 text-sm leading-6 text-accent-100 md:col-span-2">
                 Para usar ElevenLabs, preencha Provider de voz como ElevenLabs e informe o Voice ID da voz já criada
                 ou configurada na ElevenLabs. O VVE Engine ainda não cria nem clona a voz automaticamente nesta etapa;
                 o consentimento de voz precisa estar marcado.
@@ -232,7 +233,7 @@ export default function InstructorProfilePage() {
 
             <ProfileSection title="Consentimentos" description="Autorizações explícitas para uso futuro de voz e imagem.">
               <div className="grid gap-4">
-                <p className="rounded-md border border-gold-500/20 bg-gold-500/10 px-4 py-3 text-sm leading-6 text-gold-100">
+                <p className="rounded-md border border-accent-500/20 bg-accent-500/10 px-4 py-3 text-sm leading-6 text-accent-100">
                   Use apenas voz e imagem próprias ou de pessoas que autorizaram expressamente.
                 </p>
                 <CheckboxInput
@@ -271,14 +272,14 @@ export default function InstructorProfilePage() {
               accept="image/jpeg,image/png,image/webp"
             />
 
-            {message ? <p className="rounded-md border border-gold-500/20 bg-gold-500/10 px-4 py-3 text-sm text-gold-200">{message}</p> : null}
+            {message ? <p className="rounded-md border border-accent-500/20 bg-accent-500/10 px-4 py-3 text-sm text-accent-200">{message}</p> : null}
             {error ? <p className="rounded-md border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</p> : null}
 
             <div className="flex justify-end">
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-md bg-gold-500 px-5 py-3 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-md bg-accent-500 px-5 py-3 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? "Salvando..." : "Salvar perfil"}
               </button>
@@ -300,10 +301,10 @@ function ProfileSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+    <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
       <div className="mb-5">
         <h2 className="text-xl font-semibold text-white">{title}</h2>
-        <p className="mt-1 text-sm text-slate-400">{description}</p>
+        <p className="mt-1 text-sm text-zinc-400">{description}</p>
       </div>
       <div className="grid gap-4 md:grid-cols-2">{children}</div>
     </section>
@@ -452,23 +453,23 @@ function InstructorAssetSection({
   }
 
   return (
-    <section className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+    <section className="rounded-lg border border-white/5 bg-white/[0.03] p-5">
       <div className="mb-5">
         <h2 className="text-xl font-semibold text-white">{title}</h2>
-        <p className="mt-1 text-sm leading-6 text-slate-400">{description}</p>
-        <p className="mt-3 rounded-md border border-gold-500/20 bg-gold-500/10 px-4 py-3 text-sm leading-6 text-gold-100">
+        <p className="mt-1 text-sm leading-6 text-zinc-400">{description}</p>
+        <p className="mt-3 rounded-md border border-accent-500/20 bg-accent-500/10 px-4 py-3 text-sm leading-6 text-accent-100">
           Nesta fase, os arquivos são apenas armazenados. Nenhuma clonagem ou geração de avatar é feita ainda.
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <label className="grid gap-2 text-sm text-slate-300">
+        <label className="grid gap-2 text-sm text-zinc-300">
           Arquivo
           <input
             type="file"
             accept={accept}
             onChange={handleFileChange}
-            className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition file:mr-3 file:rounded-md file:border-0 file:bg-gold-500 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-navy-950"
+            className="rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition file:mr-3 file:rounded-md file:border-0 file:bg-accent-500 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-navy-950"
           />
         </label>
         <TextInput label="Descrição" value={descriptionText} onChange={setDescriptionText} />
@@ -478,37 +479,37 @@ function InstructorAssetSection({
             type="button"
             onClick={handleUpload}
             disabled={uploading}
-            className="rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
           >
             {uploading ? "Enviando..." : buttonLabel}
           </button>
         </div>
       </div>
 
-      {message ? <p className="mt-4 text-sm text-gold-300">{message}</p> : null}
+      {message ? <p className="mt-4 text-sm text-accent-300">{message}</p> : null}
       {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
 
       <div className="mt-6 grid gap-3">
-        <p className="text-sm font-medium text-slate-100">Arquivos enviados</p>
-        {loading ? <p className="text-sm text-slate-400">Carregando arquivos...</p> : null}
-        {!loading && !assets.length ? <p className="text-sm text-slate-500">Nenhum arquivo enviado ainda.</p> : null}
+        <p className="text-sm font-medium text-zinc-100">Arquivos enviados</p>
+        {loading ? <LoadingProgress label="Carregando arquivos..." size="inline" /> : null}
+        {!loading && !assets.length ? <p className="text-sm text-zinc-500">Nenhum arquivo enviado ainda.</p> : null}
         {assets.map((asset) => (
-          <article key={asset.id} className="rounded-md border border-white/10 bg-black/20 p-4">
+          <article key={asset.id} className="rounded-md border border-white/5 bg-black/20 p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
-                <p className="break-all text-sm font-medium text-slate-100">
+                <p className="break-all text-sm font-medium text-zinc-100">
                   {asset.original_filename || asset.stored_filename}
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-zinc-500">
                   {asset.mime_type || "tipo desconhecido"} · {formatBytes(asset.size_bytes)}
                 </p>
-                {asset.description ? <p className="mt-2 text-sm leading-6 text-slate-300">{asset.description}</p> : null}
+                {asset.description ? <p className="mt-2 text-sm leading-6 text-zinc-300">{asset.description}</p> : null}
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => handleDownload(asset)}
-                  className="rounded-md border border-white/10 px-3 py-2 text-sm text-slate-200 transition hover:border-gold-500/40 hover:text-gold-400"
+                  className="rounded-md border border-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-accent-500/40 hover:text-accent-400"
                 >
                   Baixar
                 </button>
@@ -525,7 +526,7 @@ function InstructorAssetSection({
               <img
                 src={imageUrls[asset.id]}
                 alt={asset.original_filename || "Imagem de referência do avatar"}
-                className="mt-4 max-h-60 rounded-md border border-white/10 object-contain"
+                className="mt-4 max-h-60 rounded-md border border-white/5 object-contain"
               />
             ) : null}
           </article>
@@ -551,12 +552,12 @@ function TextInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="grid gap-2 text-sm text-slate-300">
+    <label className="grid gap-2 text-sm text-zinc-300">
       {label}
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-gold-500/60"
+        className="rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-accent-500/60"
       />
     </label>
   );
@@ -572,13 +573,13 @@ function TextArea({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+    <label className="grid gap-2 text-sm text-zinc-300 md:col-span-2">
       {label}
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
         rows={4}
-        className="resize-y rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm leading-6 text-slate-100 outline-none transition focus:border-gold-500/60"
+        className="resize-y rounded-md border border-white/5 bg-black/20 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none transition focus:border-accent-500/60"
       />
     </label>
   );
@@ -594,12 +595,12 @@ function CheckboxInput({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-start gap-3 rounded-md border border-white/10 bg-black/20 p-3 text-sm text-slate-200 md:col-span-2">
+    <label className="flex items-start gap-3 rounded-md border border-white/5 bg-black/20 p-3 text-sm text-zinc-200 md:col-span-2">
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="mt-1 h-4 w-4 accent-gold-500"
+        className="mt-1 h-4 w-4 accent-accent-500"
       />
       <span>{label}</span>
     </label>

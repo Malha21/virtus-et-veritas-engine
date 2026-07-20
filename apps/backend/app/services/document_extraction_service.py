@@ -23,7 +23,7 @@ from app.models.project import Project
 from app.models.project_file import ProjectFile
 from app.models.user import User
 from app.schemas.document_extraction import DocumentExtractionSummary
-from app.services.processing_service import add_processing_log
+from app.services.processing_service import add_processing_log, reap_if_stale
 from app.services.project_service import get_project_by_id
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ class DocumentExtractionError(Exception):
 def get_project_file_for_extraction(
     db: Session, current_user: User, project_id: UUID, file_id: UUID
 ) -> tuple[Project, ProjectFile]:
-    project = get_project_by_id(db, current_user.organization_id, project_id)
+    project = get_project_by_id(db, current_user, project_id)
     project_file = db.execute(
         select(ProjectFile).where(
             ProjectFile.id == file_id,
@@ -77,7 +77,7 @@ def get_project_file_for_extraction(
 
 
 def get_active_extraction_job(db: Session, project_file_id: UUID) -> ProcessingJob | None:
-    return db.execute(
+    job = db.execute(
         select(ProcessingJob)
         .where(
             ProcessingJob.project_file_id == project_file_id,
@@ -86,6 +86,7 @@ def get_active_extraction_job(db: Session, project_file_id: UUID) -> ProcessingJ
         )
         .order_by(ProcessingJob.created_at.desc())
     ).scalars().first()
+    return reap_if_stale(db, job)
 
 
 def get_latest_extraction_job(db: Session, project_file_id: UUID) -> ProcessingJob | None:
@@ -540,7 +541,7 @@ def replace_page_blocks(
 # --------------------------------------------------------------------------
 
 def extract_document(db: Session, current_user: User, job: ProcessingJob) -> None:
-    project = get_project_by_id(db, current_user.organization_id, job.project_id)
+    project = get_project_by_id(db, current_user, job.project_id)
     project_file = db.get(ProjectFile, job.project_file_id)
     if project_file is None:
         raise DocumentExtractionError("Documento não encontrado para extração.")

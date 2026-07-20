@@ -19,8 +19,9 @@ export type AdminUserCreatePayload = {
 
 export type UserAICredential = {
   id: string;
-  provider_type: "openai" | "anthropic" | "gemini";
+  provider_type: "openai" | "gemini" | "anthropic";
   key_last_four: string;
+  base_url: string | null;
   created_at: string;
   updated_at: string;
 };

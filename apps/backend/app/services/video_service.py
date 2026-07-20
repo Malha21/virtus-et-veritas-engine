@@ -76,7 +76,7 @@ def validate_lesson_for_video(db: Session, current_user: User, project_id: UUID,
             GeneratedContent.id == lesson_id,
             GeneratedContent.project_id == project_id,
             GeneratedContent.organization_id == current_user.organization_id,
-            GeneratedContent.content_type == "lesson_script",
+            GeneratedContent.content_type.in_(("lesson_script", "coverage_lesson_script")),
         )
     ).scalar_one_or_none()
 

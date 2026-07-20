@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import {
   ApiError,
@@ -113,25 +114,27 @@ export default function SourceInventoryListPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl">
-        <Link href={`/fidelity-coverage/${projectId}`} className="text-sm text-gold-400 hover:text-gold-500">
+        <Link href={`/fidelity-coverage/${projectId}`} className="text-sm text-accent-400 hover:text-accent-500">
           Voltar para o projeto
         </Link>
 
         <div className="mt-4">
-          <p className="text-sm text-gold-400">Inventário do Documento</p>
+          <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Inventário do Documento</p>
           <h1 className="mt-2 text-3xl font-semibold">Itens identificados</h1>
-          {sourceFile ? <p className="mt-2 text-slate-400">{sourceFile.original_filename}</p> : null}
+          {sourceFile ? <p className="mt-2 text-zinc-400">{sourceFile.original_filename}</p> : null}
         </div>
 
         {loading ? (
-          <p className="mt-8 text-slate-300">Carregando inventário...</p>
+          <div className="mt-8">
+            <LoadingProgress label="Carregando inventário..." />
+          </div>
         ) : error ? (
           <p className="mt-8 text-red-300">{error}</p>
         ) : !sourceFile ? (
-          <p className="mt-8 text-slate-300">Nenhum documento enviado neste projeto.</p>
+          <p className="mt-8 text-zinc-300">Nenhum documento enviado neste projeto.</p>
         ) : !total ? (
-          <div className="mt-8 rounded-lg border border-white/10 bg-white/[0.035] p-8 text-center">
-            <p className="text-slate-300">Nenhum item de inventário gerado ainda.</p>
+          <div className="mt-8 rounded-lg border border-white/5 bg-white/[0.035] p-8 text-center">
+            <p className="text-zinc-300">Nenhum item de inventário gerado ainda.</p>
           </div>
         ) : (
           <>
@@ -143,12 +146,12 @@ export default function SourceInventoryListPage() {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Buscar por título"
-                className="w-full max-w-xs rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-gold-500/40 focus:outline-none"
+                className="w-full max-w-xs rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-accent-500/40 focus:outline-none"
               />
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                className="rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                className="rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
               >
                 <option value="all">Todos os status</option>
                 <option value="generated">Gerado</option>
@@ -161,7 +164,7 @@ export default function SourceInventoryListPage() {
               <select
                 value={importanceFilter}
                 onChange={(event) => setImportanceFilter(event.target.value)}
-                className="rounded-md border border-white/10 bg-navy-950/60 px-3 py-2 text-sm text-slate-100 focus:border-gold-500/40 focus:outline-none"
+                className="rounded-md border border-white/5 bg-navy-950/60 px-3 py-2 text-sm text-zinc-100 focus:border-accent-500/40 focus:outline-none"
               >
                 <option value="all">Todas as importâncias</option>
                 <option value="essential">Essencial</option>
@@ -170,9 +173,9 @@ export default function SourceInventoryListPage() {
               </select>
             </div>
 
-            <div className="mt-6 overflow-x-auto rounded-lg border border-white/10 bg-white/[0.035]">
+            <div className="mt-6 overflow-x-auto rounded-lg border border-white/5 bg-white/[0.035]">
               <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="border-b border-white/10 text-slate-400">
+                <thead className="border-b border-white/5 text-zinc-400">
                   <tr>
                     <th className="px-4 py-4 font-medium">Código</th>
                     <th className="px-4 py-4 font-medium">Título</th>
@@ -186,11 +189,11 @@ export default function SourceInventoryListPage() {
                 <tbody>
                   {items.map((item) => (
                     <tr key={item.id} className="border-b border-white/5">
-                      <td className="px-4 py-4 font-mono text-xs text-gold-400">{item.item_code}</td>
+                      <td className="px-4 py-4 font-mono text-xs text-accent-400">{item.item_code}</td>
                       <td className="px-4 py-4 font-medium text-white">{item.title}</td>
-                      <td className="px-4 py-4 text-slate-300">{item.content_type}</td>
-                      <td className="px-4 py-4 text-slate-300">{item.importance}</td>
-                      <td className="px-4 py-4 text-slate-400">
+                      <td className="px-4 py-4 text-zinc-300">{item.content_type}</td>
+                      <td className="px-4 py-4 text-zinc-300">{item.importance}</td>
+                      <td className="px-4 py-4 text-zinc-400">
                         {item.page_start === item.page_end ? item.page_start : `${item.page_start}–${item.page_end}`}
                       </td>
                       <td className="px-4 py-4">
@@ -200,7 +203,7 @@ export default function SourceInventoryListPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <Link
                             href={`/fidelity-coverage/${projectId}/inventory/${item.id}`}
-                            className="text-gold-400 hover:text-gold-500"
+                            className="text-accent-400 hover:text-accent-500"
                           >
                             Detalhes
                           </Link>

@@ -29,19 +29,13 @@ class Settings(BaseSettings):
         default="change_me_admin_password",
         alias="SEED_ADMIN_PASSWORD",
     )
-    ai_provider: str = Field(default="anthropic", alias="AI_PROVIDER")
+    ai_provider: str = Field(default="openai", alias="AI_PROVIDER")
     openai_provider_name: str = Field(default="OpenAI", alias="OPENAI_PROVIDER_NAME")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     openai_default_model: str = Field(default="gpt-5-mini", alias="OPENAI_DEFAULT_MODEL")
     openai_tts_model: str = Field(default="gpt-4o-mini-tts", alias="OPENAI_TTS_MODEL")
     openai_tts_voice: str = Field(default="alloy", alias="OPENAI_TTS_VOICE")
     openai_tts_format: str = Field(default="mp3", alias="OPENAI_TTS_FORMAT")
-    anthropic_provider_name: str = Field(default="Anthropic", alias="ANTHROPIC_PROVIDER_NAME")
-    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
-    anthropic_base_url: str = Field(default="", alias="ANTHROPIC_BASE_URL")
-    anthropic_default_model: str = Field(default="claude-opus-4-8", alias="ANTHROPIC_MODEL")
-    anthropic_max_tokens: int = Field(default=8192, alias="ANTHROPIC_MAX_TOKENS")
-    anthropic_timeout_seconds: float = Field(default=180.0, alias="ANTHROPIC_TIMEOUT_SECONDS")
     gemini_provider_name: str = Field(default="Gemini", alias="GEMINI_PROVIDER_NAME")
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
     gemini_default_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_DEFAULT_MODEL")
@@ -79,19 +73,15 @@ class Settings(BaseSettings):
 
     @property
     def ai_provider_name(self) -> str:
-        if self.ai_provider == "openai":
-            return self.openai_provider_name
         if self.ai_provider == "gemini":
             return self.gemini_provider_name
-        return self.anthropic_provider_name
+        return self.openai_provider_name
 
     @property
     def ai_default_model(self) -> str:
-        if self.ai_provider == "openai":
-            return self.openai_default_model
         if self.ai_provider == "gemini":
             return self.gemini_default_model
-        return self.anthropic_default_model
+        return self.openai_default_model
 
 
 @lru_cache

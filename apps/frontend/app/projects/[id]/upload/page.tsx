@@ -6,8 +6,10 @@ import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { LoadingProgress } from "@/components/ui/LoadingProgress";
 import { FileUploader } from "@/components/upload/FileUploader";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, deleteProjectFile } from "@/lib/api";
+import { translateFileStatus } from "@/lib/status-labels";
 import type { ProjectFile } from "@/types/file";
 import type { StartProcessingResponse } from "@/types/processing";
 import type { Project } from "@/types/project";
@@ -20,11 +22,32 @@ export default function ProjectUploadPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   function refreshFiles() {
     apiFetch<ProjectFile[]>(`/projects/${params.id}/files`)
       .then(setFiles)
       .catch(() => setError("Não foi possível carregar os arquivos enviados."));
+  }
+
+  async function removeFile(fileId: string) {
+    const confirmed = window.confirm(
+      "Remover este documento também apaga a extração, o inventário e o plano de cobertura já gerados a partir dele. Deseja continuar?",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setRemoving(true);
+    setError("");
+    try {
+      await deleteProjectFile(params.id, fileId);
+      refreshFiles();
+    } catch {
+      setError("Não foi possível remover o documento.");
+    } finally {
+      setRemoving(false);
+    }
   }
 
   useEffect(() => {
@@ -58,62 +81,73 @@ export default function ProjectUploadPage() {
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl">
-        <Link href={`/projects/${params.id}`} className="text-sm text-gold-400 hover:text-gold-500">
+        <Link href={`/projects/${params.id}`} className="text-sm text-accent-400 hover:text-accent-500">
           Voltar para detalhes
         </Link>
 
         {loading ? (
-          <p className="mt-8 text-slate-300">Carregando área de upload...</p>
+          <div className="mt-8">
+            <LoadingProgress label="Carregando área de upload..." />
+          </div>
         ) : error ? (
           <p className="mt-8 text-red-300">{error}</p>
         ) : project ? (
           <div className="mt-6 grid gap-6">
             <section>
-              <p className="text-sm text-gold-400">Upload de documento</p>
+              <p className="font-mono text-xs uppercase tracking-wider text-accent-400">Documento do projeto</p>
               <h1 className="mt-2 text-3xl font-semibold">{project.title}</h1>
-              <p className="mt-2 text-slate-400">
-                Envie o PDF ou EPUB-base que será usado para criar o curso.
+              <p className="mt-2 text-zinc-400">
+                {files.length
+                  ? "Este é o documento-base usado em todo o projeto: extração, inventário, plano de cobertura e roteiros. Para trocar, remova o atual e envie um novo."
+                  : "Envie o PDF ou EPUB-base que será usado em todo o projeto."}
               </p>
             </section>
 
-            <FileUploader projectId={project.id} onUploaded={refreshFiles} />
-
-            <section className="rounded-lg border border-white/10 bg-white/[0.035] p-5">
-              <h2 className="text-lg font-semibold text-white">Arquivos enviados</h2>
-
-              {!files.length ? (
-                <p className="mt-4 text-sm text-slate-400">Nenhum arquivo enviado ainda.</p>
-              ) : (
+            {files.length ? (
+              <section className="rounded-lg border border-white/5 bg-white/[0.035] p-5">
+                <h2 className="text-lg font-semibold text-white">Documento atual</h2>
                 <div className="mt-4 grid gap-3">
                   {files.map((file) => (
                     <div
                       key={file.id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-navy-950/60 px-4 py-3"
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/5 bg-navy-950/60 px-4 py-3"
                     >
                       <div>
                         <p className="text-sm font-medium text-white">{file.original_filename}</p>
-                        <p className="mt-1 text-xs text-slate-400">
+                        <p className="mt-1 text-xs text-zinc-400">
                           {formatFileSize(file.file_size)} • {new Date(file.created_at).toLocaleDateString("pt-BR")}
                         </p>
                       </div>
-                      <StatusBadge label={file.status} tone="success" />
+                      <div className="flex items-center gap-3">
+                        <StatusBadge label={translateFileStatus(file.status)} tone="success" />
+                        <button
+                          type="button"
+                          onClick={() => removeFile(file.id)}
+                          disabled={removing}
+                          className="rounded-md border border-red-400/30 px-3 py-1.5 text-xs text-red-300 transition hover:border-red-300/60 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {removing ? "Removendo..." : "Remover documento"}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
-              )}
-            </section>
+              </section>
+            ) : (
+              <FileUploader projectId={project.id} onUploaded={refreshFiles} />
+            )}
 
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={startProcessing}
                 disabled={!files.length || processing}
-                className="w-fit rounded-md bg-gold-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-gold-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-fit rounded-md bg-accent-500 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:bg-accent-400 hover:shadow-glow disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {processing ? "Processando..." : "Iniciar processamento"}
               </button>
               {!files.length ? (
-                <p className="self-center text-sm text-slate-400">
+                <p className="self-center text-sm text-zinc-400">
                   Envie um PDF ou EPUB antes de iniciar o processamento.
                 </p>
               ) : null}

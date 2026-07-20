@@ -20,9 +20,10 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 class GeminiProvider:
-    def __init__(self, settings: Settings, api_key: str | None = None) -> None:
+    def __init__(self, settings: Settings, api_key: str | None = None, base_url: str | None = None) -> None:
         self.settings = settings
         self.api_key = api_key or settings.gemini_api_key
+        self.base_url = base_url
 
     def generate_text(self, request: AIProviderRequest) -> AIProviderResponse:
         model_name = request.model or self.settings.gemini_default_model
@@ -60,7 +61,12 @@ class GeminiProvider:
 
     def _call(self, request: AIProviderRequest, model_name: str) -> AIProviderResponse:
         timeout = request.timeout if request.timeout is not None else self.settings.gemini_timeout_seconds
-        http_options = types.HttpOptions(timeout=int(timeout * 1000)) if timeout is not None else None
+        http_options_kwargs: dict[str, Any] = {}
+        if timeout is not None:
+            http_options_kwargs["timeout"] = int(timeout * 1000)
+        if self.base_url:
+            http_options_kwargs["base_url"] = self.base_url
+        http_options = types.HttpOptions(**http_options_kwargs) if http_options_kwargs else None
         client = genai.Client(api_key=self.api_key, http_options=http_options)
 
         max_output_tokens = request.max_tokens or self.settings.gemini_max_output_tokens
@@ -92,7 +98,7 @@ class GeminiProvider:
 
         if finish_reason_name == "MAX_TOKENS":
             # Geracao truncada: nao deve ser tratada como concluida nem persistida
-            # como valida - mesmo contrato de AnthropicProvider/OpenAIProvider.
+            # como valida - mesmo contrato de OpenAIProvider.
             return AIProviderResponse(
                 success=False,
                 content=content or None,
